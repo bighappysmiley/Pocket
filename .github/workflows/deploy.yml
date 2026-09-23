@@ -294,18 +294,32 @@ jobs:
         run: |
           test -f build/pocket-merged.bin
           {
-            echo "Waveshare ESP32-S3-ePaper-3.97 — Mac one-shot flash"
+            echo "Waveshare ESP32-S3-ePaper-3.97 — Mac flash"
             echo ""
-            echo "Easiest: clone/open the repo and run:"
-            echo "  chmod +x scripts/flash-mac.sh"
-            echo "  ./scripts/flash-mac.sh ~/Downloads/pocket-merged.bin"
+            echo "1. Download pocket-merged.bin + flash-mac.sh from the firmware-latest release."
+            echo "2. Plug the board in with a DATA USB-C cable (not charge-only)."
+            echo "3. In Terminal:"
+            echo "     ls /dev/cu.usb*"
+            echo "     cd ~/Downloads && chmod +x flash-mac.sh"
+            echo "     ./flash-mac.sh ~/Downloads/pocket-merged.bin"
             echo ""
-            echo "Or manually:"
-            echo "  ls /dev/cu.usb*"
-            echo "  python3 -m pip install --user esptool"
-            echo "  python3 -m esptool --chip esp32s3 -p /dev/cu.usbmodemXXXX write_flash 0x0 pocket-merged.bin"
+            echo "Do NOT use: pip install / pip install --user  (Homebrew Python blocks that)."
+            echo "Do NOT paste unquoted /dev/cu.usbserial* into zsh (use the script, or quote/noglob)."
+            echo "The script installs esptool via: brew → pipx → temporary venv."
+            echo "It auto-detects esptool v4 (write_flash) vs v5 (write-flash)."
             echo ""
-            echo "First flash tip: hold BOOT, tap RESET, keep holding BOOT while flashing starts."
+            echo "Buttons on this board:"
+            echo "  BOOT  = enter download mode (small BOOT label near USB)."
+            echo "  RESET = RESET/RST (not PWR)."
+            echo "  PWR   = power only — holding PWR does nothing for flashing."
+            echo ""
+            echo "If BOOT seems to do nothing:"
+            echo "  Hold BOOT → tap RESET → keep holding BOOT 2s → release → run script again."
+            echo "  Or: hold BOOT while unplugging/replugging USB."
+            echo "  Expect /dev/cu.usbmodem… (built-in) or /dev/cu.wchusbserial… (CH340)."
+            echo ""
+            echo "Manual one-liner when port is /dev/cu.usbmodem1101 (Homebrew esptool v5):"
+            echo "  esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 8MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin"
           } > FLASH.txt
           ls -la build/pocket-merged.bin build/pocket.bin
           cp -f ../scripts/flash-mac.sh ./flash-mac.sh
@@ -330,21 +344,31 @@ jobs:
           body: |
             Prebuilt merge-binary for **Waveshare ESP32-S3-ePaper-3.97** (Mac-friendly).
 
-            ### MacBook (easiest)
-            1. Download `pocket-merged.bin` below (and optionally `flash-mac.sh`).
-            2. Plug the board in with a **data** USB-C cable.
-            3. In Terminal:
+            ### MacBook
+            1. Download `pocket-merged.bin` and `flash-mac.sh` below.
+            2. Use a **data** USB-C cable. Check: `ls /dev/cu.usb*`
+            3. Terminal:
             ```bash
-            ls /dev/cu.usb*
-            chmod +x flash-mac.sh   # if you downloaded the script
+            cd ~/Downloads
+            chmod +x flash-mac.sh
             ./flash-mac.sh ~/Downloads/pocket-merged.bin
             ```
-            Or one command:
+            Or with your known port:
             ```bash
-            python3 -m pip install --user esptool
-            python3 -m esptool --chip esp32s3 -p $(ls /dev/cu.usbmodem* /dev/cu.usbserial* 2>/dev/null | head -1) write_flash 0x0 ~/Downloads/pocket-merged.bin
+            ./flash-mac.sh ~/Downloads/pocket-merged.bin /dev/cu.usbmodem1101
             ```
-            First flash tip: hold **BOOT**, tap **RESET**, keep holding BOOT until flashing starts.
+
+            Script installs esptool via **brew → pipx → temp venv** (no system `pip` / PEP 668).
+            Auto-detects esptool **v4** (`write_flash`) vs **v5** (`write-flash`).
+
+            ### Manual one-liner (Homebrew esptool v5, port usbmodem1101)
+            ```bash
+            brew install esptool
+            esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 8MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin
+            ```
+            Do **not** paste unquoted `/dev/cu.usbserial*` into zsh.
+
+            **Buttons:** BOOT (download) · RESET/RST · PWR does **not** help flashing.
           files: |
             firmware/build/pocket-merged.bin
             firmware/FLASH.txt
