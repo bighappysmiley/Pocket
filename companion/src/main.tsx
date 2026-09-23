@@ -11,7 +11,8 @@ createRoot(document.getElementById('root')!).render(
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('/sw.js').catch(() => {
+    const base = import.meta.env.BASE_URL || '/'
+    void navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {
       // Non-fatal in dev
     })
   })

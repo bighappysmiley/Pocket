@@ -1,9 +1,18 @@
 import { ApiError, type BackupMeta, type Connector, type ConnectorProvider, type Device, type MeResponse, type Note, type PairClaimResult, type PairSession, type PocketList } from './types'
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || 'http://localhost:8787'
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
+
+/** True when a real (non-localhost) Cloud API origin is configured for this build. */
+export function isApiConfigured(): boolean {
+  if (!API_BASE) return false
+  if (import.meta.env.PROD && /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(API_BASE)) {
+    return false
+  }
+  return true
+}
 
 export function getApiBase(): string {
-  return API_BASE
+  return API_BASE || 'http://localhost:8787'
 }
 
 type RequestOptions = {
@@ -13,7 +22,12 @@ type RequestOptions = {
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`
+  if (!isApiConfigured() && import.meta.env.PROD) {
+    throw new ApiError('Pocket Cloud is not connected yet.', 0, { offline: true, code: 'not_connected' })
+  }
+
+  const base = getApiBase()
+  const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
   let res: Response
   try {
     res = await fetch(url, {

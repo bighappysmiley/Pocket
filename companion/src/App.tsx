@@ -19,10 +19,16 @@ import { PairPage } from './pages/PairPage'
 import { PassesPage } from './pages/PassesPage'
 import { UpgradePage } from './pages/UpgradePage'
 
+const routerBasename = (() => {
+  const base = import.meta.env.BASE_URL || '/'
+  const trimmed = base.replace(/\/$/, '')
+  return trimmed === '' ? undefined : trimmed
+})()
+
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={routerBasename}>
         <Routes>
           <Route element={<AppLayout bare />}>
             <Route path="/login" element={<LoginPage />} />
