@@ -99,8 +99,10 @@ Manual one-liner (Homebrew esptool v5, known port — no zsh globs):
 
 ```bash
 brew install esptool
-esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 8MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin
+esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 16MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin
 ```
+
+After reset: full e-ink refresh, then **Welcome to Pocket** (or Lock). Rotary Up/Down moves focus; press selects.
 
 ## Expected URLs (after secrets / Pages enable)
 
