@@ -90,10 +90,17 @@ chmod +x flash-mac.sh
 ./flash-mac.sh ~/Downloads/pocket-merged.bin
 ```
 
-The script installs esptool via **Homebrew → pipx → temporary venv** (never system `pip` / PEP 668).
+The script installs esptool via **Homebrew → pipx → temporary venv** (never system `pip` / PEP 668) and auto-picks **v4** (`write_flash`) vs **v5** (`write-flash`).
 
 **Buttons:** BOOT = download mode · RESET/RST = reset · **PWR does not help flashing**.
-If BOOT seems to do nothing: hold BOOT → tap RESET → keep holding BOOT → re-run. Ports: `cu.usbmodem*` or `cu.wchusbserial*`.
+If BOOT seems to do nothing: hold BOOT → tap RESET → keep holding BOOT → re-run. Ports: `cu.usbmodem…` or `cu.wchusbserial…`.
+
+Manual one-liner (Homebrew esptool v5, known port — no zsh globs):
+
+```bash
+brew install esptool
+esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 8MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin
+```
 
 ## Expected URLs (after secrets / Pages enable)
 
