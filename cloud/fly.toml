@@ -1,0 +1,32 @@
+# Fly.io app config for Pocket Cloud.
+# One-time: fly apps create pocket-cloud && fly volumes create pocket_data --size 1
+# Then set secrets (SESSION_SECRET, DEVICE_API_KEY, PWA_ORIGIN, PUBLIC_BASE_URL, …)
+# and add FLY_API_TOKEN to GitHub Actions secrets.
+
+app = "pocket-cloud"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  HOST = "0.0.0.0"
+  NODE_ENV = "production"
+  DATABASE_PATH = "/data/pocket-cloud.sqlite"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[mounts]]
+  source = "pocket_data"
+  destination = "/data"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

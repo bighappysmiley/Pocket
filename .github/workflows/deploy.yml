@@ -1,0 +1,259 @@
+# Auto-deploy on every push to main.
+# Jobs that need provider tokens skip cleanly when secrets are missing.
+# See docs/deploy.md for the exact secret checklist.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Always: build artifacts (also gates deploys)
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    outputs:
+      companion_built: ${{ steps.meta.outputs.companion_built }}
+      cloud_built: ${{ steps.meta.outputs.cloud_built }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            cloud/package-lock.json
+            companion/package-lock.json
+
+      - name: Build Pocket Cloud
+        working-directory: cloud
+        run: npm ci && npm test && npm run build
+
+      - name: Build Companion PWA
+        working-directory: companion
+        env:
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+        run: |
+          export VITE_API_BASE="${VITE_API_BASE:-${{ secrets.VITE_API_BASE }}}"
+          export VITE_API_BASE="${VITE_API_BASE:-http://localhost:8787}"
+          echo "VITE_API_BASE=$VITE_API_BASE"
+          npm ci && npm run build
+
+      - name: Upload companion dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-dist
+          path: companion/dist
+          retention-days: 14
+
+      - name: Upload cloud dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-dist
+          path: |
+            cloud/dist
+            cloud/package.json
+            cloud/package-lock.json
+            cloud/Dockerfile
+            cloud/fly.toml
+          retention-days: 14
+
+      - id: meta
+        run: |
+          echo "companion_built=true" >> "$GITHUB_OUTPUT"
+          echo "cloud_built=true" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Companion → GitHub Pages (uses GITHUB_TOKEN; enable Pages once in Settings)
+  # URL: https://bighappysmiley.github.io/Pocket/
+  # ---------------------------------------------------------------------------
+  deploy-companion-pages:
+    name: Companion → GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: companion/package-lock.json
+      - name: Build with Pages base path
+        working-directory: companion
+        env:
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+        run: |
+          export VITE_API_BASE="${VITE_API_BASE:-${{ secrets.VITE_API_BASE }}}"
+          export VITE_API_BASE="${VITE_API_BASE:-http://localhost:8787}"
+          npm ci
+          npx vite build --base /Pocket/
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: companion/dist
+      - id: deployment
+        name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+  # ---------------------------------------------------------------------------
+  # Companion → Vercel (optional; production)
+  # Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID_COMPANION
+  # ---------------------------------------------------------------------------
+  deploy-companion-vercel:
+    name: Companion → Vercel
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Vercel secrets
+        id: gate
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID_COMPANION: ${{ secrets.VERCEL_PROJECT_ID_COMPANION }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID_COMPANION" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Vercel companion deploy — set VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID_COMPANION"
+          fi
+      - if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - if: steps.gate.outputs.ready == 'true'
+        name: Install Vercel CLI
+        run: npm install --global vercel@latest
+      - if: steps.gate.outputs.ready == 'true'
+        name: Pull / build / deploy
+        working-directory: companion
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_COMPANION }}
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+        run: |
+          export VITE_API_BASE="${VITE_API_BASE:-${{ secrets.VITE_API_BASE }}}"
+          vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+          vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+          url=$(vercel deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "Deployed companion: $url"
+          echo "COMPANION_URL=$url" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Companion → Cloudflare Pages (optional)
+  # Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+  # Var: CF_PAGES_PROJECT_COMPANION (default pocket-companion)
+  # ---------------------------------------------------------------------------
+  deploy-companion-cloudflare:
+    name: Companion → Cloudflare Pages
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: companion-dist
+          path: dist
+      - name: Check Cloudflare secrets
+        id: gate
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Cloudflare Pages companion deploy — set CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID"
+          fi
+      - if: steps.gate.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=pocket-companion
+
+  # ---------------------------------------------------------------------------
+  # Pocket Cloud → Fly.io (optional; Node Docker)
+  # Secrets: FLY_API_TOKEN
+  # Also set app secrets on Fly: SESSION_SECRET, DEVICE_API_KEY, PWA_ORIGIN, …
+  # ---------------------------------------------------------------------------
+  deploy-cloud-fly:
+    name: Pocket Cloud → Fly.io
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Fly secret
+        id: gate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -n "$FLY_API_TOKEN" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Fly Cloud deploy — set FLY_API_TOKEN (and fly apps create pocket-cloud once)"
+          fi
+      - if: steps.gate.outputs.ready == 'true'
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - if: steps.gate.outputs.ready == 'true'
+        working-directory: cloud
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only --app pocket-cloud
+
+  # ---------------------------------------------------------------------------
+  # Pocket Cloud → Railway (optional)
+  # Secrets: RAILWAY_TOKEN
+  # Var: RAILWAY_SERVICE_ID (optional)
+  # ---------------------------------------------------------------------------
+  deploy-cloud-railway:
+    name: Pocket Cloud → Railway
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Railway secret
+        id: gate
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -n "$RAILWAY_TOKEN" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Railway Cloud deploy — set RAILWAY_TOKEN"
+          fi
+      - if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - if: steps.gate.outputs.ready == 'true'
+        working-directory: cloud
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+        run: |
+          npm install --global @railway/cli
+          if [ -n "$RAILWAY_SERVICE_ID" ]; then
+            railway up --service "$RAILWAY_SERVICE_ID" --detach
+          else
+            railway up --detach
+          fi

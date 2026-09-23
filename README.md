@@ -26,6 +26,14 @@ cd companion && npm install && npm run dev
 cd firmware/host && cmake -B build && cmake --build build && ctest --test-dir build
 ```
 
+## Deploy (always from `main`)
+
+Pushing to **`main`** runs CI and auto-deploy workflows. Agents merge to `main`; you do not need to merge or click Deploy.
+
+- Companion + Pocket Cloud: GitHub Actions (`.github/workflows/`). Provider secrets unlock live deploys.
+- Full secret checklist and URLs: [`docs/deploy.md`](docs/deploy.md)
+- Firmware is **not** flashed from CI — use ESP-IDF locally when hardware is available.
+
 ## Product constraints (short)
 
 - Canvas **480×800** portrait, 4-level grayscale; not a touchscreen
