@@ -73,19 +73,30 @@ Until these are set, CI still **builds and tests** on every `main` push; optiona
 
 ## Firmware — merge-binary from main CI
 
-Every `main` Deploy run builds an ESP32-S3 merge-binary (best-effort) and publishes it as:
+Every `main` Deploy run builds an ESP32-S3 merge-binary and publishes it as:
 
 - Actions artifact `pocket-firmware-esp32s3`
 - Rolling release tag [`firmware-latest`](https://github.com/bighappysmiley/Pocket/releases/tag/firmware-latest)
 
-One-shot flash (Waveshare ESP32-S3-ePaper-3.97):
+### MacBook one-shot (preferred)
+
+1. Download `pocket-merged.bin` from the release (or the Actions artifact).
+2. Plug the Waveshare board in (data USB-C cable). Check: `ls /dev/cu.usb*`
+3. From a clone of this repo:
 
 ```bash
-pip install esptool
-esptool.py --chip esp32s3 -p PORT write_flash 0x0 pocket-merged.bin
+chmod +x scripts/flash-mac.sh
+./scripts/flash-mac.sh ~/Downloads/pocket-merged.bin
 ```
 
-Replace `PORT` (`/dev/ttyACM0`, `/dev/cu.usbmodem*`, or `COMx`). OTA on-device is still being hardened.
+Or without the script:
+
+```bash
+python3 -m pip install --user esptool
+python3 -m esptool --chip esp32s3 -p $(ls /dev/cu.usbmodem* /dev/cu.usbserial* 2>/dev/null | head -1) write_flash 0x0 ~/Downloads/pocket-merged.bin
+```
+
+First flash tip: hold **BOOT**, tap **RESET**, keep holding BOOT until flashing starts.
 
 ## Expected URLs (after secrets / Pages enable)
 

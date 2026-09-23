@@ -271,7 +271,6 @@ jobs:
   firmware-esp32:
     name: Firmware ESP32-S3 artifact
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Build firmware (ESP-IDF)
@@ -280,27 +279,37 @@ jobs:
           esp_idf_version: v5.2.3
           target: esp32s3
           path: firmware
-          command: idf.py build && idf.py merge-bin -o pocket-merged.bin --format raw
-      - name: Package flash docs + locate binary
+          # IDF 5.2 merge-bin has no -o; use esptool merge_bin for a single flashable image.
+          command: >-
+            idf.py build &&
+            python -m esptool --chip esp32s3 merge_bin
+            -o build/pocket-merged.bin
+            --flash_mode dio --flash_size 8MB --flash_freq 80m
+            0x0 build/bootloader/bootloader.bin
+            0x8000 build/partition_table/partition-table.bin
+            0xf000 build/ota_data_initial.bin
+            0x20000 build/pocket.bin
+      - name: Package flash docs
         working-directory: firmware
         run: |
+          test -f build/pocket-merged.bin
           {
-            echo "Waveshare ESP32-S3-ePaper-3.97 — one-shot flash"
+            echo "Waveshare ESP32-S3-ePaper-3.97 — Mac one-shot flash"
             echo ""
-            echo "1. Download pocket-merged.bin from this workflow artifact (or firmware-latest release)."
-            echo "2. Hold BOOT if needed, plug USB, note the serial port (macOS: /dev/cu.usbmodem*; Linux: /dev/ttyACM0)."
-            echo "3. Run:"
+            echo "Easiest: clone/open the repo and run:"
+            echo "  chmod +x scripts/flash-mac.sh"
+            echo "  ./scripts/flash-mac.sh ~/Downloads/pocket-merged.bin"
             echo ""
-            echo "   pip install esptool"
-            echo "   esptool.py --chip esp32s3 -p PORT write_flash 0x0 pocket-merged.bin"
+            echo "Or manually:"
+            echo "  ls /dev/cu.usb*"
+            echo "  python3 -m pip install --user esptool"
+            echo "  python3 -m esptool --chip esp32s3 -p /dev/cu.usbmodemXXXX write_flash 0x0 pocket-merged.bin"
             echo ""
-            echo "Replace PORT with your serial device. Windows: COMx."
+            echo "First flash tip: hold BOOT, tap RESET, keep holding BOOT while flashing starts."
           } > FLASH.txt
-          # merge-bin may write to CWD or build/
-          if [ -f pocket-merged.bin ]; then
-            cp -f pocket-merged.bin build/pocket-merged.bin
-          fi
-          ls -la build/*.bin 2>/dev/null | head -20 || true
+          ls -la build/pocket-merged.bin build/pocket.bin
+          cp -f ../scripts/flash-mac.sh ./flash-mac.sh
+          chmod +x flash-mac.sh
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
@@ -310,27 +319,37 @@ jobs:
             firmware/build/flash_args
             firmware/build/pocket.bin
             firmware/FLASH.txt
-          if-no-files-found: warn
+            firmware/flash-mac.sh
+          if-no-files-found: error
           retention-days: 30
       - name: Publish rolling release
-        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: firmware-latest
           name: Firmware (latest main)
           body: |
-            Prebuilt merge-binary for **Waveshare ESP32-S3-ePaper-3.97**.
+            Prebuilt merge-binary for **Waveshare ESP32-S3-ePaper-3.97** (Mac-friendly).
 
+            ### MacBook (easiest)
+            1. Download `pocket-merged.bin` below (and optionally `flash-mac.sh`).
+            2. Plug the board in with a **data** USB-C cable.
+            3. In Terminal:
             ```bash
-            pip install esptool
-            esptool.py --chip esp32s3 -p PORT write_flash 0x0 pocket-merged.bin
+            ls /dev/cu.usb*
+            chmod +x flash-mac.sh   # if you downloaded the script
+            ./flash-mac.sh ~/Downloads/pocket-merged.bin
             ```
-
-            Replace `PORT` with your serial device (`/dev/ttyACM0`, `/dev/cu.usbmodem*`, or `COMx`).
+            Or one command:
+            ```bash
+            python3 -m pip install --user esptool
+            python3 -m esptool --chip esp32s3 -p $(ls /dev/cu.usbmodem* /dev/cu.usbserial* 2>/dev/null | head -1) write_flash 0x0 ~/Downloads/pocket-merged.bin
+            ```
+            First flash tip: hold **BOOT**, tap **RESET**, keep holding BOOT until flashing starts.
           files: |
             firmware/build/pocket-merged.bin
             firmware/FLASH.txt
-          fail_on_unmatched_files: false
+            firmware/flash-mac.sh
+          fail_on_unmatched_files: true
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
