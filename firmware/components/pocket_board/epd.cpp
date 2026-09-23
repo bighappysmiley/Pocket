@@ -5,6 +5,7 @@
 #include "driver/spi_master.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -14,33 +15,41 @@ namespace pocket::board {
 namespace {
 
 constexpr const char* TAG = "pocket_epd";
-constexpr size_t kPanel2bppBytes = (kPanelW * kPanelH) / 4;  // 96000
 constexpr size_t kPanel1bppBytes = (kPanelW * kPanelH) / 8;  // 48000
+constexpr uint32_t kBusyTimeoutMs = 8000;
 
 inline spi_device_handle_t as_spi(void* p) { return static_cast<spi_device_handle_t>(p); }
+
+inline void wdt_kick() {
+  // Safe if WDT not subscribed to this task.
+  esp_task_wdt_reset();
+}
+
+uint8_t* alloc_fb(size_t n) {
+  uint8_t* p = static_cast<uint8_t*>(heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!p) p = static_cast<uint8_t*>(heap_caps_malloc(n, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (!p) p = static_cast<uint8_t*>(malloc(n));
+  return p;
+}
 
 }  // namespace
 
 bool EpdDisplay::init() {
   if (ready_) return true;
 
-  panel_2bpp_ = static_cast<uint8_t*>(
-      heap_caps_malloc(kPanel2bppBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  panel_1bpp_ = static_cast<uint8_t*>(
-      heap_caps_malloc(kPanel1bppBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!panel_2bpp_ || !panel_1bpp_) {
-    ESP_LOGE(TAG, "SPIRAM alloc failed for e-paper framebuffers");
+  panel_1bpp_ = alloc_fb(kPanel1bppBytes);
+  if (!panel_1bpp_) {
+    ESP_LOGE(TAG, "framebuffer alloc failed (%u bytes)", (unsigned)kPanel1bppBytes);
     return false;
   }
 
-  spi_init();
+  if (!spi_init()) return false;
   gpio_init();
-  // Match Waveshare demo: CS held low for the whole session (single device).
-  gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), 0);
+  cs(true);  // idle high
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdRst), 1);
 
   ready_ = true;
-  ESP_LOGI(TAG, "e-paper ready (SPI3, CS=%d DC=%d RST=%d BUSY=%d)", kPinEpdCs, kPinEpdDc, kPinEpdRst,
+  ESP_LOGI(TAG, "e-paper ready SPI3 CS=%d DC=%d RST=%d BUSY=%d", kPinEpdCs, kPinEpdDc, kPinEpdRst,
            kPinEpdBusy);
   return true;
 }
@@ -51,19 +60,20 @@ void EpdDisplay::gpio_init() {
   out.mode = GPIO_MODE_OUTPUT;
   out.pin_bit_mask = (1ULL << kPinEpdRst) | (1ULL << kPinEpdDc) | (1ULL << kPinEpdCs);
   out.pull_down_en = GPIO_PULLDOWN_DISABLE;
-  out.pull_up_en = GPIO_PULLUP_ENABLE;
+  out.pull_up_en = GPIO_PULLUP_DISABLE;
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&out));
 
+  // BUSY: HIGH while busy (Waveshare). No pull-up — a floating high would fake "forever busy".
   gpio_config_t in = {};
   in.intr_type = GPIO_INTR_DISABLE;
   in.mode = GPIO_MODE_INPUT;
   in.pin_bit_mask = (1ULL << kPinEpdBusy);
   in.pull_down_en = GPIO_PULLDOWN_DISABLE;
-  in.pull_up_en = GPIO_PULLUP_ENABLE;
+  in.pull_up_en = GPIO_PULLUP_DISABLE;
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&in));
 }
 
-void EpdDisplay::spi_init() {
+bool EpdDisplay::spi_init() {
   spi_bus_config_t bus = {};
   bus.miso_io_num = -1;
   bus.mosi_io_num = kPinEpdMosi;
@@ -73,15 +83,28 @@ void EpdDisplay::spi_init() {
   bus.max_transfer_sz = 65536;
 
   spi_device_interface_config_t dev = {};
-  dev.spics_io_num = -1;  // software CS (held low)
+  dev.spics_io_num = -1;  // software CS
   dev.clock_speed_hz = 20 * 1000 * 1000;
   dev.mode = 0;
   dev.queue_size = 1;
 
-  ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &bus, SPI_DMA_CH_AUTO));
+  esp_err_t err = spi_bus_initialize(SPI3_HOST, &bus, SPI_DMA_CH_AUTO);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "spi_bus_initialize: %s", esp_err_to_name(err));
+    return false;
+  }
   spi_device_handle_t handle = nullptr;
-  ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &dev, &handle));
+  err = spi_bus_add_device(SPI3_HOST, &dev, &handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "spi_bus_add_device: %s", esp_err_to_name(err));
+    return false;
+  }
   spi_ = handle;
+  return true;
+}
+
+void EpdDisplay::cs(bool level) {
+  gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), level ? 1 : 0);
 }
 
 void EpdDisplay::reset() {
@@ -94,120 +117,127 @@ void EpdDisplay::reset() {
 }
 
 void EpdDisplay::send_cmd(uint8_t cmd) {
+  cs(false);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdDc), 0);
   spi_transaction_t t = {};
   t.length = 8;
   t.tx_buffer = &cmd;
-  ESP_ERROR_CHECK(spi_device_polling_transmit(as_spi(spi_), &t));
+  spi_device_polling_transmit(as_spi(spi_), &t);
+  cs(true);
 }
 
 void EpdDisplay::send_data(uint8_t data) {
+  cs(false);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdDc), 1);
   spi_transaction_t t = {};
   t.length = 8;
   t.tx_buffer = &data;
-  ESP_ERROR_CHECK(spi_device_polling_transmit(as_spi(spi_), &t));
+  spi_device_polling_transmit(as_spi(spi_), &t);
+  cs(true);
 }
 
 void EpdDisplay::send_buffer(const uint8_t* data, size_t len) {
+  cs(false);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdDc), 1);
   constexpr size_t kChunk = 4096;
   for (size_t i = 0; i < len; i += kChunk) {
+    wdt_kick();
     const size_t n = (i + kChunk > len) ? (len - i) : kChunk;
     spi_transaction_t t = {};
     t.length = n * 8;
     t.tx_buffer = data + i;
-    ESP_ERROR_CHECK(spi_device_polling_transmit(as_spi(spi_), &t));
+    spi_device_polling_transmit(as_spi(spi_), &t);
   }
+  cs(true);
 }
 
-void EpdDisplay::wait_busy() {
-  vTaskDelay(pdMS_TO_TICKS(20));
+bool EpdDisplay::wait_busy(uint32_t timeout_ms) {
+  const TickType_t start = xTaskGetTickCount();
+  const TickType_t limit = pdMS_TO_TICKS(timeout_ms);
+  vTaskDelay(pdMS_TO_TICKS(10));
   while (gpio_get_level(static_cast<gpio_num_t>(kPinEpdBusy)) == 1) {
+    wdt_kick();
+    if ((xTaskGetTickCount() - start) > limit) {
+      ESP_LOGW(TAG, "BUSY timeout after %lums (pin stuck high?)", (unsigned long)timeout_ms);
+      return false;
+    }
     vTaskDelay(pdMS_TO_TICKS(20));
   }
+  return true;
 }
 
 void EpdDisplay::turn_on_full() {
   send_cmd(0x22);
   send_data(0xF7);
   send_cmd(0x20);
-  wait_busy();
-}
-
-void EpdDisplay::turn_on_4gray() {
-  send_cmd(0x22);
-  send_data(0xD7);
-  send_cmd(0x20);
-  wait_busy();
+  wait_busy(kBusyTimeoutMs);
 }
 
 void EpdDisplay::turn_on_fast() {
   send_cmd(0x22);
   send_data(0xD7);
   send_cmd(0x20);
-  wait_busy();
+  wait_busy(kBusyTimeoutMs);
 }
 
-void EpdDisplay::init_4gray() {
-  // Adapted from Waveshare ESP-IDF EPD_Init_4GRAY (MIT).
-  vTaskDelay(pdMS_TO_TICKS(50));
+bool EpdDisplay::init_full() {
+  // Waveshare EPD_Init (mono full) — MIT demo.
+  wdt_kick();
+  vTaskDelay(pdMS_TO_TICKS(10));
   reset();
-  wait_busy();
+  if (!wait_busy(kBusyTimeoutMs)) return false;
   send_cmd(0x12);  // SWRESET
-  wait_busy();
-
-  send_cmd(0x0C);
-  send_data(0xAE);
-  send_data(0xC7);
-  send_data(0xC3);
-  send_data(0xC0);
-  send_data(0x80);
-
-  send_cmd(0x01);
-  send_data(static_cast<uint8_t>((kPanelH - 1) % 256));
-  send_data(static_cast<uint8_t>((kPanelH - 1) / 256));
-  send_data(0x02);
-
-  send_cmd(0x11);
-  send_data(0x01);
-
-  send_cmd(0x44);
-  send_data(0x00);
-  send_data(0x00);
-  send_data(static_cast<uint8_t>((kPanelW - 1) % 256));
-  send_data(static_cast<uint8_t>((kPanelW - 1) / 256));
-
-  send_cmd(0x45);
-  send_data(static_cast<uint8_t>((kPanelH - 1) % 256));
-  send_data(static_cast<uint8_t>((kPanelH - 1) / 256));
-  send_data(0x00);
-  send_data(0x00);
-
-  send_cmd(0x4E);
-  send_data(0x00);
-  send_data(0x00);
-  send_cmd(0x4F);
-  send_data(0x00);
-  send_data(0x00);
-  wait_busy();
-
-  send_cmd(0x3C);
-  send_data(0x01);
+  if (!wait_busy(kBusyTimeoutMs)) return false;
 
   send_cmd(0x18);
   send_data(0x80);
 
-  send_cmd(0x1A);
-  send_data(0x5A);
+  send_cmd(0x0C);
+  send_data(0xAE);
+  send_data(0xC7);
+  send_data(0xC3);
+  send_data(0xC0);
+  send_data(0x80);
+
+  send_cmd(0x01);
+  send_data(static_cast<uint8_t>((kPanelH - 1) % 256));
+  send_data(static_cast<uint8_t>((kPanelH - 1) / 256));
+  send_data(0x02);
+
+  send_cmd(0x3C);
+  send_data(0x01);
+
+  send_cmd(0x11);
+  send_data(0x01);
+
+  send_cmd(0x44);
+  send_data(0x00);
+  send_data(0x00);
+  send_data(static_cast<uint8_t>((kPanelW - 1) % 256));
+  send_data(static_cast<uint8_t>((kPanelW - 1) / 256));
+
+  send_cmd(0x45);
+  send_data(static_cast<uint8_t>((kPanelH - 1) % 256));
+  send_data(static_cast<uint8_t>((kPanelH - 1) / 256));
+  send_data(0x00);
+  send_data(0x00);
+
+  send_cmd(0x4E);
+  send_data(0x00);
+  send_data(0x00);
+  send_cmd(0x4F);
+  send_data(0x00);
+  send_data(0x00);
+  return wait_busy(kBusyTimeoutMs);
 }
 
-void EpdDisplay::init_fast() {
+bool EpdDisplay::init_fast() {
+  wdt_kick();
   vTaskDelay(pdMS_TO_TICKS(50));
   reset();
-  wait_busy();
+  if (!wait_busy(kBusyTimeoutMs)) return false;
   send_cmd(0x12);
-  wait_busy();
+  if (!wait_busy(kBusyTimeoutMs)) return false;
 
   send_cmd(0x0C);
   send_data(0xAE);
@@ -242,7 +272,7 @@ void EpdDisplay::init_fast() {
   send_cmd(0x4F);
   send_data(0x00);
   send_data(0x00);
-  wait_busy();
+  if (!wait_busy(kBusyTimeoutMs)) return false;
 
   send_cmd(0x3C);
   send_data(0x01);
@@ -252,134 +282,65 @@ void EpdDisplay::init_fast() {
 
   send_cmd(0x1A);
   send_data(0x6A);
+  return true;
 }
 
-void EpdDisplay::display_4gray(const uint8_t* image) {
-  // Waveshare EPD_Display_4Gray bit-plane packing (MIT).
-  const size_t mono_bytes = kPanel1bppBytes;
+void EpdDisplay::display_full(const uint8_t* mono) {
   send_cmd(0x24);
-  for (size_t i = 0; i < mono_bytes; ++i) {
-    uint8_t temp3 = 0;
-    for (int j = 0; j < 2; ++j) {
-      uint8_t temp1 = image[i * 2 + static_cast<size_t>(j)];
-      for (int k = 0; k < 2; ++k) {
-        uint8_t temp2 = temp1 & 0xC0;
-        if (temp2 == 0xC0)
-          temp3 |= 0x00;
-        else if (temp2 == 0x00)
-          temp3 |= 0x01;
-        else if (temp2 == 0x80)
-          temp3 |= 0x01;
-        else
-          temp3 |= 0x00;
-        temp3 <<= 1;
-        temp1 <<= 2;
-        temp2 = temp1 & 0xC0;
-        if (temp2 == 0xC0)
-          temp3 |= 0x00;
-        else if (temp2 == 0x00)
-          temp3 |= 0x01;
-        else if (temp2 == 0x80)
-          temp3 |= 0x01;
-        else
-          temp3 |= 0x00;
-        if (!(j == 1 && k == 1)) temp3 <<= 1;
-        temp1 <<= 2;
-      }
-    }
-    send_data(temp3);
-  }
-
+  send_buffer(mono, kPanel1bppBytes);
+  // Also write RED/OLD RAM so partial diffs have a clean base (Waveshare Display_Base).
   send_cmd(0x26);
-  for (size_t i = 0; i < mono_bytes; ++i) {
-    uint8_t temp3 = 0;
-    for (int j = 0; j < 2; ++j) {
-      uint8_t temp1 = image[i * 2 + static_cast<size_t>(j)];
-      for (int k = 0; k < 2; ++k) {
-        uint8_t temp2 = temp1 & 0xC0;
-        if (temp2 == 0xC0)
-          temp3 |= 0x00;
-        else if (temp2 == 0x00)
-          temp3 |= 0x01;
-        else if (temp2 == 0x80)
-          temp3 |= 0x00;
-        else
-          temp3 |= 0x01;
-        temp3 <<= 1;
-        temp1 <<= 2;
-        temp2 = temp1 & 0xC0;
-        if (temp2 == 0xC0)
-          temp3 |= 0x00;
-        else if (temp2 == 0x00)
-          temp3 |= 0x01;
-        else if (temp2 == 0x80)
-          temp3 |= 0x00;
-        else
-          temp3 |= 0x01;
-        if (!(j == 1 && k == 1)) temp3 <<= 1;
-        temp1 <<= 2;
-      }
-    }
-    send_data(temp3);
-  }
-  turn_on_4gray();
+  send_buffer(mono, kPanel1bppBytes);
+  turn_on_full();
 }
 
-void EpdDisplay::display_mono_fast(const uint8_t* image_1bpp) {
+void EpdDisplay::display_fast(const uint8_t* mono) {
   send_cmd(0x24);
-  send_buffer(image_1bpp, kPanel1bppBytes);
+  send_buffer(mono, kPanel1bppBytes);
   turn_on_fast();
 }
 
-void EpdDisplay::rotate_to_panel_2bpp(const pocket::Canvas& src, uint8_t* dst) {
-  // Logical portrait (x,y) 480×800 → panel landscape (px,py) 800×480 via 90° CW:
-  //   px = y,  py = (W-1) - x
-  std::memset(dst, 0xFF, kPanel2bppBytes);  // white default
-  for (int y = 0; y < kLogicalH; ++y) {
-    for (int x = 0; x < kLogicalW; ++x) {
-      const int px = y;
-      const int py = (kLogicalW - 1) - x;
-      const Gray g = src.get_pixel(x, y);
-      const size_t i = static_cast<size_t>(py * kPanelW + px);
-      const size_t bi = i / 4;
-      const int shift = 6 - static_cast<int>((i % 4) * 2);
-      dst[bi] = static_cast<uint8_t>((dst[bi] & ~(0x3 << shift)) |
-                                     ((static_cast<uint8_t>(g) & 0x3) << shift));
-    }
-  }
-}
-
-void EpdDisplay::panel_2bpp_to_mono(const uint8_t* src, uint8_t* dst) {
-  // Threshold: G0/G1 → black (0), G2/G3 → white (1) in 1bpp MSB-first.
-  for (int y = 0; y < kPanelH; ++y) {
-    for (int x = 0; x < kPanelW; x += 8) {
+void EpdDisplay::rotate_canvas_to_mono(const pocket::Canvas& src, uint8_t* dst) {
+  // 90° CW: panel(px,py) ← logical(x,y) with px=y, py=(W-1)-x
+  // Inverse: x=(W-1)-py, y=px. Threshold G0/G1→black(0), G2/G3→white(1).
+  std::memset(dst, 0xFF, kPanel1bppBytes);
+  for (int py = 0; py < kPanelH; ++py) {
+    if ((py & 31) == 0) wdt_kick();
+    for (int px = 0; px < kPanelW; px += 8) {
       uint8_t byte = 0;
       for (int b = 0; b < 8; ++b) {
-        const size_t i = static_cast<size_t>(y * kPanelW + x + b);
-        const size_t bi = i / 4;
-        const int shift = 6 - static_cast<int>((i % 4) * 2);
-        const uint8_t g = (src[bi] >> shift) & 0x3;
-        if (g >= 2) byte |= static_cast<uint8_t>(0x80 >> b);
+        const int x = (kLogicalW - 1) - py;
+        const int y = px + b;
+        const Gray g = src.get_pixel(x, y);
+        if (static_cast<uint8_t>(g) >= 2) byte |= static_cast<uint8_t>(0x80 >> b);
       }
-      dst[static_cast<size_t>(y * (kPanelW / 8) + (x / 8))] = byte;
+      dst[static_cast<size_t>(py * (kPanelW / 8) + (px / 8))] = byte;
     }
   }
 }
 
 void EpdDisplay::present(const pocket::Canvas& canvas, pocket::RefreshMode mode) {
-  if (!ready_ && !init()) return;
-  rotate_to_panel_2bpp(canvas, panel_2bpp_);
-
-  if (mode == pocket::RefreshMode::Full) {
-    ESP_LOGI(TAG, "full 4-gray refresh");
-    init_4gray();
-    display_4gray(panel_2bpp_);
-  } else {
-    ESP_LOGI(TAG, "fast mono refresh");
-    panel_2bpp_to_mono(panel_2bpp_, panel_1bpp_);
-    init_fast();
-    display_mono_fast(panel_1bpp_);
+  if (!ready_ && !init()) {
+    ESP_LOGE(TAG, "present skipped — not ready");
+    return;
   }
+  wdt_kick();
+  rotate_canvas_to_mono(canvas, panel_1bpp_);
+  wdt_kick();
+
+  const bool full = (mode == pocket::RefreshMode::Full);
+  ESP_LOGI(TAG, "%s mono refresh", full ? "full" : "fast");
+  bool ok = full ? init_full() : init_fast();
+  if (!ok) {
+    ESP_LOGE(TAG, "panel init failed — leaving previous image");
+    return;
+  }
+  if (full) {
+    display_full(panel_1bpp_);
+  } else {
+    display_fast(panel_1bpp_);
+  }
+  ESP_LOGI(TAG, "refresh done");
 }
 
 void EpdDisplay::sleep() {
@@ -388,7 +349,7 @@ void EpdDisplay::sleep() {
   send_data(0x01);
   vTaskDelay(pdMS_TO_TICKS(10));
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdRst), 0);
-  gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), 0);
+  cs(false);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdDc), 0);
 }
 
