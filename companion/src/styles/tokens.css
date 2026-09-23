@@ -1,0 +1,29 @@
+/* Spec §2.3 implementer tokens — light theme, restrained forest accent */
+:root {
+  --ink: #1a1f1c;
+  --muted: #5c6560;
+  --surface: #f7f6f2;
+  --card: #ffffff;
+  --accent: #1f5c45;
+  --accent-hover: #174a37;
+  --danger: #b42318;
+  --border: #e2e0d8;
+  --focus-ring: rgba(31, 92, 69, 0.35);
+
+  --font-display: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-ui: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --max-width: 42rem;
+  --nav-height: 3.5rem;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
