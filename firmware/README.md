@@ -14,11 +14,25 @@ Device firmware for **Waveshare ESP32-S3-ePaper-3.97**, per the Pocket Build Spe
 
 | Path | Role |
 | --- | --- |
-| `main/` | ESP-IDF app entry, board bring-up, Wi‑Fi, OTA hooks |
+| `main/` | ESP-IDF app entry |
 | `components/pocket_ui/` | Portable UI shell, screens, apps (host-testable) |
+| `components/pocket_board/` | Waveshare 3.97" e-Paper driver + Part C GPIO buttons |
 | `host/` | Host simulator (g++) for UI/nav without hardware |
 | `partitions.csv` | A/B OTA + NVS + LittleFS |
-| `sdkconfig.defaults` | ESP32-S3 defaults |
+| `sdkconfig.defaults` | ESP32-S3 + 16MB flash + OPI PSRAM |
+
+## Board pins (Waveshare ESP32-S3-ePaper-3.97)
+
+| Net | GPIO | Notes |
+| --- | --- | --- |
+| Button_Up | 4 | Rotary, active-low |
+| Button_Function | 5 | Rotary press, active-low |
+| Button_Down | 6 | Rotary, active-low |
+| BOOT | 0 | Back short / PTT hold |
+| PWR | 1 | Active-low |
+| EPD SCLK/MOSI/CS/DC/RST/BUSY | 11/12/10/9/46/3 | SPI3 |
+
+Boot forces a **full 4-gray refresh** so any latched factory demo image is cleared.
 
 ## Onboarding (v1.1)
 

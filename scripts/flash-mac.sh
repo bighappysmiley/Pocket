@@ -256,7 +256,7 @@ run_flash() {
     --after hard_reset
     "$WRITE_FLASH"
     "$FLASH_MODE_OPT" dio
-    "$FLASH_SIZE_OPT" 8MB
+    "$FLASH_SIZE_OPT" 16MB
     "$FLASH_FREQ_OPT" 80m
     0x0 "$BIN_PATH"
   )
@@ -334,9 +334,11 @@ Checklist:
   4. Re-download pocket-merged.bin + flash-mac.sh from the firmware-latest release.
 
 Manual one-liner (your port, Homebrew esptool v5):
-  esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 8MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin"
+  esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 16MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin"
 fi
 
 say ""
 say "Done. The board should reboot into Pocket."
-say "If the screen stays blank, press RESET once (not PWR)."
+say "Expect a full e-ink refresh (~1–2s), then 'Welcome to Pocket' (or Lock)."
+say "Rotary Up/Down should move focus; press (Function) selects Continue."
+say "If the Chinese factory demo is still visible, press RESET once and wait for refresh."

@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include "pocket/app.hpp"
 #include "pocket/input.hpp"
+#include "pocket_board/buttons.hpp"
+#include "pocket_board/epd.hpp"
+#include "pocket_board/pins.hpp"
 
-// ESP-IDF entry — board bring-up hooks. Host builds use firmware/host instead.
 #ifdef POCKET_HOST
 #error "app_main is for ESP-IDF only"
 #endif
@@ -14,6 +16,43 @@
 
 static const char* TAG = "pocket";
 
+namespace {
+
+struct EspClock : pocket::PlatformClock {
+  uint32_t now_ms() override {
+    return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
+  }
+  void local_hm(int& hour, int& minute, int& weekday, int& month, int& day) override {
+    // RTC bring-up (PCF85063) is a follow-up; fixed stub keeps UI drawable.
+    hour = 12;
+    minute = 0;
+    weekday = 0;
+    month = 0;
+    day = 1;
+  }
+};
+
+struct EspWifi : pocket::PlatformWifi {
+  std::vector<std::string> scan() override { return {}; }
+  bool connect(const std::string&, const std::string&) override { return false; }
+  bool connected() const override { return false; }
+};
+
+struct EspCloud : pocket::PlatformCloud {
+  std::string create_pair_session(const std::string&) override { return "AAAAAAAA"; }
+  std::string pair_status(const std::string&) override { return "pending"; }
+  void refresh_entitlement(pocket::DeviceConfig&) override {}
+  std::string stt_transcribe(const std::vector<uint8_t>&) override { return {}; }
+};
+
+struct EspDisplay : pocket::PlatformDisplay {
+  pocket::board::EpdDisplay& epd;
+  explicit EspDisplay(pocket::board::EpdDisplay& e) : epd(e) {}
+  void present(const pocket::Canvas& c, pocket::RefreshMode mode) override { epd.present(c, mode); }
+};
+
+}  // namespace
+
 extern "C" void app_main(void) {
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -22,42 +61,41 @@ extern "C" void app_main(void) {
   }
   ESP_ERROR_CHECK(ret);
 
-  ESP_LOGI(TAG, "Pocket firmware boot — canvas 480x800, controls per hardware-controls-v1.2");
-  // Board bring-up (display rotation, Button_Up/Down/Function, BOOT, PWR, ES8311)
-  // is wired in board/ when Waveshare BSP is linked. UI shell lives in pocket_ui.
-  // Until BSP is attached, run a headless App tick for smoke validation.
+  ESP_LOGI(TAG, "Pocket boot — canvas %dx%d, Part C pins Up=%d Fn=%d Down=%d BOOT=%d PWR=%d",
+           pocket::board::kLogicalW, pocket::board::kLogicalH, pocket::board::kPinButtonUp,
+           pocket::board::kPinButtonFunction, pocket::board::kPinButtonDown, pocket::board::kPinBoot,
+           pocket::board::kPinPwr);
+
+  static pocket::board::EpdDisplay epd;
+  if (!epd.init()) {
+    ESP_LOGE(TAG, "e-paper init failed — UI will run headless");
+  }
+
+  static pocket::board::ButtonPoller buttons;
+  buttons.init();
+
   static pocket::MemoryConfigStore store;
-  struct EspClock : pocket::PlatformClock {
-    uint32_t now_ms() override { return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS); }
-    void local_hm(int& hour, int& minute, int& weekday, int& month, int& day) override {
-      hour = 12;
-      minute = 0;
-      weekday = 0;
-      month = 0;
-      day = 1;
-    }
-  } clock;
-  struct EspWifi : pocket::PlatformWifi {
-    std::vector<std::string> scan() override { return {}; }
-    bool connect(const std::string&, const std::string&) override { return false; }
-    bool connected() const override { return false; }
-  } wifi;
-  struct EspCloud : pocket::PlatformCloud {
-    std::string create_pair_session(const std::string&) override { return "AAAAAAAA"; }
-    std::string pair_status(const std::string&) override { return "pending"; }
-    void refresh_entitlement(pocket::DeviceConfig&) override {}
-    std::string stt_transcribe(const std::vector<uint8_t>&) override { return {}; }
-  } cloud;
-  struct EspDisplay : pocket::PlatformDisplay {
-    void present(const pocket::Canvas&, pocket::RefreshMode) override {}
-  } display;
+  static EspClock clock;
+  static EspWifi wifi;
+  static EspCloud cloud;
+  static EspDisplay display(epd);
+  static pocket::InputMapper mapper;
 
   pocket::App app(store, clock, wifi, cloud, display);
+  // boot() triggers a Full refresh via present() — clears the factory Chinese demo
+  // and paints Onboarding Welcome (or Lock if onboarding was already completed).
   app.boot();
   ESP_LOGI(TAG, "UI boot complete, screen=%d", static_cast<int>(app.screen()));
 
   while (true) {
-    app.tick(clock.now_ms());
+    const uint32_t now = clock.now_ms();
+    buttons.poll(mapper, now);
+    for (;;) {
+      const pocket::InputEvent e = mapper.poll();
+      if (e == pocket::InputEvent::None) break;
+      app.handle(e);
+    }
+    app.tick(now);
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }

@@ -284,7 +284,7 @@ jobs:
             idf.py build &&
             python -m esptool --chip esp32s3 merge_bin
             -o build/pocket-merged.bin
-            --flash_mode dio --flash_size 8MB --flash_freq 80m
+            --flash_mode dio --flash_size 16MB --flash_freq 80m
             0x0 build/bootloader/bootloader.bin
             0x8000 build/partition_table/partition-table.bin
             0xf000 build/ota_data_initial.bin
@@ -319,7 +319,7 @@ jobs:
             echo "  Expect /dev/cu.usbmodem… (built-in) or /dev/cu.wchusbserial… (CH340)."
             echo ""
             echo "Manual one-liner when port is /dev/cu.usbmodem1101 (Homebrew esptool v5):"
-            echo "  esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 8MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin"
+            echo "  esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 16MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin"
           } > FLASH.txt
           ls -la build/pocket-merged.bin build/pocket.bin
           cp -f ../scripts/flash-mac.sh ./flash-mac.sh
@@ -364,11 +364,13 @@ jobs:
             ### Manual one-liner (Homebrew esptool v5, port usbmodem1101)
             ```bash
             brew install esptool
-            esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 8MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin
+            esptool --chip esp32s3 -p /dev/cu.usbmodem1101 write-flash --flash-mode dio --flash-size 16MB --flash-freq 80m 0x0 ~/Downloads/pocket-merged.bin
             ```
             Do **not** paste unquoted `/dev/cu.usbserial*` into zsh.
 
             **Buttons:** BOOT (download) · RESET/RST · PWR does **not** help flashing.
+
+            After reset you should see a full e-ink refresh, then **Welcome to Pocket** (first boot) or Lock. Rotary Up/Down moves focus; press selects.
           files: |
             firmware/build/pocket-merged.bin
             firmware/FLASH.txt
