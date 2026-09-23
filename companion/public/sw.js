@@ -1,6 +1,9 @@
-/* Pocket Cloud shell service worker — caches app shell for A2HS offline open. */
-const CACHE = 'pocket-shell-v1'
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg']
+/* Pocket Cloud shell service worker — caches app shell for A2HS offline open.
+ * Paths are scoped to the SW URL so project Pages (/Pocket/) and root hosts both work.
+ */
+const CACHE = 'pocket-shell-v2'
+const BASE = self.location.pathname.replace(/\/sw\.js$/, '') || ''
+const SHELL = [`${BASE}/`, `${BASE}/index.html`, `${BASE}/manifest.webmanifest`, `${BASE}/favicon.svg`]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -24,9 +27,11 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return
 
   // Never cache API calls
-  if (url.pathname.startsWith('/v1/') || url.hostname.includes('localhost') && url.port === '8787') {
+  if (url.pathname.includes('/v1/') || (url.hostname.includes('localhost') && url.port === '8787')) {
     return
   }
+
+  const shellKey = `${BASE}/index.html`
 
   // Navigation: network-first, fall back to cached shell
   if (request.mode === 'navigate') {
@@ -34,10 +39,12 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((res) => {
           const copy = res.clone()
-          caches.open(CACHE).then((cache) => cache.put('/index.html', copy))
+          caches.open(CACHE).then((cache) => cache.put(shellKey, copy))
           return res
         })
-        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/'))),
+        .catch(() =>
+          caches.match(shellKey).then((r) => r || caches.match(`${BASE}/`) || caches.match(request)),
+        ),
     )
     return
   }
@@ -47,7 +54,10 @@ self.addEventListener('fetch', (event) => {
     caches.match(request).then((cached) => {
       if (cached) return cached
       return fetch(request).then((res) => {
-        if (res.ok && (url.pathname.startsWith('/assets/') || url.pathname.match(/\.(js|css|svg|png|webmanifest)$/))) {
+        if (
+          res.ok &&
+          (url.pathname.includes('/assets/') || url.pathname.match(/\.(js|css|svg|png|webmanifest)$/))
+        ) {
           const copy = res.clone()
           caches.open(CACHE).then((cache) => cache.put(request, copy))
         }

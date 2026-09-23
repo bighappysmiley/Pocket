@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { api, getApiBase, isNetworkError } from './api'
+import { api, getApiBase, isApiConfigured, isNetworkError } from './api'
 import { clearMutationQueue, flushMutationQueue, type QueuedMutation } from './queue'
 import { ApiError, type Entitlement, type User } from './types'
 
@@ -42,6 +42,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
+      if (!isApiConfigured() && import.meta.env.PROD) {
+        setUser(null)
+        setEntitlement(null)
+        setOffline(true)
+        setError('Pocket Cloud is not connected yet.')
+        return
+      }
+
       const me = await api.me()
       setUser(me.user)
       setEntitlement(me.entitlement)
@@ -73,7 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setError(null)
       } else if (isNetworkError(err)) {
         setOffline(true)
-        setError("You're offline or the server is unreachable.")
+        setError(
+          err instanceof ApiError && err.code === 'not_connected'
+            ? 'Pocket Cloud is not connected yet.'
+            : "You're offline or the server is unreachable.",
+        )
       } else {
         setError(err instanceof Error ? err.message : 'Something went wrong.')
       }

@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -46,9 +46,9 @@ jobs:
         env:
           VITE_API_BASE: ${{ vars.VITE_API_BASE }}
         run: |
+          # Prefer repo var/secret; empty = offline/not-connected shell (fine for Pages until Cloud is hosted)
           export VITE_API_BASE="${VITE_API_BASE:-${{ secrets.VITE_API_BASE }}}"
-          export VITE_API_BASE="${VITE_API_BASE:-http://localhost:8787}"
-          echo "VITE_API_BASE=$VITE_API_BASE"
+          echo "VITE_API_BASE=${VITE_API_BASE:-<empty>}"
           npm ci && npm run build
 
       - name: Upload companion dist
@@ -83,6 +83,10 @@ jobs:
     name: Companion → GitHub Pages
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -97,11 +101,14 @@ jobs:
         working-directory: companion
         env:
           VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+          VITE_BASE: /Pocket/
         run: |
           export VITE_API_BASE="${VITE_API_BASE:-${{ secrets.VITE_API_BASE }}}"
-          export VITE_API_BASE="${VITE_API_BASE:-http://localhost:8787}"
+          echo "VITE_BASE=$VITE_BASE VITE_API_BASE=${VITE_API_BASE:-<empty>}"
           npm ci
-          npx vite build --base /Pocket/
+          npm run build
+          # SPA deep links on project Pages
+          cp dist/index.html dist/404.html
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -109,7 +116,6 @@ jobs:
       - id: deployment
         name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
-        continue-on-error: true
 
   # ---------------------------------------------------------------------------
   # Companion → Vercel (optional; production)
@@ -257,3 +263,74 @@ jobs:
           else
             railway up --detach
           fi
+
+  # ---------------------------------------------------------------------------
+  # Firmware → merge-binary artifact (Waveshare ESP32-S3-ePaper-3.97)
+  # Download from Actions artifacts or the firmware-latest release.
+  # ---------------------------------------------------------------------------
+  firmware-esp32:
+    name: Firmware ESP32-S3 artifact
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build firmware (ESP-IDF)
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.2.3
+          target: esp32s3
+          path: firmware
+          command: idf.py build && idf.py merge-bin -o pocket-merged.bin --format raw
+      - name: Package flash docs + locate binary
+        working-directory: firmware
+        run: |
+          {
+            echo "Waveshare ESP32-S3-ePaper-3.97 — one-shot flash"
+            echo ""
+            echo "1. Download pocket-merged.bin from this workflow artifact (or firmware-latest release)."
+            echo "2. Hold BOOT if needed, plug USB, note the serial port (macOS: /dev/cu.usbmodem*; Linux: /dev/ttyACM0)."
+            echo "3. Run:"
+            echo ""
+            echo "   pip install esptool"
+            echo "   esptool.py --chip esp32s3 -p PORT write_flash 0x0 pocket-merged.bin"
+            echo ""
+            echo "Replace PORT with your serial device. Windows: COMx."
+          } > FLASH.txt
+          # merge-bin may write to CWD or build/
+          if [ -f pocket-merged.bin ]; then
+            cp -f pocket-merged.bin build/pocket-merged.bin
+          fi
+          ls -la build/*.bin 2>/dev/null | head -20 || true
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocket-firmware-esp32s3
+          path: |
+            firmware/build/pocket-merged.bin
+            firmware/build/flash_args
+            firmware/build/pocket.bin
+            firmware/FLASH.txt
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Publish rolling release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: firmware-latest
+          name: Firmware (latest main)
+          body: |
+            Prebuilt merge-binary for **Waveshare ESP32-S3-ePaper-3.97**.
+
+            ```bash
+            pip install esptool
+            esptool.py --chip esp32s3 -p PORT write_flash 0x0 pocket-merged.bin
+            ```
+
+            Replace `PORT` with your serial device (`/dev/ttyACM0`, `/dev/cu.usbmodem*`, or `COMx`).
+          files: |
+            firmware/build/pocket-merged.bin
+            firmware/FLASH.txt
+          fail_on_unmatched_files: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

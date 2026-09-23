@@ -71,19 +71,21 @@ Until these are set, CI still **builds and tests** on every `main` push; optiona
 3. **Point them at each other:** set `VITE_API_BASE` / `PUBLIC_BASE_URL` / `PWA_ORIGIN` to the live origins.
 4. **Stripe / OAuth (optional):** leave unset for mock billing and connector stubs.
 
-## Firmware — not CI-deployed
+## Firmware — merge-binary from main CI
 
-CI runs **host simulator unit tests** only. Device flash / OTA needs hardware:
+Every `main` Deploy run builds an ESP32-S3 merge-binary (best-effort) and publishes it as:
+
+- Actions artifact `pocket-firmware-esp32s3`
+- Rolling release tag [`firmware-latest`](https://github.com/bighappysmiley/Pocket/releases/tag/firmware-latest)
+
+One-shot flash (Waveshare ESP32-S3-ePaper-3.97):
 
 ```bash
-# ESP-IDF ≥ 5.1, target esp32s3
-cd firmware
-idf.py set-target esp32s3
-idf.py build
-idf.py -p /dev/ttyACM0 flash monitor
+pip install esptool
+esptool.py --chip esp32s3 -p PORT write_flash 0x0 pocket-merged.bin
 ```
 
-OTA: Settings → software update on device (A/B partitions). Signed verify + apply path is still being hardened — do not treat CI as having flashed devices.
+Replace `PORT` (`/dev/ttyACM0`, `/dev/cu.usbmodem*`, or `COMx`). OTA on-device is still being hardened.
 
 ## Expected URLs (after secrets / Pages enable)
 

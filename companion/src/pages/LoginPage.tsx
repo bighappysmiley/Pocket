@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
-import { api, isNetworkError } from '../lib/api'
+import { api, isApiConfigured, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/types'
 import { ErrorState } from '../components/ErrorState'
@@ -11,12 +11,13 @@ type State = 'idle' | 'sending' | 'sent' | 'error'
 
 export function LoginPage() {
   useDocumentTitle('Sign in')
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, loading, offline, error: authError } = useAuth()
   const [params] = useSearchParams()
   const returnTo = params.get('return_to') || '/'
   const [email, setEmail] = useState('')
   const [state, setState] = useState<State>('idle')
   const [error, setError] = useState<string | null>(null)
+  const cloudReady = isApiConfigured()
 
   if (!loading && isAuthenticated) {
     return <Navigate to={returnTo} replace />
@@ -24,6 +25,7 @@ export function LoginPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (!cloudReady) return
     setState('sending')
     setError(null)
     try {
@@ -32,7 +34,11 @@ export function LoginPage() {
     } catch (err) {
       setState('error')
       if (isNetworkError(err)) {
-        setError("You're offline or the server is unreachable.")
+        setError(
+          err instanceof ApiError && err.code === 'not_connected'
+            ? 'Pocket Cloud is not connected yet.'
+            : "You're offline or the server is unreachable.",
+        )
       } else if (err instanceof ApiError) {
         setError("Couldn't send link. Try again.")
       } else {
@@ -47,6 +53,16 @@ export function LoginPage() {
       <div className="stack-sm">
         <h1>Sign in to Pocket Cloud</h1>
       </div>
+
+      {!cloudReady || offline ? (
+        <div className="panel stack-sm" role="status">
+          <p>
+            <strong>Not connected</strong> — Pocket Cloud API is not hosted yet. You can still open this
+            companion shell; sign-in and sync will work once Cloud is deployed.
+          </p>
+          {authError ? <p className="muted">{authError}</p> : null}
+        </div>
+      ) : null}
 
       {state === 'sent' ? (
         <div className="panel">
@@ -64,11 +80,11 @@ export function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              disabled={state === 'sending'}
+              disabled={state === 'sending' || !cloudReady}
             />
           </div>
           {error ? (
-            error.includes('unreachable') ? (
+            error.includes('unreachable') || error.includes('not connected') ? (
               <ErrorState message={error} onRetry={() => setError(null)} />
             ) : (
               <p className="muted" role="alert">
@@ -76,7 +92,11 @@ export function LoginPage() {
               </p>
             )
           ) : null}
-          <button type="submit" className="btn btn-primary btn-block" disabled={state === 'sending'}>
+          <button
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={state === 'sending' || !cloudReady}
+          >
             {state === 'sending' ? 'Sending…' : 'Email me a link'}
           </button>
         </form>
