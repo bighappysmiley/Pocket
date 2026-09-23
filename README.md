@@ -1,1 +1,40 @@
 # Pocket
+
+Greenfield monorepo for **Pocket** device firmware, **Pocket Cloud** backend, and the companion PWA.
+
+Authoritative Spec: Project docs `pocket-firmware-and-companion-spec.md` (Parts A–E). Part B (onboarding) and Part C (hardware) override Part A where they conflict.
+
+## Packages
+
+| Path | Role |
+| --- | --- |
+| [`firmware/`](firmware/) | ESP32-S3-ePaper firmware + host UI simulator |
+| [`cloud/`](cloud/) | Pocket Cloud API (auth, pairing, sync, billing) |
+| [`companion/`](companion/) | Companion PWA (`app.getpocket.device`) |
+| [`packages/shared/`](packages/shared/) | Shared TypeScript types |
+
+## Quick start
+
+```bash
+# Cloud (port 8787)
+cd cloud && cp .env.example .env && npm install && npm run dev
+
+# Companion PWA (port 5173)
+cd companion && npm install && npm run dev
+
+# Firmware host tests / simulator
+cd firmware/host && cmake -B build && cmake --build build && ctest --test-dir build
+```
+
+## Product constraints (short)
+
+- Canvas **480×800** portrait, 4-level grayscale; not a touchscreen
+- Controls: rotary Up/Down/Function + BOOT + PWR only — **no volume keys**
+- PTT = BOOT hold ≥200 ms; Function long ≥800 ms → Home
+- First-boot: **no** e-ink device naming (Part B); default name `"Pocket"`
+- Subscription product name: **Pocket Cloud** only (never "Connect")
+- No marketing landing page in this repo (deferred Spec)
+
+## License
+
+Proprietary — all rights reserved.

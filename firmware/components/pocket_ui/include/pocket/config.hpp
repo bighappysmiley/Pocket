@@ -1,0 +1,71 @@
+#pragma once
+#include <array>
+#include <cstdint>
+#include <string>
+#include <string_view>
+
+namespace pocket {
+
+/** NVS-backed device config (Spec §11.1 + Part B amendments). */
+struct DeviceConfig {
+  std::string device_name = "Pocket";
+  uint8_t pin_length = 4;
+  std::array<uint8_t, 32> pin_hash{};
+  uint8_t pin_salt[16]{};
+  bool onboarding_complete = false;
+  std::string tz_id = "America/New_York";
+  uint8_t time_format = 12;  // 12 or 24
+  std::string wifi_ssid;
+  uint8_t stt_path = 0;  // 0=cloud, 1=ondevice
+  uint8_t weather_units = 0;  // 0=F, 1=C
+  std::string weather_city;
+  float weather_lat = 0;
+  float weather_lon = 0;
+  uint8_t home_visible = 0x3F;  // all six apps; bit5 Settings always on
+  uint16_t idle_lock_s = 60;
+  bool show_batt_pct = false;
+  bool cloud_entitled = false;
+  bool companion_linked = false;
+  std::string fw_channel = "stable";
+  std::string fw_version = "0.1.0";
+  std::string device_id;  // UUID
+  std::string device_token;
+  std::string cloud_status = "free";  // free|trialing|active|lapsed
+};
+
+enum class HomeApp : uint8_t {
+  Notes = 0,
+  Ledger = 1,
+  Clock = 2,
+  Pass = 3,
+  Weather = 4,
+  Settings = 5,
+};
+
+inline bool home_app_visible(const DeviceConfig& c, HomeApp a) {
+  if (a == HomeApp::Settings) return true;
+  return (c.home_visible & (1u << static_cast<uint8_t>(a))) != 0;
+}
+
+class ConfigStore {
+ public:
+  virtual ~ConfigStore() = default;
+  virtual DeviceConfig load() = 0;
+  virtual void save(const DeviceConfig& cfg) = 0;
+};
+
+/** In-memory store for host sim / tests. */
+class MemoryConfigStore : public ConfigStore {
+ public:
+  DeviceConfig load() override { return cfg_; }
+  void save(const DeviceConfig& cfg) override { cfg_ = cfg; }
+  DeviceConfig& mut() { return cfg_; }
+
+ private:
+  DeviceConfig cfg_{};
+};
+
+bool verify_pin(const DeviceConfig& cfg, std::string_view digits);
+void set_pin(DeviceConfig& cfg, std::string_view digits);
+
+}  // namespace pocket

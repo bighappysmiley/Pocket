@@ -1,0 +1,18 @@
+idf_component_register(
+  SRCS
+    "src/input.cpp"
+    "src/canvas.cpp"
+    "src/refresh.cpp"
+    "src/nav.cpp"
+    "src/chrome.cpp"
+    "src/config_store.cpp"
+    "src/pin.cpp"
+    "src/app.cpp"
+    "src/screens_lock.cpp"
+    "src/screens_onboarding.cpp"
+    "src/screens_home.cpp"
+    "src/screens_apps.cpp"
+    "src/screens_settings.cpp"
+    "src/cloud_client.cpp"
+  INCLUDE_DIRS "include"
+)

@@ -1,0 +1,202 @@
+#pragma once
+#include "pocket/canvas.hpp"
+#include "pocket/config.hpp"
+#include "pocket/input.hpp"
+#include "pocket/nav.hpp"
+#include "pocket/refresh.hpp"
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace pocket {
+
+struct PlatformClock {
+  virtual ~PlatformClock() = default;
+  virtual uint32_t now_ms() = 0;
+  virtual void local_hm(int& hour, int& minute, int& weekday, int& month, int& day) = 0;
+};
+
+struct PlatformWifi {
+  virtual ~PlatformWifi() = default;
+  virtual std::vector<std::string> scan() = 0;
+  virtual bool connect(const std::string& ssid, const std::string& password) = 0;
+  virtual bool connected() const = 0;
+};
+
+struct PlatformCloud {
+  virtual ~PlatformCloud() = default;
+  /** Mint pairing session; returns plaintext code for QR display. */
+  virtual std::string create_pair_session(const std::string& device_id) = 0;
+  virtual std::string pair_status(const std::string& code) = 0;  // pending|claimed|expired
+  virtual void refresh_entitlement(DeviceConfig& cfg) = 0;
+  virtual std::string stt_transcribe(const std::vector<uint8_t>& pcm) = 0;
+};
+
+struct PlatformDisplay {
+  virtual ~PlatformDisplay() = default;
+  virtual void present(const Canvas& canvas, RefreshMode mode) = 0;
+};
+
+struct Note {
+  std::string id;
+  std::string title;
+  std::string body;
+  int64_t created_at = 0;
+  int64_t updated_at = 0;
+};
+
+struct ListItem {
+  std::string id;
+  std::string text;
+  bool checked = false;
+  int64_t updated_at = 0;
+};
+
+struct TodoList {
+  std::string id;
+  std::string title;
+  std::vector<ListItem> items;
+  int64_t updated_at = 0;
+};
+
+struct Alarm {
+  std::string id;
+  int minutes_of_day = 0;
+  bool enabled = true;
+  std::string label;
+};
+
+struct Pass {
+  std::string id;
+  std::string title;
+  std::string type;
+  std::string payload;
+};
+
+struct WeatherDay {
+  std::string date;
+  int hi = 0;
+  int lo = 0;
+  std::string condition;
+};
+
+struct WeatherCache {
+  std::string city;
+  uint8_t units = 0;
+  int64_t fetched_at = 0;
+  std::vector<WeatherDay> days;
+  int today_temp = 0;
+  std::string today_condition;
+};
+
+struct AppData {
+  std::vector<Note> notes;
+  std::vector<TodoList> lists;
+  std::vector<Alarm> alarms;
+  std::vector<Pass> passes;
+  WeatherCache weather;
+};
+
+/** Focusable row helper for list UIs. */
+struct FocusModel {
+  int index = 0;
+  int count = 0;
+  void move(int delta) {
+    if (count <= 0) {
+      index = 0;
+      return;
+    }
+    index = (index + delta) % count;
+    if (index < 0) index += count;
+  }
+};
+
+class App {
+ public:
+  App(ConfigStore& store, PlatformClock& clock, PlatformWifi& wifi, PlatformCloud& cloud,
+      PlatformDisplay& display);
+
+  void boot();
+  void tick(uint32_t now_ms);
+  void handle(InputEvent e);
+
+  ScreenId screen() const { return nav_.current(); }
+  const DeviceConfig& config() const { return cfg_; }
+  const Canvas& canvas() const { return canvas_; }
+  bool needs_redraw() const { return dirty_; }
+
+  /** Force render for host/tests. */
+  void redraw(bool full);
+
+ private:
+  void render();
+  void draw_status_bar();
+  void go_home();
+  void go_lock();
+  void after_nav(bool full_refresh);
+
+  // Screen handlers
+  void render_lock();
+  void handle_lock(InputEvent e);
+  void render_pin();
+  void handle_pin(InputEvent e);
+  void render_onboarding();
+  void handle_onboarding(InputEvent e);
+  void render_home();
+  void handle_home(InputEvent e);
+  void render_notes();
+  void handle_notes(InputEvent e);
+  void render_ledger();
+  void handle_ledger(InputEvent e);
+  void render_clock();
+  void handle_clock(InputEvent e);
+  void render_pass();
+  void handle_pass(InputEvent e);
+  void render_weather();
+  void handle_weather(InputEvent e);
+  void render_settings();
+  void handle_settings(InputEvent e);
+
+  ConfigStore& store_;
+  PlatformClock& clock_;
+  PlatformWifi& wifi_;
+  PlatformCloud& cloud_;
+  PlatformDisplay& display_;
+
+  DeviceConfig cfg_{};
+  AppData data_{};
+  NavStack nav_{};
+  Canvas canvas_{};
+  RefreshPolicy refresh_{};
+  InputMapper input_{};  // unused when events injected externally
+  bool dirty_ = true;
+
+  // UI transient state
+  FocusModel focus_{};
+  std::string pin_entry_;
+  std::string pin_pending_;
+  int pin_fail_count_ = 0;
+  uint32_t pin_lockout_until_ms_ = 0;
+  uint32_t error_until_ms_ = 0;
+  std::string error_msg_;
+  std::string wifi_password_;
+  std::vector<std::string> wifi_networks_;
+  bool wifi_show_pw_ = false;
+  bool wifi_char_editing_ = true;  // Spec: spin changes char while editing picker
+  std::string pair_code_;
+  uint32_t pair_expires_ms_ = 0;
+  std::string pair_status_ = "pending";
+  int charset_index_ = 0;
+  int caret_ = 0;
+  std::string picker_buf_;
+  int notes_tab_ = 0;  // 0 Notes 1 Lists
+  int clock_tab_ = 0;
+  int note_index_ = 0;
+  uint32_t last_input_ms_ = 0;
+  uint32_t now_ms_ = 0;
+  bool ptt_active_ = false;
+  std::string mic_result_;
+  int onboarding_tz_index_ = 0;
+};
+
+}  // namespace pocket
