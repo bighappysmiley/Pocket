@@ -80,23 +80,20 @@ Every `main` Deploy run builds an ESP32-S3 merge-binary and publishes it as:
 
 ### MacBook one-shot (preferred)
 
-1. Download `pocket-merged.bin` from the release (or the Actions artifact).
+1. Download `pocket-merged.bin` + `flash-mac.sh` from the release.
 2. Plug the Waveshare board in (data USB-C cable). Check: `ls /dev/cu.usb*`
-3. From a clone of this repo:
+3. Terminal:
 
 ```bash
-chmod +x scripts/flash-mac.sh
-./scripts/flash-mac.sh ~/Downloads/pocket-merged.bin
+cd ~/Downloads
+chmod +x flash-mac.sh
+./flash-mac.sh ~/Downloads/pocket-merged.bin
 ```
 
-Or without the script:
+The script installs esptool via **Homebrew → pipx → temporary venv** (never system `pip` / PEP 668).
 
-```bash
-python3 -m pip install --user esptool
-python3 -m esptool --chip esp32s3 -p $(ls /dev/cu.usbmodem* /dev/cu.usbserial* 2>/dev/null | head -1) write_flash 0x0 ~/Downloads/pocket-merged.bin
-```
-
-First flash tip: hold **BOOT**, tap **RESET**, keep holding BOOT until flashing starts.
+**Buttons:** BOOT = download mode · RESET/RST = reset · **PWR does not help flashing**.
+If BOOT seems to do nothing: hold BOOT → tap RESET → keep holding BOOT → re-run. Ports: `cu.usbmodem*` or `cu.wchusbserial*`.
 
 ## Expected URLs (after secrets / Pages enable)
 
