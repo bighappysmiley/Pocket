@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 
 static const char* TAG = "pocket";
 
@@ -23,7 +24,6 @@ struct EspClock : pocket::PlatformClock {
     return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
   }
   void local_hm(int& hour, int& minute, int& weekday, int& month, int& day) override {
-    // RTC bring-up (PCF85063) is a follow-up; fixed stub keeps UI drawable.
     hour = 12;
     minute = 0;
     weekday = 0;
@@ -48,12 +48,15 @@ struct EspCloud : pocket::PlatformCloud {
 struct EspDisplay : pocket::PlatformDisplay {
   pocket::board::EpdDisplay& epd;
   explicit EspDisplay(pocket::board::EpdDisplay& e) : epd(e) {}
-  void present(const pocket::Canvas& c, pocket::RefreshMode mode) override { epd.present(c, mode); }
+  void present(const pocket::Canvas& c, pocket::RefreshMode mode) override {
+    epd.present(c, mode);
+  }
 };
 
 }  // namespace
 
 extern "C" void app_main(void) {
+  // Task WDT timeout is 30s via sdkconfig (e-ink full refresh can exceed 5s).
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     ESP_ERROR_CHECK(nvs_flash_erase());
@@ -61,18 +64,19 @@ extern "C" void app_main(void) {
   }
   ESP_ERROR_CHECK(ret);
 
-  ESP_LOGI(TAG, "Pocket boot — canvas %dx%d, Part C pins Up=%d Fn=%d Down=%d BOOT=%d PWR=%d",
+  ESP_LOGI(TAG, "Pocket boot — canvas %dx%d, pins Up=%d Fn=%d Down=%d BOOT=%d PWR=%d",
            pocket::board::kLogicalW, pocket::board::kLogicalH, pocket::board::kPinButtonUp,
            pocket::board::kPinButtonFunction, pocket::board::kPinButtonDown, pocket::board::kPinBoot,
            pocket::board::kPinPwr);
 
-  static pocket::board::EpdDisplay epd;
-  if (!epd.init()) {
-    ESP_LOGE(TAG, "e-paper init failed — UI will run headless");
-  }
-
+  // Buttons first so a display hang still leaves a path after we return to the loop.
   static pocket::board::ButtonPoller buttons;
   buttons.init();
+
+  static pocket::board::EpdDisplay epd;
+  if (!epd.init()) {
+    ESP_LOGE(TAG, "e-paper init failed — continuing headless");
+  }
 
   static pocket::MemoryConfigStore store;
   static EspClock clock;
@@ -82,12 +86,12 @@ extern "C" void app_main(void) {
   static pocket::InputMapper mapper;
 
   pocket::App app(store, clock, wifi, cloud, display);
-  // boot() triggers a Full refresh via present() — clears the factory Chinese demo
-  // and paints Onboarding Welcome (or Lock if onboarding was already completed).
+  ESP_LOGI(TAG, "painting first frame (clears factory demo if panel responds)…");
   app.boot();
-  ESP_LOGI(TAG, "UI boot complete, screen=%d", static_cast<int>(app.screen()));
+  ESP_LOGI(TAG, "UI boot complete, screen=%d — entering input loop", static_cast<int>(app.screen()));
 
   while (true) {
+    esp_task_wdt_reset();
     const uint32_t now = clock.now_ms();
     buttons.poll(mapper, now);
     for (;;) {

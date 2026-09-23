@@ -5,42 +5,37 @@
 
 namespace pocket::board {
 
-/** Waveshare 3.97" e-Paper (SSD1683-class) on ESP32-S3-ePaper-3.97. */
+/**
+ * Waveshare 3.97" e-Paper on ESP32-S3-ePaper-3.97 (SSD1683-class).
+ *
+ * Uses mono full/fast refresh with bulk SPI (not per-byte 4-gray packing) so
+ * boot cannot trip the task WDT or hang forever on BUSY before the input loop.
+ */
 class EpdDisplay {
  public:
-  /** Init SPI + GPIO, HW reset, and panel registers. Call once at boot. */
   bool init();
-
-  /**
-   * Present Pocket's 480×800 2bpp canvas: rotate 90° CW onto 800×480 panel
-   * and force a full 4-gray refresh (clears any latched factory demo image).
-   */
   void present(const pocket::Canvas& canvas, pocket::RefreshMode mode);
-
   void sleep();
 
  private:
   void gpio_init();
-  void spi_init();
+  bool spi_init();
   void reset();
+  void cs(bool level);
   void send_cmd(uint8_t cmd);
   void send_data(uint8_t data);
   void send_buffer(const uint8_t* data, size_t len);
-  void wait_busy();
+  bool wait_busy(uint32_t timeout_ms);
   void turn_on_full();
-  void turn_on_4gray();
   void turn_on_fast();
-  void init_4gray();
-  void init_fast();
-  void display_4gray(const uint8_t* image_2bpp);
-  void display_mono_fast(const uint8_t* image_1bpp);
-
-  static void rotate_to_panel_2bpp(const pocket::Canvas& src, uint8_t* dst);
-  static void panel_2bpp_to_mono(const uint8_t* src_2bpp, uint8_t* dst_1bpp);
+  bool init_full();
+  bool init_fast();
+  void display_full(const uint8_t* mono);
+  void display_fast(const uint8_t* mono);
+  void rotate_canvas_to_mono(const pocket::Canvas& src, uint8_t* dst);
 
   bool ready_ = false;
-  void* spi_ = nullptr;  // spi_device_handle_t
-  uint8_t* panel_2bpp_ = nullptr;
+  void* spi_ = nullptr;
   uint8_t* panel_1bpp_ = nullptr;
 };
 
