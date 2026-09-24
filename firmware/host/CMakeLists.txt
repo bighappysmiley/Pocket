@@ -51,3 +51,8 @@ add_executable(test_home_music ../tests/test_home_music.cpp ${POCKET_UI_SRCS})
 target_include_directories(test_home_music PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_home_music PRIVATE POCKET_HOST=1)
 add_test(NAME test_home_music COMMAND test_home_music)
+
+add_executable(test_partial_refresh ../tests/test_partial_refresh.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_partial_refresh PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_partial_refresh PRIVATE POCKET_HOST=1)
+add_test(NAME test_partial_refresh COMMAND test_partial_refresh)

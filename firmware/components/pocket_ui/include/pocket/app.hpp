@@ -237,6 +237,11 @@ class App {
   void draw_lock_motif();
   void maybe_tick_home_clock();
   void present_home_clock_partial();
+  /** Status bar time / battery / wifi — region partial, not full screen. */
+  void maybe_tick_status_chrome();
+  /** Clock app huge time — region partial on minute change. */
+  void maybe_tick_clock_face();
+  bool screen_has_status_bar() const;
   void render_notes();
   void handle_notes(InputEvent e);
   void render_ledger();
@@ -311,6 +316,11 @@ class App {
   std::string mic_result_;
   int onboarding_tz_index_ = 0;
   int last_home_clock_minute_ = -1;
+  int last_status_minute_ = -1;
+  int last_status_battery_ = -1;
+  bool last_status_wifi_ = false;
+  bool last_status_time_ok_ = false;
+  int last_lock_battery_ = -1;
   SdContentKind sd_kind_ = SdContentKind::Absent;
   bool sd_waiting_eject_ = false;
   uint32_t last_sd_poll_ms_ = 0;

@@ -123,9 +123,35 @@ void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, in
     return;
   }
 
-  ESP_LOGI(TAG, "Waveshare region partial px=%d..%d py=%d..%d", px0, px1, py0, py1);
-  EPD_Display_Partial(panel_1bpp_, static_cast<UWORD>(px0), static_cast<UWORD>(py0),
+  const int byte0 = px0 / 8;
+  const int byte_w = (px1 - px0) / 8;
+  const int rows = py1 - py0;
+  if (byte_w <= 0 || rows <= 0) {
+    present(canvas, pocket::RefreshMode::Partial);
+    return;
+  }
+
+  // Waveshare EPD_Display_Partial expects a tightly packed region buffer
+  // (window width × height), not the full framebuffer from offset 0.
+  const size_t region_bytes = static_cast<size_t>(byte_w) * static_cast<size_t>(rows);
+  uint8_t* region = static_cast<uint8_t*>(malloc(region_bytes));
+  if (!region) {
+    present(canvas, pocket::RefreshMode::Partial);
+    return;
+  }
+  for (int row = 0; row < rows; ++row) {
+    const uint8_t* src =
+        panel_1bpp_ + static_cast<size_t>(py0 + row) * static_cast<size_t>(kPanelW / 8) +
+        static_cast<size_t>(byte0);
+    std::memcpy(region + static_cast<size_t>(row) * static_cast<size_t>(byte_w), src,
+                static_cast<size_t>(byte_w));
+  }
+
+  ESP_LOGI(TAG, "Waveshare region partial px=%d..%d py=%d..%d bytes=%u", px0, px1, py0, py1,
+           static_cast<unsigned>(region_bytes));
+  EPD_Display_Partial(region, static_cast<UWORD>(px0), static_cast<UWORD>(py0),
                       static_cast<UWORD>(px1), static_cast<UWORD>(py1));
+  free(region);
   ESP_LOGI(TAG, "region refresh done");
 }
 
