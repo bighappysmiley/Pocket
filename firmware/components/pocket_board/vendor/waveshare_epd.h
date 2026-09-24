@@ -42,6 +42,7 @@ void EPD_Clear_Black(void);
 void EPD_Display(const UBYTE* Image);
 void EPD_Display_Base(const UBYTE* Image);
 void EPD_Display_Fast(const UBYTE* Image);
+void EPD_Display_Partial(const UBYTE* Image, UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD Yend);
 void EPD_Sleep(void);
 
 #ifdef __cplusplus

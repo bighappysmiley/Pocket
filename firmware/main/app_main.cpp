@@ -22,7 +22,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v16-companion-req";
+static const char* kBuildId = "POCKET-LIVE-v17-lock-home";
 
 namespace {
 
@@ -60,6 +60,9 @@ struct EspDisplay : pocket::PlatformDisplay {
   explicit EspDisplay(pocket::board::EpdDisplay& e) : epd(e) {}
   void present(const pocket::Canvas& c, pocket::RefreshMode mode) override {
     epd.present(c, mode);
+  }
+  void present_region(const pocket::Canvas& c, int x, int y, int w, int h) override {
+    epd.present_region(c, x, y, w, h);
   }
 };
 

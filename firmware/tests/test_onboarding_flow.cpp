@@ -78,6 +78,10 @@ int main() {
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::OnboardingCompanionDownload);
 
+  // Power must not jump to Lock during setup
+  app.handle(InputEvent::Power);
+  CHECK(app.screen() == ScreenId::OnboardingCompanionDownload);
+
   // Continue → Wi‑Fi
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::OnboardingWifiList);

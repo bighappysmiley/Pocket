@@ -130,6 +130,7 @@ void App::tick(uint32_t now_ms) {
     }
   }
   if (dirty_) redraw(false);
+  maybe_tick_home_clock();
 }
 
 void App::redraw(bool full) {
@@ -159,6 +160,8 @@ void App::handle(InputEvent e) {
     return;
   }
   if (e == InputEvent::Power) {
+    // Setup incomplete: stay on onboarding — do not jump to Lock.
+    if (!cfg_.onboarding_complete) return;
     go_lock();
     return;
   }
@@ -276,23 +279,36 @@ void App::render() {
 // --- Lock / PIN -----------------------------------------------------------
 
 void App::render_lock() {
-  int h = 0, m = 0, wd = 0, mo = 0, d = 0;
-  clock_.local_hm(h, m, wd, mo, d);
+  // Calm abstract face — no clock (static art needs no minute refresh).
   canvas_.draw_text_centered(kCanvasW / 2, 56, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
-  char tbuf[16];
-  if (cfg_.time_format == 24) {
-    std::snprintf(tbuf, sizeof(tbuf), "%02d:%02d", h, m);
-  } else {
-    int h12 = h % 12;
-    if (h12 == 0) h12 = 12;
-    std::snprintf(tbuf, sizeof(tbuf), "%d:%02d", h12, m);
-  }
-  canvas_.draw_text_centered(kCanvasW / 2, 300, tbuf, Canvas::TextRole::HugeClock, Gray::G0);
-  char dbuf[48];
-  std::snprintf(dbuf, sizeof(dbuf), "%s, %s %d", kWeekdays[wd % 7], kMonths[mo % 12], d);
-  canvas_.draw_text_centered(kCanvasW / 2, 380, dbuf, Canvas::TextRole::Body, Gray::G0);
+  draw_lock_motif();
   canvas_.draw_text_centered(kCanvasW / 2, 735, "Battery", Canvas::TextRole::Secondary, Gray::G1);
   canvas_.draw_text_centered(kCanvasW / 2, 770, "Press to unlock", Canvas::TextRole::Secondary, Gray::G1);
+}
+
+void App::draw_lock_motif() {
+  // Minimal line field that resolves into a quiet pocket-fold silhouette.
+  constexpr int kTop = 180;
+  constexpr int kBot = 620;
+  constexpr int cx = kCanvasW / 2;
+
+  for (int i = 0; i < 9; ++i) {
+    const int y = kTop + i * 48;
+    const int inset = 36 + ((i * 17) % 5) * 22;
+    const Gray g = (i % 3 == 0) ? Gray::G1 : Gray::G2;
+    canvas_.hline(inset, y, kCanvasW - 2 * inset, g);
+  }
+
+  // Converging diagonals — abstract lines that meet as a fold.
+  canvas_.line(48, kTop + 20, cx - 12, kBot - 40, Gray::G1);
+  canvas_.line(kCanvasW - 48, kTop + 20, cx + 12, kBot - 40, Gray::G1);
+  canvas_.line(72, kTop + 80, cx, kBot - 100, Gray::G2);
+  canvas_.line(kCanvasW - 72, kTop + 80, cx, kBot - 100, Gray::G2);
+
+  // Soft vertical seam + base — reads as a pocket edge without being literal.
+  canvas_.vline(cx, kTop + 60, kBot - kTop - 120, Gray::G0);
+  canvas_.hline(cx - 90, kBot - 48, 180, Gray::G0);
+  canvas_.hline(cx - 60, kBot - 36, 120, Gray::G1);
 }
 
 void App::handle_lock(InputEvent e) {
@@ -397,6 +413,42 @@ void App::handle_pin(InputEvent e) {
       dirty_ = true;
     }
   }
+}
+
+
+void App::draw_home_clock() {
+  int h = 0, m = 0, wd = 0, mo = 0, d = 0;
+  clock_.local_hm(h, m, wd, mo, d);
+  char tbuf[16];
+  if (cfg_.time_format == 24) {
+    std::snprintf(tbuf, sizeof(tbuf), "%02d:%02d", h, m);
+  } else {
+    int h12 = h % 12;
+    if (h12 == 0) h12 = 12;
+    std::snprintf(tbuf, sizeof(tbuf), "%d:%02d", h12, m);
+  }
+  canvas_.fill_rect(16, 88, kCanvasW - 32, 120, Gray::G3);
+  canvas_.draw_text_centered(kCanvasW / 2, 96, tbuf, Canvas::TextRole::HugeClock, Gray::G0);
+  char dbuf[48];
+  std::snprintf(dbuf, sizeof(dbuf), "%s, %s %d", kWeekdays[wd % 7], kMonths[mo % 12], d);
+  canvas_.draw_text_centered(kCanvasW / 2, 180, dbuf, Canvas::TextRole::Secondary, Gray::G1);
+  last_home_clock_minute_ = h * 60 + m;
+}
+
+void App::present_home_clock_partial() {
+  draw_home_clock();
+  display_.present_region(canvas_, 16, 88, kCanvasW - 32, 120);
+  refresh_.on_applied(RefreshMode::Partial);
+}
+
+void App::maybe_tick_home_clock() {
+  if (!cfg_.onboarding_complete) return;
+  if (nav_.current() != ScreenId::Home) return;
+  int h = 0, m = 0, wd = 0, mo = 0, d = 0;
+  clock_.local_hm(h, m, wd, mo, d);
+  const int key = h * 60 + m;
+  if (key == last_home_clock_minute_) return;
+  present_home_clock_partial();
 }
 
 }  // namespace pocket

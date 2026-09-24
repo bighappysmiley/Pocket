@@ -140,6 +140,27 @@ void Canvas::vline(int x, int y, int h, Gray g) {
   for (int i = 0; i < h; ++i) set_pixel(x, y + i, g);
 }
 
+void Canvas::line(int x0, int y0, int x1, int y1, Gray g) {
+  int dx = std::abs(x1 - x0);
+  int sx = x0 < x1 ? 1 : -1;
+  int dy = -std::abs(y1 - y0);
+  int sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy;
+  for (;;) {
+    set_pixel(x0, y0, g);
+    if (x0 == x1 && y0 == y1) break;
+    int e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
 int Canvas::text_width(std::string_view text, TextRole role) const {
   const int scale = role_scale(role);
   return static_cast<int>(text.size()) * (5 * scale + scale);

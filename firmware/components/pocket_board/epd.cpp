@@ -9,6 +9,9 @@
 
 #include <cstring>
 
+// Waveshare typedef used by EPD_Display_Partial
+using UWORD = uint16_t;
+
 namespace pocket::board {
 namespace {
 
@@ -78,6 +81,52 @@ void EpdDisplay::present(const pocket::Canvas& canvas, pocket::RefreshMode mode)
     EPD_Display_Fast(panel_1bpp_);
   }
   ESP_LOGI(TAG, "refresh done");
+}
+
+void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, int lw, int lh) {
+  if (!ready_ && !init()) return;
+  if (lw <= 0 || lh <= 0) {
+    present(canvas, pocket::RefreshMode::Partial);
+    return;
+  }
+  // Clamp logical rect.
+  if (lx < 0) {
+    lw += lx;
+    lx = 0;
+  }
+  if (ly < 0) {
+    lh += ly;
+    ly = 0;
+  }
+  if (lx + lw > kLogicalW) lw = kLogicalW - lx;
+  if (ly + lh > kLogicalH) lh = kLogicalH - ly;
+  if (lw <= 0 || lh <= 0) return;
+
+  rotate_canvas_to_mono(canvas, panel_1bpp_);
+
+  // Logical portrait (lx,ly) → panel landscape: px=ly, py=(kLogicalW-1)-lx
+  // Region maps to panel x ∈ [ly, ly+lh), panel y ∈ [kLogicalW-(lx+lw), kLogicalW-lx)
+  int px0 = ly;
+  int px1 = ly + lh;
+  int py0 = kLogicalW - (lx + lw);
+  int py1 = kLogicalW - lx;
+  if (px0 < 0) px0 = 0;
+  if (py0 < 0) py0 = 0;
+  if (px1 > kPanelW) px1 = kPanelW;
+  if (py1 > kPanelH) py1 = kPanelH;
+  // Align X to byte boundary for the controller.
+  px0 = (px0 / 8) * 8;
+  px1 = ((px1 + 7) / 8) * 8;
+  if (px1 > kPanelW) px1 = kPanelW;
+  if (px1 <= px0 || py1 <= py0) {
+    present(canvas, pocket::RefreshMode::Partial);
+    return;
+  }
+
+  ESP_LOGI(TAG, "Waveshare region partial px=%d..%d py=%d..%d", px0, px1, py0, py1);
+  EPD_Display_Partial(panel_1bpp_, static_cast<UWORD>(px0), static_cast<UWORD>(py0),
+                      static_cast<UWORD>(px1), static_cast<UWORD>(py1));
+  ESP_LOGI(TAG, "region refresh done");
 }
 
 void EpdDisplay::sleep() {

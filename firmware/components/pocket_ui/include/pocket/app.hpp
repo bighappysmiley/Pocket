@@ -40,6 +40,10 @@ struct PlatformCloud {
 struct PlatformDisplay {
   virtual ~PlatformDisplay() = default;
   virtual void present(const Canvas& canvas, RefreshMode mode) = 0;
+  /** Partial refresh of a logical rectangle (clock tick). Falls back to full-canvas partial. */
+  virtual void present_region(const Canvas& canvas, int /*x*/, int /*y*/, int /*w*/, int /*h*/) {
+    present(canvas, RefreshMode::Partial);
+  }
 };
 
 struct Note {
@@ -151,6 +155,10 @@ class App {
   void handle_onboarding(InputEvent e);
   void render_home();
   void handle_home(InputEvent e);
+  void draw_home_clock();
+  void draw_lock_motif();
+  void maybe_tick_home_clock();
+  void present_home_clock_partial();
   void render_notes();
   void handle_notes(InputEvent e);
   void render_ledger();
@@ -205,6 +213,7 @@ class App {
   bool ptt_active_ = false;
   std::string mic_result_;
   int onboarding_tz_index_ = 0;
+  int last_home_clock_minute_ = -1;
 };
 
 }  // namespace pocket
