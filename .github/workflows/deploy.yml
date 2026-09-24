@@ -323,6 +323,34 @@ jobs:
           ls -la build/pocket-merged.bin build/pocket.bin
           cp -f ../scripts/flash-mac.sh ./flash-mac.sh
           chmod +x flash-mac.sh
+          # OTA app image + manifest for device Update (A/B, not the USB merged bin).
+          BUILD_ID=$(strings -n 12 build/pocket.bin | grep -m1 'POCKET-LIVE-' || echo "POCKET-LIVE-unknown")
+          SIZE=$(wc -c < build/pocket.bin | tr -d ' ')
+          SHA=$(sha256sum build/pocket.bin | awk '{print $1}')
+          cat > build/firmware-manifest.json <<EOF
+          {
+            "build_id": "${BUILD_ID}",
+            "version": "${BUILD_ID}",
+            "url": "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/pocket.bin",
+            "size": ${SIZE},
+            "sha256": "${SHA}",
+            "channel": "stable",
+            "git_sha": "${{ github.sha }}"
+          }
+          EOF
+          # Trim leading spaces from heredoc for valid JSON
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("build/firmware-manifest.json")
+          raw = p.read_text()
+          # heredoc may indent — parse loosely by stripping
+          data = json.loads("\n".join(line.strip() for line in raw.splitlines() if line.strip()))
+          p.write_text(json.dumps(data, indent=2) + "\n")
+          print(data)
+          PY
+          cp -f build/firmware-manifest.json ./firmware-manifest.json
+          cp -f build/pocket.bin ./pocket.bin
+          echo "OTA build_id=${BUILD_ID} size=${SIZE}"
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
@@ -384,6 +412,8 @@ jobs:
             firmware/build/pocket-merged.bin
             firmware/FLASH.txt
             firmware/flash-mac.sh
+            firmware/pocket.bin
+            firmware/firmware-manifest.json
           fail_on_unmatched_files: true
           make_latest: true
         env:

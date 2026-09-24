@@ -22,13 +22,14 @@ struct DeviceConfig {
   std::string weather_city;
   float weather_lat = 0;
   float weather_lon = 0;
-  uint16_t home_visible = 0x007F;  // bits 0..6 Notes..Settings (+Music); Settings always on
+  uint16_t home_visible = 0x00FF;  // bits 0..7 Notes..Update; Settings+Update always on
   uint16_t idle_lock_s = 60;
   bool show_batt_pct = true;
   bool cloud_entitled = false;
   bool companion_linked = false;
   std::string fw_channel = "stable";
   std::string fw_version = "0.1.0";
+  std::string fw_build_id;  // e.g. POCKET-LIVE-v33-… for OTA compare
   std::string device_id;  // UUID
   std::string device_token;
   std::string cloud_status = "free";  // free|trialing|active|lapsed
@@ -42,8 +43,8 @@ enum class HomeApp : uint8_t {
   Weather = 4,
   Music = 5,
   Settings = 6,
-  /** Reserved Home grid slots 7..15 (empty until assigned). */
-  Slot7 = 7,
+  Update = 7,
+  /** Reserved Home grid slots 8..15 (empty until assigned). */
   Slot8 = 8,
   Slot9 = 9,
   Slot10 = 10,
@@ -57,11 +58,11 @@ enum class HomeApp : uint8_t {
 inline constexpr int kHomeGridSlots = 16;
 
 inline bool home_app_is_real(HomeApp a) {
-  return static_cast<uint8_t>(a) <= static_cast<uint8_t>(HomeApp::Settings);
+  return static_cast<uint8_t>(a) <= static_cast<uint8_t>(HomeApp::Update);
 }
 
 inline bool home_app_visible(const DeviceConfig& c, HomeApp a) {
-  if (a == HomeApp::Settings) return true;
+  if (a == HomeApp::Settings || a == HomeApp::Update) return true;
   if (!home_app_is_real(a)) return false;
   return (c.home_visible & (1u << static_cast<uint8_t>(a))) != 0;
 }

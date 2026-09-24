@@ -23,6 +23,8 @@ enum class ScreenId : uint16_t {
   OnboardingTimezone,
   OnboardingMicTest,
   OnboardingDone,
+  /** Hot-insert / anytime microSD gate (reformat or eject). */
+  SdCardGate,
   Home,
   NotesList,
   NotesDetail,
@@ -101,7 +103,7 @@ inline bool long_home_blocked(ScreenId s, bool onboarding_complete) {
         break;
     }
   }
-  if (s == ScreenId::Lock || s == ScreenId::Pin) return true;
+  if (s == ScreenId::Lock || s == ScreenId::Pin || s == ScreenId::SdCardGate) return true;
   if (s == ScreenId::SettingsUpdateProgress) return true;
   return false;
 }
@@ -124,6 +126,7 @@ inline bool screen_requires_full_enter(ScreenId s) {
     case ScreenId::OnboardingPinSet:
     case ScreenId::OnboardingPinConfirm:
     case ScreenId::OnboardingTimezone:
+    case ScreenId::SdCardGate:
     case ScreenId::NotesList:
     case ScreenId::ListsList:
     case ScreenId::LedgerComingSoon:

@@ -5,7 +5,8 @@ import { relativeTime } from '../lib/utils'
 import { ErrorState } from '../components/ErrorState'
 import { useDocumentTitle } from '../components/useDocumentTitle'
 
-const MAX_BYTES = 2 * 1024 * 1024
+const FALLBACK_INTERNAL = 2 * 1024 * 1024
+const FALLBACK_SD = 32 * 1024 * 1024
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
@@ -32,11 +33,25 @@ export function MusicPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [maxBytes, setMaxBytes] = useState(FALLBACK_INTERNAL)
+  const [sdPresent, setSdPresent] = useState(false)
+
+  async function loadLimits() {
+    try {
+      const lim = await api.musicLimits()
+      setSdPresent(Boolean(lim.sd_present))
+      setMaxBytes(lim.max_upload_bytes || (lim.sd_present ? FALLBACK_SD : FALLBACK_INTERNAL))
+    } catch {
+      setMaxBytes(FALLBACK_INTERNAL)
+      setSdPresent(false)
+    }
+  }
 
   async function load() {
     setLoading(true)
     setError(null)
     try {
+      await loadLimits()
       const res = await api.listMusic()
       setTracks(res.tracks)
     } catch (err) {
@@ -55,8 +70,12 @@ export function MusicPage() {
     if (!file) return
     setMsg(null)
     setError(null)
-    if (file.size > MAX_BYTES) {
-      setError(`Keep each WAV under ${formatBytes(MAX_BYTES)} so Pocket can store it.`)
+    if (file.size > maxBytes) {
+      setError(
+        sdPresent
+          ? `Keep each WAV under ${formatBytes(maxBytes)}.`
+          : `Keep each WAV under ${formatBytes(FALLBACK_INTERNAL)} without an SD card, or insert a microSD in Pocket and Sync once to unlock up to ${formatBytes(FALLBACK_SD)}.`,
+      )
       return
     }
     const name = file.name || 'track.wav'
@@ -120,8 +139,9 @@ export function MusicPage() {
       </div>
 
       <p className="muted">
-        Upload WAV tracks here. On your Pocket, open Music and choose Sync from Companion — files save to the SD
-        card when present, otherwise internal storage.
+        {sdPresent
+          ? `Pocket has reported a microSD card — uploads up to ${formatBytes(maxBytes)}. Sync saves to the card.`
+          : `Without an SD card, keep tracks under ${formatBytes(FALLBACK_INTERNAL)} (internal storage). Insert a card in Pocket and Sync once to unlock larger uploads (up to ${formatBytes(FALLBACK_SD)}).`}
       </p>
 
       {msg ? <p className="muted">{msg}</p> : null}
@@ -132,7 +152,7 @@ export function MusicPage() {
       ) : tracks.length === 0 && !error ? (
         <div className="empty panel">
           <h2>No tracks yet</h2>
-          <p className="muted">Upload a short WAV to play through Pocket’s speaker.</p>
+          <p className="muted">Upload a WAV to play through Pocket’s speaker.</p>
         </div>
       ) : (
         <ul className="list">

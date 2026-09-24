@@ -75,7 +75,9 @@ void App::music_sync_from_cloud() {
     return;
   }
   const std::string root = storage_->music_root();
-  const std::string json = cloud_.music_list_json(cfg_.device_id);
+  const bool on_sd = storage_->music_on_sd();
+  constexpr int kInternalMax = 2 * 1024 * 1024;
+  const std::string json = cloud_.music_list_json(cfg_.device_id, on_sd);
   std::vector<MusicTrack> remote;
   parse_music_list(json, remote);
   if (remote.empty() && json.find('[') != std::string::npos) {
@@ -84,7 +86,12 @@ void App::music_sync_from_cloud() {
     return;
   }
   std::vector<MusicTrack> local;
+  int skipped_need_sd = 0;
   for (auto& t : remote) {
+    if (!on_sd && t.size_bytes > kInternalMax) {
+      ++skipped_need_sd;
+      continue;
+    }
     const uint64_t free = storage_->free_bytes(root);
     if (t.size_bytes > 0 && free < static_cast<uint64_t>(t.size_bytes) + 64 * 1024) {
       music_status_ = "Not enough free space.";
@@ -107,6 +114,10 @@ void App::music_sync_from_cloud() {
       music_status_ = "Download failed for " + t.title;
       continue;
     }
+    if (!on_sd && static_cast<int>(bytes.size()) > kInternalMax) {
+      ++skipped_need_sd;
+      continue;
+    }
     if (!write_bytes(path, bytes)) {
       music_status_ = "Couldn't write " + fname;
       continue;
@@ -116,7 +127,13 @@ void App::music_sync_from_cloud() {
     local.push_back(t);
   }
   music_tracks_ = std::move(local);
-  music_status_ = music_tracks_.empty() ? "No tracks available." : ("Synced " + std::to_string(music_tracks_.size()));
+  if (music_tracks_.empty()) {
+    music_status_ = skipped_need_sd > 0 ? "Larger tracks need an SD card." : "No tracks available.";
+  } else if (skipped_need_sd > 0) {
+    music_status_ = "Synced " + std::to_string(music_tracks_.size()) + " · some need SD";
+  } else {
+    music_status_ = "Synced " + std::to_string(music_tracks_.size());
+  }
 }
 
 void App::render_music() {

@@ -134,12 +134,15 @@ std::string EspCloud::pair_status(const std::string& code) {
   return "pending";
 }
 
-std::string EspCloud::music_list_json(const std::string& device_id) {
+std::string EspCloud::music_list_json(const std::string& device_id, bool sd_present) {
   if (device_id.empty()) return "[]";
-  const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/device/music?device_id=" + device_id;
+  std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/device/music?device_id=" + device_id;
+  if (sd_present) url += "&sd=1";
   int status = 0;
   std::string resp;
-  if (!http_request("GET", url, POCKET_DEVICE_API_KEY, {}, status, resp, 20000) || status != 200) {
+  if (!http_request("GET", url, POCKET_DEVICE_API_KEY, {}, status, resp, 20000, "application/json",
+                    "x-pocket-sd", sd_present ? "1" : "0") ||
+      status != 200) {
     ESP_LOGW(TAG, "music list HTTP %d", status);
     return {};
   }
@@ -164,4 +167,15 @@ std::vector<uint8_t> EspCloud::music_download(const std::string& device_id, cons
   }
   out.assign(resp.begin(), resp.end());
   return out;
+}
+
+std::string EspCloud::firmware_latest_json() {
+  const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/firmware/latest";
+  int status = 0;
+  std::string resp;
+  if (!http_request("GET", url, nullptr, {}, status, resp, 20000) || status != 200) {
+    ESP_LOGW(TAG, "firmware latest HTTP %d", status);
+    return {};
+  }
+  return resp;
 }

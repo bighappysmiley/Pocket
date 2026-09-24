@@ -283,6 +283,14 @@ export const api = {
   listMusic() {
     return request<{ tracks: MusicTrack[] }>('/v1/music')
   },
+  musicLimits() {
+    return request<{
+      sd_present: boolean
+      max_upload_bytes: number
+      internal_max_bytes: number
+      sd_max_bytes: number
+    }>('/v1/music/limits')
+  },
   uploadMusic(payload: { title: string; filename: string; mime?: string; audio_b64: string }) {
     return request<{ track: MusicTrack }>('/v1/music', { method: 'POST', body: payload })
   },

@@ -20,6 +20,8 @@ set(POCKET_UI_SRCS
   ${POCKET_UI}/src/screens_apps.cpp
   ${POCKET_UI}/src/screens_music.cpp
   ${POCKET_UI}/src/screens_settings.cpp
+  ${POCKET_UI}/src/screens_sd.cpp
+  ${POCKET_UI}/src/screens_update.cpp
   ${POCKET_UI}/src/cloud_client.cpp
   ${POCKET_UI}/vendor/qrcodegen/qrcodegen.c
 )
