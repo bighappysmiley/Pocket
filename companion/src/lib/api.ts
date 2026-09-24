@@ -234,6 +234,137 @@ export const api = {
   restoreBackup(id: string) {
     return request<{ ok: true }>(`/v1/backups/${id}/restore`, { method: 'POST' })
   },
+
+  // Admin (role=admin or ADMIN_EMAILS)
+  adminOverview() {
+    return request<{
+      users: number
+      devices: number
+      pair_pending: number
+      pair_claimed: number
+      subscriptions_active: number
+      badges: number
+      badge_awards: number
+    }>('/v1/admin/overview')
+  },
+  adminListUsers(q?: string, limit = 50) {
+    const qs = new URLSearchParams()
+    if (q) qs.set('q', q)
+    qs.set('limit', String(limit))
+    return request<{
+      users: Array<{
+        id: string
+        email: string
+        role: string
+        email_verified: boolean
+        disabled: boolean
+        created_at: string
+        last_login_at: string | null
+        entitlement_status: string
+        device_count: number
+      }>
+    }>(`/v1/admin/users?${qs}`)
+  },
+  adminPatchUser(id: string, body: Record<string, unknown>) {
+    return request<{ user: unknown; entitlement: unknown }>(`/v1/admin/users/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body,
+    })
+  },
+  adminListDevices(userId?: string) {
+    const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : ''
+    return request<{
+      devices: Array<{
+        id: string
+        device_id: string
+        device_name: string
+        linked_at: string
+        last_seen_at: string | null
+        user_id: string
+        user_email: string
+      }>
+    }>(`/v1/admin/devices${qs}`)
+  },
+  adminPatchDevice(id: string, body: { device_name: string }) {
+    return request<{ device: unknown }>(`/v1/admin/devices/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body,
+    })
+  },
+  adminUnlinkDevice(id: string) {
+    return request<{ ok: true }>(`/v1/admin/devices/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  adminListPairSessions(status?: string) {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : ''
+    return request<{
+      sessions: Array<{
+        id: string
+        device_id: string
+        code_public_hint: string
+        status: string
+        created_at: string
+        expires_at: string
+        claimed_at: string | null
+        claimed_by_user_id: string | null
+      }>
+    }>(`/v1/admin/pair-sessions${qs}`)
+  },
+  adminListBadges() {
+    return request<{
+      badges: Array<{
+        id: string
+        key: string
+        name: string
+        icon_key: string
+        description: string
+        award_count: number
+      }>
+      awards: Array<{
+        id: string
+        badge_id: string
+        user_id: string | null
+        device_link_id: string | null
+        note: string | null
+        awarded_at: string
+        badge_name: string
+        badge_key: string
+        icon_key: string
+        user_email: string | null
+      }>
+    }>('/v1/admin/badges')
+  },
+  adminCreateBadge(body: { name: string; key: string; icon_key?: string; description?: string }) {
+    return request<{ badge: unknown }>('/v1/admin/badges', { method: 'POST', body })
+  },
+  adminAwardBadge(badgeId: string, body: { user_id?: string; device_link_id?: string; note?: string }) {
+    return request<{ award: unknown }>(`/v1/admin/badges/${encodeURIComponent(badgeId)}/award`, {
+      method: 'POST',
+      body,
+    })
+  },
+  adminRevokeAward(id: string) {
+    return request<{ ok: true }>(`/v1/admin/badge-awards/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  adminActivity() {
+    return request<{
+      logins: Array<{ id: string; email: string; last_login_at: string }>
+      pair_claims: Array<{
+        id: string
+        device_id: string
+        claimed_at: string | null
+        user_email: string | null
+      }>
+      audits: Array<{
+        id: string
+        action: string
+        target_type: string | null
+        target_id: string | null
+        created_at: string
+        actor_email: string | null
+        detail: string | null
+      }>
+    }>('/v1/admin/activity')
+  },
 }
 
 export function isNetworkError(err: unknown): boolean {
