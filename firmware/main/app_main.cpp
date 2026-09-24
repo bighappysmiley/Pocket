@@ -19,8 +19,8 @@
 
 static const char* TAG = "pocket";
 
-// Unique marker so serial proves this exact build is running.
-static const char* kBuildId = "POCKET-LIVE-v10-console-uart";
+// Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
+static const char* kBuildId = "POCKET-LIVE-v11-usb-console";
 
 namespace {
 
@@ -74,16 +74,56 @@ struct EspDisplay : pocket::PlatformDisplay {
   }
 };
 
+struct BootCtx {
+  pocket::board::ButtonPoller* buttons = nullptr;
+  pocket::board::EpdDisplay* epd = nullptr;
+  pocket::App* app = nullptr;
+  pocket::InputMapper* mapper = nullptr;
+  EspClock* clock = nullptr;
+  bool ui_ready = false;
+};
+
+static BootCtx g_boot;
+
+static void epd_boot_task(void* /*arg*/) {
+  esp_rom_printf("epd_boot_task: axp\n");
+  ESP_LOGI(TAG, "epd_boot_task: enabling AXP…");
+  pocket::board::axp_enable_epd_rails();
+
+  esp_rom_printf("epd_boot_task: epd.init\n");
+  ESP_LOGI(TAG, "epd_boot_task: e-paper init / factory wipe…");
+  if (g_boot.epd && !g_boot.epd->init()) {
+    ESP_LOGE(TAG, "e-paper init failed — UI stays headless");
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  esp_rom_printf("epd_boot_task: app.boot\n");
+  ESP_LOGI(TAG, "epd_boot_task: painting Welcome…");
+  if (g_boot.app) {
+    g_boot.app->boot();
+    ESP_LOGI(TAG, "UI boot complete, screen=%d", static_cast<int>(g_boot.app->screen()));
+  }
+  g_boot.ui_ready = true;
+  esp_rom_printf("*** %s READY ***\n", kBuildId);
+  vTaskDelete(nullptr);
+}
+
 }  // namespace
 
 extern "C" void app_main(void) {
-  // ROM printf bypasses ESP_LOG console routing — proves we reached app_main
-  // even if USB console init is flaky.
+  // First proof we reached user code on the USB Serial/JTAG console.
   esp_rom_printf("\n*** %s ***\n", kBuildId);
 
   const esp_reset_reason_t rr = esp_reset_reason();
   ESP_LOGI(TAG, "%s reset=%s (%d)", kBuildId, reset_reason_str(rr), static_cast<int>(rr));
-  vTaskDelay(pdMS_TO_TICKS(100));
+
+  // Three visible heartbeats before any heavy I/O.
+  for (int i = 0; i < 3; ++i) {
+    esp_rom_printf("heartbeat %d/3\n", i + 1);
+    ESP_LOGI(TAG, "heartbeat %d/3", i + 1);
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
 
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -92,45 +132,47 @@ extern "C" void app_main(void) {
   }
   ESP_ERROR_CHECK(ret);
 
-  ESP_LOGI(TAG, "Pocket boot — canvas %dx%d, pins Up=%d Fn=%d Down=%d BOOT=%d PWR=%d",
-           pocket::board::kLogicalW, pocket::board::kLogicalH, pocket::board::kPinButtonUp,
-           pocket::board::kPinButtonFunction, pocket::board::kPinButtonDown, pocket::board::kPinBoot,
-           pocket::board::kPinPwr);
+  ESP_LOGI(TAG, "Pocket boot — canvas %dx%d Up=%d Fn=%d Down=%d", pocket::board::kLogicalW,
+           pocket::board::kLogicalH, pocket::board::kPinButtonUp, pocket::board::kPinButtonFunction,
+           pocket::board::kPinButtonDown);
 
   static pocket::board::ButtonPoller buttons;
   buttons.init();
 
-  ESP_LOGI(TAG, "enabling AXP EPD rails…");
-  pocket::board::axp_enable_epd_rails();
-
   static pocket::board::EpdDisplay epd;
-  ESP_LOGI(TAG, "e-paper init…");
-  if (!epd.init()) {
-    ESP_LOGE(TAG, "e-paper init failed — continuing headless");
-  }
-
   static pocket::MemoryConfigStore store;
   static EspClock clock;
   static EspWifi wifi;
   static EspCloud cloud;
   static EspDisplay display(epd);
   static pocket::InputMapper mapper;
+  static pocket::App app(store, clock, wifi, cloud, display);
 
-  pocket::App app(store, clock, wifi, cloud, display);
-  ESP_LOGI(TAG, "painting first frame…");
-  app.boot();
-  ESP_LOGI(TAG, "UI boot complete, screen=%d — input loop", static_cast<int>(app.screen()));
-  esp_rom_printf("*** %s READY ***\n", kBuildId);
+  g_boot.buttons = &buttons;
+  g_boot.epd = &epd;
+  g_boot.app = &app;
+  g_boot.mapper = &mapper;
+  g_boot.clock = &clock;
 
+  // EPD on a side task so a busy-wait cannot block rotary forever.
+  // Stack: wipe + paint needs room.
+  xTaskCreate(epd_boot_task, "epd_boot", 8192, nullptr, 5, nullptr);
+
+  ESP_LOGI(TAG, "input loop running (EPD wipe in background)");
+  uint32_t last_hb = 0;
   while (true) {
     const uint32_t now = clock.now_ms();
+    if (now - last_hb > 5000) {
+      esp_rom_printf("loop alive ui_ready=%d\n", g_boot.ui_ready ? 1 : 0);
+      last_hb = now;
+    }
     buttons.poll(mapper, now);
     for (;;) {
       const pocket::InputEvent e = mapper.poll();
       if (e == pocket::InputEvent::None) break;
-      app.handle(e);
+      if (g_boot.ui_ready) app.handle(e);
     }
-    app.tick(now);
+    if (g_boot.ui_ready) app.tick(now);
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
