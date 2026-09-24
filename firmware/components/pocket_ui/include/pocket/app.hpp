@@ -223,6 +223,9 @@ class App {
   const Canvas& canvas() const { return canvas_; }
   bool needs_redraw() const { return dirty_; }
 
+  /** STA just associated — refresh clock sync + Cloud heartbeat promptly. */
+  void notify_wifi_connected();
+
   /** Force render for host/tests. */
   void redraw(bool full);
 
