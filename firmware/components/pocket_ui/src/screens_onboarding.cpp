@@ -40,7 +40,7 @@ void App::render_onboarding() {
                                 "A short setup with the Pocket app gets you online and linked.",
                                 Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = 1;
-      canvas_.draw_focus_tile(kSideMargin, 720, kCanvasW - 32, kFocusRowH, "Begin setup", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "Begin setup", Canvas::TextRole::Body);
       break;
     }
     case ScreenId::OnboardingCompanionDownload: {
@@ -63,7 +63,7 @@ void App::render_onboarding() {
       canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 100, "Required to finish setup",
                                  Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = 1;
-      canvas_.draw_focus_tile(kSideMargin, 720, kCanvasW - 32, kFocusRowH, "Continue", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "Continue", Canvas::TextRole::Body);
       break;
     }
     case ScreenId::OnboardingSdCard: {
@@ -73,7 +73,7 @@ void App::render_onboarding() {
                                           Canvas::TextRole::Body, Gray::G0);
         canvas_.draw_text(kSideMargin, y + 8, "Waiting for eject…", Canvas::TextRole::Secondary, Gray::G1);
         focus_.count = 1;
-        canvas_.draw_focus_tile(kSideMargin, 720, kCanvasW - 32, kFocusRowH, "Checking…", Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "Checking…", Canvas::TextRole::Body);
         break;
       }
       if (sd_kind_ == SdContentKind::Absent) {
@@ -215,7 +215,7 @@ void App::render_onboarding() {
           canvas_.draw_text(kSideMargin + 8, row_y + 10, actions[i], Canvas::TextRole::Body, Gray::G0);
       }
       if (now_ms_ < error_until_ms_) {
-        canvas_.draw_text_wrapped(kSideMargin, 720, kWrapW, kLineGap, error_msg_, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_wrapped(kSideMargin, kBottomCtaY, kWrapW, kLineGap, error_msg_, Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
@@ -381,7 +381,7 @@ void App::render_onboarding() {
       canvas_.draw_text_centered(kCanvasW / 2, 260, "Your phone is linked.", Canvas::TextRole::Body, Gray::G0);
       canvas_.draw_text_wrapped(kSideMargin, 296, kWrapW, kLineGap, "Manage name and Cloud in the app.",
                                 Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text_centered(kCanvasW / 2, 720, "Press to go Home", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, kBottomCtaY, "Press to go Home", Canvas::TextRole::Secondary, Gray::G1);
       break;
     }
     default:

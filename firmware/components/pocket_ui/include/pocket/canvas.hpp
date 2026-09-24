@@ -21,13 +21,13 @@ class Canvas {
 
   /** Proportional DejaVu UI type (normal font, readable size). */
   enum class TextRole : uint8_t {
-    StatusBar,    // 22px body
-    Secondary,    // 22px body
-    Body,         // 22px body
-    ScreenTitle,  // 32px display
-    WordMark,     // 32px display
-    PinDigit,     // 32px display
-    HugeClock,    // 32px display ×2
+    StatusBar,    // 28px body
+    Secondary,    // 28px body
+    Body,         // 28px body
+    ScreenTitle,  // 42px display
+    WordMark,     // 42px display
+    PinDigit,     // 42px display
+    HugeClock,    // 42px display ×3
   };
 
   void draw_text(int x, int y, std::string_view text, TextRole role, Gray g);

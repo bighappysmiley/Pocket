@@ -20,9 +20,10 @@ void App::render_home() {
   focus_.count = n;
 
   const int tile_w = (kCanvasW - 48) / 2;
-  const int tile_h = 104;
-  // Below wordmark + clock band (content top + 48 + 120).
-  constexpr int kGridTop = kContentTop + 200;
+  const int tile_h = 112;
+  // Below wordmark + larger clock band.
+  constexpr int kGridTop = kContentTop + 240;
+  const int body_h = canvas_.text_height(Canvas::TextRole::Body);
   for (int i = 0; i < n; ++i) {
     int col = i % 2;
     int row = i / 2;
@@ -33,7 +34,8 @@ void App::render_home() {
       canvas_.draw_focus_tile(x, y, tile_w, tile_h, label, Canvas::TextRole::Body);
     } else {
       canvas_.stroke_rect(x, y, tile_w, tile_h, Gray::G2);
-      canvas_.draw_text_centered(x + tile_w / 2, y + tile_h / 2 - 9, label, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_centered(x + tile_w / 2, y + (tile_h - body_h) / 2, label, Canvas::TextRole::Body,
+                                 Gray::G0);
     }
   }
 }
