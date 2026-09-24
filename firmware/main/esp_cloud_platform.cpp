@@ -43,8 +43,8 @@ bool http_request(const char* method, const std::string& url, const char* auth_b
   if (!client) return false;
 
   if (auth_bearer && auth_bearer[0]) {
-    std::string hdr = std::string("Bearer ") + auth_bearer;
-    esp_http_client_set_header(client, "Authorization", hdr.c_str());
+    // Neon Functions intercepts Authorization: Bearer (platform auth). Use x-device-key only.
+    esp_http_client_set_header(client, "x-device-key", auth_bearer);
   }
   esp_http_client_set_header(client, "Accept", "application/json");
   if (!body.empty()) {
