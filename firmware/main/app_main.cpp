@@ -1,4 +1,9 @@
 #include <stdio.h>
+#include <ctime>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+
 #include "pocket/app.hpp"
 #include "pocket/input.hpp"
 #include "pocket_board/axp.hpp"
@@ -18,11 +23,12 @@
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_system.h"
+#include "esp_sntp.h"
 
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v18-link-softap";
+static const char* kBuildId = "POCKET-LIVE-v19-status-softap";
 
 namespace {
 
@@ -42,18 +48,55 @@ const char* reset_reason_str(esp_reset_reason_t r) {
   }
 }
 
+/** Map IANA-ish ids used in onboarding to POSIX TZ for newlib. */
+const char* posix_tz_for(const std::string& id) {
+  if (id == "America/New_York") return "EST5EDT,M3.2.0,M11.1.0";
+  if (id == "America/Chicago") return "CST6CDT,M3.2.0,M11.1.0";
+  if (id == "America/Denver") return "MST7MDT,M3.2.0,M11.1.0";
+  if (id == "America/Los_Angeles") return "PST8PDT,M3.2.0,M11.1.0";
+  if (id == "America/Phoenix") return "MST7";
+  if (id == "Europe/London") return "GMT0BST,M3.5.0/1,M10.5.0";
+  if (id == "UTC" || id.empty()) return "UTC0";
+  return "UTC0";
+}
+
+void apply_timezone(const std::string& tz_id) {
+  setenv("TZ", posix_tz_for(tz_id), 1);
+  tzset();
+}
+
 struct EspClock : pocket::PlatformClock {
   uint32_t now_ms() override {
     return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
   }
   void local_hm(int& hour, int& minute, int& weekday, int& month, int& day) override {
-    hour = 12;
-    minute = 0;
-    weekday = 0;
-    month = 0;
-    day = 1;
+    const time_t now = time(nullptr);
+    struct tm t {};
+    localtime_r(&now, &t);
+    hour = t.tm_hour;
+    minute = t.tm_min;
+    weekday = t.tm_wday;
+    month = t.tm_mon;
+    day = t.tm_mday;
   }
+  bool time_valid() const override {
+    const time_t now = time(nullptr);
+    struct tm t {};
+    gmtime_r(&now, &t);
+    return (t.tm_year + 1900) >= 2024;
+  }
+  int battery_percent() override { return pocket::board::axp_battery_percent(); }
 };
+
+void sntp_start_once() {
+  static bool started = false;
+  if (started) return;
+  started = true;
+  esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+  esp_sntp_setservername(0, "pool.ntp.org");
+  esp_sntp_init();
+  ESP_LOGI(TAG, "SNTP started");
+}
 
 struct EspDisplay : pocket::PlatformDisplay {
   pocket::board::EpdDisplay& epd;
@@ -93,7 +136,9 @@ static void epd_boot_task(void* /*arg*/) {
   esp_rom_printf("epd_boot_task: app.boot\n");
   ESP_LOGI(TAG, "epd_boot_task: painting Welcome");
   if (g_boot.app) {
+    apply_timezone(g_boot.app->config().tz_id);
     g_boot.app->boot();
+    apply_timezone(g_boot.app->config().tz_id);
     ESP_LOGI(TAG, "UI boot complete, screen=%d", static_cast<int>(g_boot.app->screen()));
   }
   g_boot.ui_ready = true;
@@ -102,6 +147,9 @@ static void epd_boot_task(void* /*arg*/) {
 }
 
 }  // namespace
+
+// Called from EspWifi::connect after STA association succeeds.
+extern "C" void pocket_on_wifi_connected(void) { sntp_start_once(); }
 
 extern "C" void app_main(void) {
   esp_rom_printf("\n*** %s ***\n", kBuildId);
@@ -148,11 +196,20 @@ extern "C" void app_main(void) {
 
   ESP_LOGI(TAG, "input loop running (EPD wipe in background)");
   uint32_t last_hb = 0;
+  std::string last_tz;
   while (true) {
     const uint32_t now = clock.now_ms();
     if (now - last_hb > 5000) {
-      esp_rom_printf("loop alive ui_ready=%d\n", g_boot.ui_ready ? 1 : 0);
+      esp_rom_printf("loop alive ui_ready=%d batt=%d time_ok=%d\n", g_boot.ui_ready ? 1 : 0,
+                     clock.battery_percent(), clock.time_valid() ? 1 : 0);
       last_hb = now;
+    }
+    if (g_boot.ui_ready) {
+      const std::string& tz = app.config().tz_id;
+      if (tz != last_tz) {
+        apply_timezone(tz);
+        last_tz = tz;
+      }
     }
     buttons.poll(mapper, now);
     for (;;) {

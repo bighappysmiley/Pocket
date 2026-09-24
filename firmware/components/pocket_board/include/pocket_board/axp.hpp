@@ -13,6 +13,9 @@ namespace pocket::board {
  */
 bool axp_enable_epd_rails();
 
+/** Battery 0–100 from AXP2101 fuel gauge. USB-only (no cell) returns 100. */
+int axp_battery_percent();
+
 }  // namespace pocket::board
 
 #ifdef __cplusplus

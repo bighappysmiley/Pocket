@@ -87,54 +87,65 @@ void App::render_onboarding() {
       break;
     }
     case ScreenId::OnboardingWifiPassword: {
-      // Unified Link phase 1: SoftAP with short password shown on device.
+      // Unified Link phase 1: SoftAP with short password shown on device (real values only).
+      // Re-sync from platform every paint so the password is never a placeholder.
+      if (wifi_ap_ssid_.empty()) wifi_ap_ssid_ = wifi_.provision_ap_ssid();
+      if (wifi_ap_pass_.empty()) wifi_ap_pass_ = wifi_.provision_ap_password();
+
       canvas_.draw_text(kSideMargin, 48, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, 88, "Join Pocket Wi-Fi on your phone,", Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_text(kSideMargin, 116, "then finish setup in the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, 88, "Join this Wi-Fi on your phone,", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, 112, "then finish setup in the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
 
-      char ap_line[48];
-      std::snprintf(ap_line, sizeof(ap_line), "%s", wifi_ap_ssid_.empty() ? "Pocket-...." : wifi_ap_ssid_.c_str());
-      canvas_.draw_text_centered(kCanvasW / 2, 156, ap_line, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_centered(kCanvasW / 2, 148, "Network", Canvas::TextRole::Secondary, Gray::G1);
+      if (!wifi_ap_ssid_.empty()) {
+        canvas_.draw_text_centered(kCanvasW / 2, 172, wifi_ap_ssid_, Canvas::TextRole::Body, Gray::G0);
+      } else {
+        canvas_.draw_text_centered(kCanvasW / 2, 172, "Could not start Pocket Wi-Fi", Canvas::TextRole::Body,
+                                   Gray::G0);
+      }
 
-      char pass_line[48];
-      std::snprintf(pass_line, sizeof(pass_line), "Password  %s",
-                    wifi_ap_pass_.empty() ? "--------" : wifi_ap_pass_.c_str());
-      canvas_.draw_text_centered(kCanvasW / 2, 188, pass_line, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_centered(kCanvasW / 2, 208, "Password", Canvas::TextRole::Secondary, Gray::G1);
+      if (!wifi_ap_pass_.empty()) {
+        canvas_.draw_text_centered(kCanvasW / 2, 232, wifi_ap_pass_, Canvas::TextRole::ScreenTitle, Gray::G0);
+      } else {
+        canvas_.draw_text_centered(kCanvasW / 2, 232, "No password — go back", Canvas::TextRole::Body, Gray::G0);
+      }
 
-      const int qr_size = 160;
+      const int qr_size = 148;
       const int qr_x = (kCanvasW - qr_size) / 2;
-      const int qr_y = 228;
+      const int qr_y = 280;
       const std::string url = companion_wifi_setup_url();
       if (!canvas_.draw_qr(qr_x, qr_y, qr_size, url)) {
         canvas_.stroke_rect(qr_x, qr_y, qr_size, qr_size, Gray::G0);
       }
-      canvas_.draw_text_centered(kCanvasW / 2, 404, "or go to", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, 444, "or go to", Canvas::TextRole::Secondary, Gray::G1);
       {
         const std::string site = companion_display_origin() + "/wifi-setup";
-        canvas_.draw_text_fit(kSideMargin, 432, kCanvasW - 32, site, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin, 468, kCanvasW - 32, site, Canvas::TextRole::Body, Gray::G0);
       }
-      canvas_.draw_text_centered(kCanvasW / 2, 476, "Waiting for your phone…", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, 504, "Waiting for your phone...", Canvas::TextRole::Secondary,
+                                 Gray::G1);
 
       focus_.count = 2;
-      const char* actions[] = {"Waiting…", "Cancel"};
+      const char* actions[] = {"Waiting...", "Cancel"};
       for (int i = 0; i < 2; ++i) {
-        int y = 528 + i * 56;
+        int y = 548 + i * 52;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 48, actions[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 44, actions[i], Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, y + 14, actions[i], Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + 8, y + 12, actions[i], Canvas::TextRole::Body, Gray::G0);
       }
       if (now_ms_ < error_until_ms_) {
-        canvas_.draw_text_fit(kSideMargin, 648, kCanvasW - 32, error_msg_, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin, 660, kCanvasW - 32, error_msg_, Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
     case ScreenId::OnboardingWifiConnecting: {
       char buf[64];
       if (cfg_.wifi_ssid.empty()) {
-        std::snprintf(buf, sizeof(buf), "Connecting…");
+        std::snprintf(buf, sizeof(buf), "Connecting...");
       } else {
-        std::snprintf(buf, sizeof(buf), "Connecting to %s…", cfg_.wifi_ssid.c_str());
+        std::snprintf(buf, sizeof(buf), "Connecting to %s...", cfg_.wifi_ssid.c_str());
       }
       canvas_.draw_text(kSideMargin, 48, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
       canvas_.draw_text_fit(kSideMargin, 200, kCanvasW - 32, buf, Canvas::TextRole::Body, Gray::G0);
@@ -178,7 +189,7 @@ void App::render_onboarding() {
         canvas_.draw_text_centered(kCanvasW / 2, 456, "Expires in 10 minutes", Canvas::TextRole::Secondary, Gray::G1);
       }
       focus_.count = 2;
-      const char* acts[] = {"Waiting for link…", "Refresh code"};
+      const char* acts[] = {"Waiting for link...", "Refresh code"};
       for (int i = 0; i < 2; ++i) {
         int y = 520 + i * 56;
         if (i == focus_.index)
@@ -330,8 +341,8 @@ void App::handle_onboarding(InputEvent e) {
           std::string ap;
           std::string pass;
           if (wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
-            wifi_ap_ssid_ = ap;
-            wifi_ap_pass_ = pass;
+            wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
+            wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
             last_wifi_prov_poll_ms_ = 0;
             focus_.index = 0;
             nav_.replace(ScreenId::OnboardingWifiPassword);
@@ -391,8 +402,8 @@ void App::handle_onboarding(InputEvent e) {
       dirty_ = true;
       return;
     }
-    wifi_ap_ssid_ = ap;
-    wifi_ap_pass_ = pass;
+    wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
+    wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
     last_wifi_prov_poll_ms_ = 0;
     focus_.index = 0;
     nav_.replace(ScreenId::OnboardingWifiPassword);
@@ -425,8 +436,8 @@ void App::handle_onboarding(InputEvent e) {
           dirty_ = true;
           return;
         }
-        wifi_ap_ssid_ = ap;
-        wifi_ap_pass_ = pass;
+        wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
+        wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
         last_wifi_prov_poll_ms_ = 0;
         focus_.index = 0;
         nav_.replace(ScreenId::OnboardingWifiPassword);

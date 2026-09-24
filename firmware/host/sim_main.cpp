@@ -35,7 +35,7 @@ struct HostClock : PlatformClock {
 
 struct HostWifi : PlatformWifi {
   bool ok = false;
-  bool provisioning = false;
+  bool provision_active = false;
   std::string ap = "Pocket-HOST";
   std::string ap_pass = "HOSTPASS";
   std::string queued_ssid;
@@ -49,7 +49,7 @@ struct HostWifi : PlatformWifi {
   bool connected() const override { return ok; }
   bool start_provision(const std::string& preferred, std::string* ap_ssid_out,
                        std::string* ap_pass_out) override {
-    provisioning = true;
+    provision_active = true;
     // Host sim: auto-deliver credentials after start (stands in for phone SoftAP POST).
     queued_ssid = preferred.empty() ? "HomeNet" : preferred;
     queued_pass = "host-sim-pass";
@@ -58,7 +58,7 @@ struct HostWifi : PlatformWifi {
     if (ap_pass_out) *ap_pass_out = ap_pass;
     return true;
   }
-  void stop_provision() override { provisioning = false; }
+  void stop_provision() override { provision_active = false; }
   bool take_provision_credentials(std::string* ssid, std::string* password) override {
     if (!has_queued) return false;
     if (ssid) *ssid = queued_ssid;
@@ -68,6 +68,7 @@ struct HostWifi : PlatformWifi {
   }
   std::string provision_ap_ssid() const override { return ap; }
   std::string provision_ap_password() const override { return ap_pass; }
+  bool provisioning() const override { return provision_active; }
 };
 
 struct HostCloud : PlatformCloud {

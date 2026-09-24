@@ -6,7 +6,7 @@
 namespace pocket {
 
 extern void draw_status_bar_impl(Canvas& c, const DeviceConfig& cfg, int hour, int minute, bool wifi_ok,
-                                 int battery_pct);
+                                 int battery_pct, bool time_ok);
 
 static const char* kWeekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -94,8 +94,8 @@ void App::tick(uint32_t now_ms) {
           std::string ap;
           std::string pass;
           wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass);
-          wifi_ap_ssid_ = ap;
-          wifi_ap_pass_ = pass;
+          wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
+          wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
           focus_.index = 0;
           nav_.replace(ScreenId::OnboardingWifiPassword);
           after_nav();
@@ -148,7 +148,8 @@ void App::redraw(bool full) {
 void App::draw_status_bar() {
   int h = 0, m = 0, wd = 0, mo = 0, d = 0;
   clock_.local_hm(h, m, wd, mo, d);
-  draw_status_bar_impl(canvas_, cfg_, h, m, wifi_.connected(), 78);
+  const bool wifi_ok = wifi_.connected() || wifi_.provisioning();
+  draw_status_bar_impl(canvas_, cfg_, h, m, wifi_ok, clock_.battery_percent(), clock_.time_valid());
 }
 
 void App::handle(InputEvent e) {

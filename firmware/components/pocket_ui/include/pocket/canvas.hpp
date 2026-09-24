@@ -22,13 +22,13 @@ class Canvas {
 
   /** Bitmap text — sizes map to Spec type scale roles (e-ink readable). */
   enum class TextRole : uint8_t {
-    StatusBar,   // ~14px  (scale 2, 4×4 AA)
-    Secondary,   // ~14px  (scale 2)
-    Body,        // ~21px  (scale 3)
-    ScreenTitle, // ~28px  (scale 4)
-    WordMark,    // ~35px  (scale 5)
-    PinDigit,    // ~35px  (scale 5)
-    HugeClock,   // ~56px  (scale 8)
+    StatusBar,   // ~14px (scale 2) — keep denser for status bar
+    Secondary,   // ~14px (scale 2)
+    Body,        // ~14px (scale 2)
+    ScreenTitle, // ~28px (scale 4)
+    WordMark,    // ~35px (scale 5)
+    PinDigit,    // ~35px (scale 5)
+    HugeClock,   // ~56px (scale 8)
   };
 
   void draw_text(int x, int y, std::string_view text, TextRole role, Gray g);
