@@ -20,15 +20,15 @@ class Canvas {
   /** Bresenham line for abstract lock motifs. */
   void line(int x0, int y0, int x1, int y1, Gray g);
 
-  /** Bitmap text — sizes map to Spec type scale roles (e-ink readable). */
+  /** Bitmap text — compact roles for 480×800 e-ink. Status bar stays denser. */
   enum class TextRole : uint8_t {
-    StatusBar,   // ~14px (scale 2) — keep denser for status bar
-    Secondary,   // ~14px (scale 2)
-    Body,        // ~14px (scale 2)
-    ScreenTitle, // ~28px (scale 4)
-    WordMark,    // ~35px (scale 5)
-    PinDigit,    // ~35px (scale 5)
-    HugeClock,   // ~56px (scale 8)
+    StatusBar,   // scale 2 — keep
+    Secondary,   // scale 1 captions
+    Body,        // scale 2 (same density as status bar)
+    ScreenTitle, // scale 2
+    WordMark,    // scale 3
+    PinDigit,    // scale 3
+    HugeClock,   // scale 6
   };
 
   void draw_text(int x, int y, std::string_view text, TextRole role, Gray g);
@@ -36,6 +36,7 @@ class Canvas {
   /** Draw text clipped to max_w; appends "..." if truncated. */
   void draw_text_fit(int x, int y, int max_w, std::string_view text, TextRole role, Gray g);
   int text_width(std::string_view text, TextRole role) const;
+  int text_height(TextRole role) const;
 
   /** Inverted focus tile: fill G0, label G3, truncates label to fit. */
   void draw_focus_tile(int x, int y, int w, int h, std::string_view label, TextRole role);

@@ -13,7 +13,7 @@ static constexpr int kTzCount = 7;
 static void draw_step(Canvas& c, int step) {
   char buf[32];
   std::snprintf(buf, sizeof(buf), "Step %d of 8", step);
-  c.draw_text(kSideMargin, 36, buf, Canvas::TextRole::Secondary, Gray::G1);
+  c.draw_text(kSideMargin, kStatusBarH + 6, buf, Canvas::TextRole::Secondary, Gray::G1);
 }
 
 void App::render_onboarding() {
@@ -24,119 +24,106 @@ void App::render_onboarding() {
 
   switch (s) {
     case ScreenId::OnboardingWelcome: {
-      canvas_.draw_text(kSideMargin, 72, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
-      canvas_.draw_text(kSideMargin, 148, "Welcome", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, 210, "Notes, lists, and daily tools —", Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text(kSideMargin, 246, "quiet, focused, always with you.", Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text(kSideMargin, 310, "Setup uses the Pocket app on your phone.", Canvas::TextRole::Secondary,
+      canvas_.draw_text(kSideMargin, 56, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
+      canvas_.draw_text(kSideMargin, 96, "Welcome", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, 130, "Notes, lists, and daily tools —", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin, 148, "quiet, focused, always with you.", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin, 180, "Setup uses the Pocket app on your phone.", Canvas::TextRole::Secondary,
                         Gray::G1);
-      canvas_.draw_focus_tile(kSideMargin, 700, kCanvasW - 32, 56, "Continue", Canvas::TextRole::Body);
+      focus_.count = 1;
+      canvas_.draw_focus_tile(kSideMargin, 720, kCanvasW - 32, 40, "Continue", Canvas::TextRole::Body);
       break;
     }
     case ScreenId::OnboardingCompanionDownload: {
-      canvas_.draw_text(kSideMargin, 56, "Get the Pocket app", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, 100, "Scan to open Pocket on your phone.", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, 48, "Get the Pocket app", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, 76, "Scan to open Pocket on your phone.", Canvas::TextRole::Secondary, Gray::G1);
 
-      const int qr_size = 200;
+      const int qr_size = 168;
       const int qr_x = (kCanvasW - qr_size) / 2;
-      const int qr_y = 140;
+      const int qr_y = 108;
       const std::string url = companion_download_url();
       if (!canvas_.draw_qr(qr_x, qr_y, qr_size, url)) {
         canvas_.stroke_rect(qr_x, qr_y, qr_size, qr_size, Gray::G0);
-        canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size / 2 - 8, "QR unavailable", Canvas::TextRole::Body,
+        canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size / 2 - 4, "QR unavailable", Canvas::TextRole::Body,
                                    Gray::G1);
       }
-      canvas_.draw_text_centered(kCanvasW / 2, 360, "or go to", Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_text_centered(kCanvasW / 2, 392, companion_display_origin(), Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text_centered(kCanvasW / 2, 440, "Required to finish setup", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, 292, "or go to", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, 312, companion_display_origin(), Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_centered(kCanvasW / 2, 340, "Required to finish setup", Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = 1;
-      canvas_.draw_focus_tile(kSideMargin, 700, kCanvasW - 32, 56, "Continue", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, 720, kCanvasW - 32, 40, "Continue", Canvas::TextRole::Body);
       break;
     }
     case ScreenId::OnboardingWifiList: {
       // Settings → Change Wi‑Fi still uses a network list; onboarding skips this screen.
-      canvas_.draw_text(kSideMargin, 72, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, 118, "Choose your network.", Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_text(kSideMargin, 146, "Enter the password in the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
-      constexpr int kRowH = 52;
-      constexpr int kListTop = 190;
-      constexpr int kMaxVisible = 6;
+      canvas_.draw_text(kSideMargin, 48, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, 76, "Choose your network.", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, 94, "Enter the password in the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
+      constexpr int kRowH = 40;
+      constexpr int kListTop = 130;
+      constexpr int kMaxVisible = 8;
       if (wifi_networks_.empty()) {
-        canvas_.draw_text(kSideMargin, 176, "No networks found.", Canvas::TextRole::Body, Gray::G1);
+        canvas_.draw_text(kSideMargin, 120, "No networks found.", Canvas::TextRole::Body, Gray::G1);
       }
       const int shown = std::min(static_cast<int>(wifi_networks_.size()), kMaxVisible);
       focus_.count = shown + 1;  // + Rescan only
       for (int i = 0; i < shown; ++i) {
         const int y = kListTop + i * kRowH;
         if (i == focus_.index) {
-          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kRowH - 8, wifi_networks_[i],
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kRowH - 6, wifi_networks_[i],
                                   Canvas::TextRole::Body);
         } else {
-          canvas_.draw_text_fit(kSideMargin + 8, y + 12, kCanvasW - 48, wifi_networks_[i],
+          canvas_.draw_text_fit(kSideMargin + 8, y + 10, kCanvasW - 48, wifi_networks_[i],
                                 Canvas::TextRole::Body, Gray::G0);
         }
       }
       {
-        const int y = wifi_networks_.empty() ? 220 : (kListTop + shown * kRowH);
+        const int y = wifi_networks_.empty() ? 150 : (kListTop + shown * kRowH);
         if (focus_.index == shown) {
-          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kRowH - 8, "Rescan", Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kRowH - 6, "Rescan", Canvas::TextRole::Body);
         } else {
-          canvas_.draw_text(kSideMargin + 8, y + 12, "Rescan", Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + 8, y + 10, "Rescan", Canvas::TextRole::Body, Gray::G0);
         }
       }
       break;
     }
     case ScreenId::OnboardingWifiPassword: {
-      // Unified Link phase 1: SoftAP with short password shown on device (real values only).
-      // Re-sync from platform every paint so the password is never a placeholder.
+      // SoftAP only: network + password. No QR — phone joins SoftAP then uses the app / captive portal.
       if (wifi_ap_ssid_.empty()) wifi_ap_ssid_ = wifi_.provision_ap_ssid();
       if (wifi_ap_pass_.empty()) wifi_ap_pass_ = wifi_.provision_ap_password();
 
-      canvas_.draw_text(kSideMargin, 48, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, 88, "Join this Wi-Fi on your phone,", Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_text(kSideMargin, 112, "then finish setup in the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, 48, "Pocket Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, 76, "On your phone, join this network.", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, 94, "Then open the Pocket app to continue.", Canvas::TextRole::Secondary, Gray::G1);
 
-      canvas_.draw_text_centered(kCanvasW / 2, 148, "Network", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, 160, "Network", Canvas::TextRole::Secondary, Gray::G1);
       if (!wifi_ap_ssid_.empty()) {
-        canvas_.draw_text_centered(kCanvasW / 2, 172, wifi_ap_ssid_, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, 184, wifi_ap_ssid_, Canvas::TextRole::ScreenTitle, Gray::G0);
       } else {
-        canvas_.draw_text_centered(kCanvasW / 2, 172, "Could not start Pocket Wi-Fi", Canvas::TextRole::Body,
-                                   Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, 184, "Could not start Wi-Fi", Canvas::TextRole::Body, Gray::G0);
       }
 
-      canvas_.draw_text_centered(kCanvasW / 2, 208, "Password", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, 240, "Password", Canvas::TextRole::Secondary, Gray::G1);
       if (!wifi_ap_pass_.empty()) {
-        canvas_.draw_text_centered(kCanvasW / 2, 232, wifi_ap_pass_, Canvas::TextRole::ScreenTitle, Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, 268, wifi_ap_pass_, Canvas::TextRole::WordMark, Gray::G0);
       } else {
-        canvas_.draw_text_centered(kCanvasW / 2, 232, "No password — go back", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, 268, "No password — go back", Canvas::TextRole::Body, Gray::G0);
       }
 
-      const int qr_size = 148;
-      const int qr_x = (kCanvasW - qr_size) / 2;
-      const int qr_y = 280;
-      const std::string url = companion_wifi_setup_url();
-      if (!canvas_.draw_qr(qr_x, qr_y, qr_size, url)) {
-        canvas_.stroke_rect(qr_x, qr_y, qr_size, qr_size, Gray::G0);
-      }
-      canvas_.draw_text_centered(kCanvasW / 2, 444, "or go to", Canvas::TextRole::Secondary, Gray::G1);
-      {
-        const std::string site = companion_display_origin() + "/wifi-setup";
-        canvas_.draw_text_fit(kSideMargin, 468, kCanvasW - 32, site, Canvas::TextRole::Body, Gray::G0);
-      }
-      canvas_.draw_text_centered(kCanvasW / 2, 504, "Waiting for your phone...", Canvas::TextRole::Secondary,
+      canvas_.draw_text_centered(kCanvasW / 2, 360, "Waiting for your phone...", Canvas::TextRole::Secondary,
                                  Gray::G1);
 
       focus_.count = 2;
       const char* actions[] = {"Waiting...", "Cancel"};
       for (int i = 0; i < 2; ++i) {
-        int y = 548 + i * 52;
+        int y = 420 + i * 44;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 44, actions[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 36, actions[i], Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, y + 12, actions[i], Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + 8, y + 10, actions[i], Canvas::TextRole::Body, Gray::G0);
       }
       if (now_ms_ < error_until_ms_) {
-        canvas_.draw_text_fit(kSideMargin, 660, kCanvasW - 32, error_msg_, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin, 520, kCanvasW - 32, error_msg_, Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
@@ -147,55 +134,59 @@ void App::render_onboarding() {
       } else {
         std::snprintf(buf, sizeof(buf), "Connecting to %s...", cfg_.wifi_ssid.c_str());
       }
-      canvas_.draw_text(kSideMargin, 48, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text_fit(kSideMargin, 200, kCanvasW - 32, buf, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin, 48, "Link", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text_fit(kSideMargin, 120, kCanvasW - 32, buf, Canvas::TextRole::Body, Gray::G0);
       break;
     }
     case ScreenId::OnboardingCompanionQr: {
-      // Unified Link phase 2: pairing QR with code under the website.
-      canvas_.draw_text(kSideMargin, 48, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, 88, "Scan with the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
+      // Pair: QR + website + pairing code under the URL (required).
+      if (pair_code_.empty()) {
+        pair_code_ = cloud_.create_pair_session(cfg_.device_id);
+        pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
+        pair_status_ = "pending";
+        last_pair_poll_ms_ = 0;
+      }
 
-      const int qr_size = 200;
+      canvas_.draw_text(kSideMargin, 48, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, 76, "Scan with the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
+
+      const int qr_size = 180;
       const int qr_x = (kCanvasW - qr_size) / 2;
-      const int qr_y = 120;
+      const int qr_y = 104;
       if (!pair_code_.empty()) {
         const std::string url = companion_pair_url(pair_code_);
         if (!canvas_.draw_qr(qr_x, qr_y, qr_size, url)) {
           canvas_.stroke_rect(qr_x, qr_y, qr_size, qr_size, Gray::G0);
-          canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size / 2 - 8, "QR unavailable", Canvas::TextRole::Body,
+          canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size / 2 - 4, "QR unavailable", Canvas::TextRole::Body,
                                      Gray::G1);
         }
       } else {
         canvas_.stroke_rect(qr_x, qr_y, qr_size, qr_size, Gray::G0);
-        canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size / 2 - 8, "No code", Canvas::TextRole::Body, Gray::G1);
+        canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size / 2 - 4, "No code", Canvas::TextRole::Body, Gray::G1);
       }
 
-      canvas_.draw_text_centered(kCanvasW / 2, 340, "or go to", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, 300, "or go to", Canvas::TextRole::Secondary, Gray::G1);
       {
         const std::string site = companion_display_origin() + "/pair";
-        canvas_.draw_text_fit(kSideMargin, 368, kCanvasW - 32, site, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin, 320, kCanvasW - 32, site, Canvas::TextRole::Body, Gray::G0);
       }
-      // Pairing code directly under the website URL.
-      char code_line[48];
-      std::snprintf(code_line, sizeof(code_line), "%s", pair_code_.c_str());
-      canvas_.draw_text_centered(kCanvasW / 2, 408, code_line, Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text_centered(kCanvasW / 2, 348, pair_code_, Canvas::TextRole::WordMark, Gray::G0);
       if (pair_status_ == "expired") {
-        canvas_.draw_text_centered(kCanvasW / 2, 456, "Code expired — refresh below", Canvas::TextRole::Secondary,
+        canvas_.draw_text_centered(kCanvasW / 2, 388, "Code expired — refresh below", Canvas::TextRole::Secondary,
                                    Gray::G0);
       } else if (pair_status_ == "claimed") {
-        canvas_.draw_text_centered(kCanvasW / 2, 456, "Linked", Canvas::TextRole::Secondary, Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, 388, "Linked", Canvas::TextRole::Secondary, Gray::G0);
       } else {
-        canvas_.draw_text_centered(kCanvasW / 2, 456, "Expires in 10 minutes", Canvas::TextRole::Secondary, Gray::G1);
+        canvas_.draw_text_centered(kCanvasW / 2, 388, "Expires in 10 minutes", Canvas::TextRole::Secondary, Gray::G1);
       }
       focus_.count = 2;
       const char* acts[] = {"Waiting for link...", "Refresh code"};
       for (int i = 0; i < 2; ++i) {
-        int y = 520 + i * 56;
+        int y = 440 + i * 44;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 48, acts[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 36, acts[i], Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, y + 14, acts[i], Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + 8, y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
