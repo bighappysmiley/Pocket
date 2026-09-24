@@ -552,20 +552,20 @@ void App::draw_home_clock() {
     if (h12 == 0) h12 = 12;
     std::snprintf(tbuf, sizeof(tbuf), "%d:%02d", h12, m);
   }
-  constexpr int kClockTop = kContentTop + 48;
-  constexpr int kClockH = 120;
+  constexpr int kClockTop = kContentTop + 40;
+  constexpr int kClockH = 176;
   canvas_.fill_rect(kSideMargin, kClockTop, kCanvasW - 32, kClockH, Gray::G3);
-  canvas_.draw_text_centered(kCanvasW / 2, kClockTop + 8, tbuf, Canvas::TextRole::HugeClock, Gray::G0);
+  canvas_.draw_text_centered(kCanvasW / 2, kClockTop + 4, tbuf, Canvas::TextRole::HugeClock, Gray::G0);
   char dbuf[48];
   std::snprintf(dbuf, sizeof(dbuf), "%s, %s %d", kWeekdays[wd % 7], kMonths[mo % 12], d);
-  canvas_.draw_text_centered(kCanvasW / 2, kClockTop + 96, dbuf, Canvas::TextRole::Secondary, Gray::G1);
+  canvas_.draw_text_centered(kCanvasW / 2, kClockTop + 156, dbuf, Canvas::TextRole::Secondary, Gray::G1);
   last_home_clock_minute_ = h * 60 + m;
 }
 
 void App::present_home_clock_partial() {
   draw_home_clock();
-  constexpr int kClockTop = kContentTop + 48;
-  constexpr int kClockH = 120;
+  constexpr int kClockTop = kContentTop + 40;
+  constexpr int kClockH = 176;
   display_.present_region(canvas_, kSideMargin, kClockTop, kCanvasW - 32, kClockH);
   refresh_.on_applied(RefreshMode::Partial);
 }

@@ -17,13 +17,13 @@ void fill_disk(Canvas& c, int cx, int cy, int r, Gray g) {
 }
 
 /**
- * Wi‑Fi fan icon sized for StatusBar type (~22px tall).
+ * Wi‑Fi fan icon sized for StatusBar type (~28px tall).
  * Three concentric arcs + center disk; slash when offline.
  */
 void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
   const Gray g = active ? Gray::G0 : Gray::G1;
   const int cx = x + 11;
-  const int cy = y + 18;
+  const int cy = y + 20;
 
   fill_disk(c, cx, cy, 2, g);
 
