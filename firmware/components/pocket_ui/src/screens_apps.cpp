@@ -91,10 +91,10 @@ void App::handle_notes(InputEvent e) {
   if (e == InputEvent::Back) {
     if (s == ScreenId::NotesDetail || s == ScreenId::ListsDetail) {
       nav_.pop();
-      after_nav(true);
+      after_nav();
     } else {
       nav_.pop();
-      after_nav(true);
+      after_nav();
     }
     return;
   }
@@ -128,7 +128,7 @@ void App::handle_notes(InputEvent e) {
       data_.notes.push_back(n);
       note_index_ = static_cast<int>(data_.notes.size()) - 1;
       nav_.replace(ScreenId::NotesDetail);
-      after_nav(true);
+      after_nav();
       return;
     }
     dirty_ = true;
@@ -147,7 +147,7 @@ void App::handle_notes(InputEvent e) {
       if (focus_.index < static_cast<int>(data_.notes.size())) {
         note_index_ = focus_.index;
         nav_.push(ScreenId::NotesDetail);
-        after_nav(true);
+        after_nav();
       } else {
         Note n;
         n.id = std::to_string(data_.notes.size() + 1);
@@ -157,7 +157,7 @@ void App::handle_notes(InputEvent e) {
         data_.notes.push_back(n);
         note_index_ = static_cast<int>(data_.notes.size()) - 1;
         nav_.push(ScreenId::NotesDetail);
-        after_nav(true);
+        after_nav();
       }
     }
   } else if (s == ScreenId::NotesDetail) {
@@ -169,7 +169,7 @@ void App::handle_notes(InputEvent e) {
       if (note_index_ < static_cast<int>(data_.notes.size())) {
         data_.notes.erase(data_.notes.begin() + note_index_);
         nav_.pop();
-        after_nav(true);
+        after_nav();
       }
     }
   } else if (s == ScreenId::ListsList) {
@@ -181,7 +181,7 @@ void App::handle_notes(InputEvent e) {
       data_.lists.push_back(L);
       note_index_ = 0;
       nav_.push(ScreenId::ListsDetail);
-      after_nav(true);
+      after_nav();
     }
   }
 }
@@ -239,7 +239,7 @@ void App::render_clock() {
 void App::handle_clock(InputEvent e) {
   if (e == InputEvent::Back) {
     nav_.pop();
-    after_nav(true);
+    after_nav();
     return;
   }
   if (e == InputEvent::Up) {
@@ -282,17 +282,17 @@ void App::handle_pass(InputEvent e) {
   if (e == InputEvent::Back) {
     if (nav_.current() == ScreenId::PassDetail) {
       nav_.pop();
-      after_nav(true);
+      after_nav();
     } else {
       nav_.pop();
-      after_nav(true);
+      after_nav();
     }
     return;
   }
   if (nav_.current() == ScreenId::PassList && e == InputEvent::Select && !data_.passes.empty()) {
     note_index_ = focus_.index;
     nav_.push(ScreenId::PassDetail);
-    after_nav(true);
+    after_nav();
   }
 }
 
@@ -321,7 +321,7 @@ void App::render_weather() {
 void App::handle_weather(InputEvent e) {
   if (e == InputEvent::Back) {
     nav_.pop();
-    after_nav(true);
+    after_nav();
   }
 }
 

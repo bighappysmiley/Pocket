@@ -208,10 +208,10 @@ void App::handle_settings(InputEvent e) {
   if (e == InputEvent::Back) {
     if (s == ScreenId::SettingsRoot) {
       nav_.pop();
-      after_nav(true);
+      after_nav();
     } else {
       nav_.replace(ScreenId::SettingsRoot);
-      after_nav(true);
+      after_nav();
     }
     return;
   }
@@ -229,7 +229,7 @@ void App::handle_settings(InputEvent e) {
                          ScreenId::SettingsSound,    ScreenId::SettingsHomeApps, ScreenId::SettingsUnits,
                          ScreenId::SettingsCloud,    ScreenId::SettingsUpdate,   ScreenId::SettingsAbout};
       nav_.push(dest[focus_.index]);
-      after_nav(true);
+      after_nav();
     }
     return;
   }
@@ -277,7 +277,7 @@ void App::handle_settings(InputEvent e) {
       if (focus_.index == 1) go_lock();
       else if (focus_.index == 2) {
         nav_.replace(ScreenId::SettingsRoot);
-        after_nav(true);
+        after_nav();
       }
     }
     return;
@@ -297,10 +297,10 @@ void App::handle_settings(InputEvent e) {
         cfg_.wifi_ssid.clear();
         focus_.index = 0;
         nav_.push(ScreenId::OnboardingWifiList);
-        after_nav(true);
+        after_nav();
       } else {
         nav_.replace(ScreenId::SettingsRoot);
-        after_nav(true);
+        after_nav();
       }
     }
     return;
@@ -331,7 +331,7 @@ void App::handle_settings(InputEvent e) {
         redraw(true);
       } else if (focus_.index == 4) {
         nav_.replace(ScreenId::SettingsRoot);
-        after_nav(true);
+        after_nav();
       }
     }
     return;
@@ -353,10 +353,10 @@ void App::handle_settings(InputEvent e) {
         cfg_ = fresh;
         store_.save(cfg_);
         nav_.reset(ScreenId::OnboardingWelcome);
-        after_nav(true);
+        after_nav();
       } else {
         nav_.replace(ScreenId::SettingsRoot);
-        after_nav(true);
+        after_nav();
       }
     }
     return;
@@ -384,7 +384,7 @@ void App::handle_settings(InputEvent e) {
           last_pair_poll_ms_ = 0;
           focus_.index = 0;
           nav_.push(ScreenId::OnboardingCompanionQr);
-          after_nav(true);
+          after_nav();
         }
       } else {
         // Trial / subscribe — open companion billing via same pair path if unlinked
@@ -403,7 +403,7 @@ void App::handle_settings(InputEvent e) {
     dirty_ = true;
   } else if (e == InputEvent::Select) {
     nav_.replace(ScreenId::SettingsRoot);
-    after_nav(true);
+    after_nav();
   }
 }
 

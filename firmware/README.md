@@ -34,13 +34,17 @@ Device firmware for **Waveshare ESP32-S3-ePaper-3.97**, per the Pocket Build Spe
 
 Boot forces a **full 4-gray refresh** so any latched factory demo image is cleared.
 
-## Onboarding (v1.1)
+## Onboarding (v1.1 + companion required)
 
 ```
-welcome → wifi_list → phone SoftAP wait → connecting → companion_qr → pin_* → timezone → mic_test → done → home
+welcome → companion download (QR) → wifi_list → SoftAP wait → connecting → companion_pair (required) → pin_* → timezone → mic_test → done → home
 ```
 
 Wi‑Fi **password is never typed on the dial**. Device starts SoftAP `Pocket-XXXX`; the phone (companion `/wifi-setup` or captive portal at `192.168.4.1`) sends SSID + password.
+
+Companion download + pairing are **required** — no Skip.
+
+Refresh: routine focus/list updates use **partial**; full only on Spec §6 enters (Lock/Home/PIN/QR/connecting/app roots) and ghosting every 8 partials.
 
 Default `device_name` = `"Pocket"` until renamed in the Companion PWA.
 
