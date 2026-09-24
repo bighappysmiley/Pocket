@@ -9,15 +9,20 @@ namespace pocket {
 
 std::string companion_pair_url(std::string_view code) {
   std::string url = POCKET_PWA_ORIGIN;
-  url += "/pair?code=";
+  url += "/link?code=";
   url.append(code.data(), code.size());
   return url;
 }
 
-std::string companion_wifi_setup_url() {
+std::string companion_link_url() {
   std::string url = POCKET_PWA_ORIGIN;
-  url += "/wifi-setup";
+  url += "/link";
   return url;
+}
+
+std::string companion_wifi_setup_url() {
+  // Legacy alias — Wi‑Fi is part of Link now.
+  return companion_link_url();
 }
 
 std::string companion_download_url() {

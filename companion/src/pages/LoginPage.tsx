@@ -188,7 +188,7 @@ export function LoginPage() {
       )}
 
       <p className="footer-note">Pocket Cloud syncs Notes from your Pocket device.</p>
-      {returnTo.startsWith('/pair') ? (
+      {returnTo.startsWith('/pair') || returnTo.startsWith('/link') ? (
         <p className="muted" style={{ textAlign: 'center', fontSize: '0.875rem' }}>
           After sign-in you&apos;ll continue linking your Pocket.{' '}
           <Link to={returnTo}>Back to pair</Link>

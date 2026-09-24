@@ -1,5 +1,6 @@
 #include "pocket/canvas.hpp"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -11,170 +12,56 @@ namespace pocket {
 
 namespace {
 
-int glyph_index(char c) {
-  if (c == ' ') return 0;
-  if (c >= '0' && c <= '9') return 1 + (c - '0');
-  if (c >= 'A' && c <= 'Z') return 11 + (c - 'A');
-  if (c >= 'a' && c <= 'z') return 37 + (c - 'a');
-  switch (c) {
-    case '.':
-    case '\xB7':  // middle-dot when mis-decoded
-      return 63;
-    case ',':
-      return 64;
-    case ':':
-      return 65;
-    case '-':
-    case '\x96':  // en-dash-ish
-    case '\x97':
-      return 66;
-    case '\'':
-      return 67;
-    case '"':
-      return 68;
-    case '?':
-      return 69;
-    case '!':
-      return 70;
-    case '/':
-      return 71;
-    case '+':
-    case '=':
-    case '*':
-    case '#':
-    case '@':
-    case '%':
-    case '&':
-    case '(':
-    case ')':
-      return 66;  // fallback dash-like for rare symbols in Wi-Fi SSIDs
-    default:
-      return 0;
-  }
-}
+#include "font_ui.inc"
 
-#include "font5x7.inc"
-
-bool ink_at(const uint8_t* cols, int c, int r) {
-  if (c < 0 || c >= 5 || r < 0 || r >= 7) return false;
-  return (cols[c] & (1u << r)) != 0;
-}
-
-/** Bilinear sample of the 5×7 bitmap → soft edges under AA. */
-float ink_sample(const uint8_t* cols, float fx, float fy) {
-  const int x0 = static_cast<int>(fx >= 0.f ? fx : fx - 1.f);
-  const int y0 = static_cast<int>(fy >= 0.f ? fy : fy - 1.f);
-  const float tx = fx - static_cast<float>(x0);
-  const float ty = fy - static_cast<float>(y0);
-  const float v00 = ink_at(cols, x0, y0) ? 1.f : 0.f;
-  const float v10 = ink_at(cols, x0 + 1, y0) ? 1.f : 0.f;
-  const float v01 = ink_at(cols, x0, y0 + 1) ? 1.f : 0.f;
-  const float v11 = ink_at(cols, x0 + 1, y0 + 1) ? 1.f : 0.f;
-  const float a = v00 * (1.f - tx) + v10 * tx;
-  const float b = v01 * (1.f - tx) + v11 * tx;
-  return a * (1.f - ty) + b * ty;
-}
-
-Gray coverage_to_gray(int cover /*0..16*/, Gray fg) {
-  if (cover <= 0) return Gray::G3;  // unused
+Gray ink_to_gray(uint8_t ink /*0..3*/, Gray fg) {
+  if (ink == 0) return Gray::G3;  // unused by caller
   if (fg == Gray::G0) {
-    // Black ink on light background — soft edges via mid grays (4×4 AA).
-    if (cover >= 12) return Gray::G0;
-    if (cover >= 6) return Gray::G1;
+    // ink 3 = black, 2 = dark gray, 1 = light gray
+    if (ink >= 3) return Gray::G0;
+    if (ink == 2) return Gray::G1;
     return Gray::G2;
   }
-  // Light ink on dark (focus tiles).
-  if (cover >= 12) return fg;
-  if (cover >= 6) return Gray::G2;
+  // Light on dark focus tiles: invert sense toward fg
+  if (ink >= 3) return fg;
+  if (ink == 2) return Gray::G2;
   return Gray::G1;
 }
 
 }  // namespace
 
-int Canvas::role_px(TextRole r) {
+bool Canvas::use_display_font(TextRole r) {
   switch (r) {
-    case TextRole::StatusBar:
-      return 12;
-    case TextRole::Secondary:
-      return 16;
-    case TextRole::Body:
-      return 22;
     case TextRole::ScreenTitle:
-      return 32;
     case TextRole::WordMark:
-      return 40;
     case TextRole::PinDigit:
-      return 40;
     case TextRole::HugeClock:
-      return 64;
+      return true;
+    default:
+      return false;
   }
-  return 22;
 }
 
 int Canvas::role_scale(TextRole r) {
-  // Compact type for 480×800. Body matches status-bar density; titles stay modest.
-  switch (r) {
-    case TextRole::StatusBar:
-      return 2;
-    case TextRole::Secondary:
-      return 1;
-    case TextRole::Body:
-      return 2;
-    case TextRole::ScreenTitle:
-      return 2;
-    case TextRole::WordMark:
-      return 3;
-    case TextRole::PinDigit:
-      return 3;
-    case TextRole::HugeClock:
-      return 6;
-  }
-  return 2;
+  return r == TextRole::HugeClock ? 2 : 1;
 }
 
-int Canvas::text_height(TextRole role) const { return 7 * role_scale(role); }
+int Canvas::text_height(TextRole role) const {
+  const int h = use_display_font(role) ? kDisp_H : kBody_H;
+  return h * role_scale(role);
+}
 
 int Canvas::text_width(std::string_view text, TextRole role) const {
   const int scale = role_scale(role);
-  // Tight tracking: 1px gap at scale 1, scale/2 otherwise — less sparse than +scale.
-  const int gap = scale <= 1 ? 1 : (scale / 2);
-  return static_cast<int>(text.size()) * (5 * scale + gap);
-}
-
-void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray g) {
-  const int scale = role_scale(role);
-  const int gap = scale <= 1 ? 1 : (scale / 2);
-  int cx = x;
+  const bool disp = use_display_font(role);
+  int w = 0;
   for (unsigned char uc : text) {
-    // Skip UTF-8 continuation / non-ASCII so multi-byte punctuation does not spray glyphs.
     if (uc >= 0x80) continue;
-    char c = static_cast<char>(uc);
-    const int gi = glyph_index(c);
-    const uint8_t* cols = kFont5x7[gi];
-
-    // Always soft-AA (including scale 1) so 5×7 isn't hard-edged/pixelated.
-    constexpr int kAA = 4;
-    for (int oy = 0; oy < 7 * scale; ++oy) {
-      for (int ox = 0; ox < 5 * scale; ++ox) {
-        float sum = 0.f;
-        for (int sy = 0; sy < kAA; ++sy) {
-          for (int sx = 0; sx < kAA; ++sx) {
-            const float fx =
-                (static_cast<float>(ox) + (static_cast<float>(sx) + 0.5f) / static_cast<float>(kAA)) /
-                static_cast<float>(scale);
-            const float fy =
-                (static_cast<float>(oy) + (static_cast<float>(sy) + 0.5f) / static_cast<float>(kAA)) /
-                static_cast<float>(scale);
-            sum += ink_sample(cols, fx, fy);
-          }
-        }
-        const int cover = static_cast<int>(sum + 0.5f);
-        if (cover == 0) continue;
-        set_pixel(cx + ox, y + oy, coverage_to_gray(cover, g));
-      }
-    }
-    cx += 5 * scale + gap;
+    const char c = static_cast<char>(uc);
+    if (disp) w += kDisp_glyph(c).adv * scale;
+    else w += kBody_glyph(c).adv * scale;
   }
+  return w;
 }
 
 void Canvas::clear(Gray g) {
@@ -240,6 +127,54 @@ void Canvas::line(int x0, int y0, int x1, int y1, Gray g) {
   }
 }
 
+void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray g) {
+  const int scale = role_scale(role);
+  const bool disp = use_display_font(role);
+  const int native_h = disp ? kDisp_H : kBody_H;
+  int cx = x;
+
+  for (unsigned char uc : text) {
+    if (uc >= 0x80) continue;
+    const char c = static_cast<char>(uc);
+    const uint8_t gw = disp ? kDisp_glyph(c).w : kBody_glyph(c).w;
+    const uint8_t adv = disp ? kDisp_glyph(c).adv : kBody_glyph(c).adv;
+    const uint8_t* bits = disp ? kDisp_glyph(c).bits : kBody_glyph(c).bits;
+
+    if (scale == 1) {
+      for (int row = 0; row < native_h; ++row) {
+        for (int col = 0; col < gw; ++col) {
+          const uint8_t ink = bits[row * gw + col];
+          if (ink == 0) continue;
+          set_pixel(cx + col, y + row, ink_to_gray(ink, g));
+        }
+      }
+    } else {
+      // Integer upscale with coverage AA for HugeClock.
+      for (int oy = 0; oy < native_h * scale; ++oy) {
+        for (int ox = 0; ox < gw * scale; ++ox) {
+          int cover = 0;
+          for (int sy = 0; sy < 2; ++sy) {
+            for (int sx = 0; sx < 2; ++sx) {
+              const int src_x = (ox * 2 + sx) / (scale * 2);
+              const int src_y = (oy * 2 + sy) / (scale * 2);
+              if (src_x >= 0 && src_x < gw && src_y >= 0 && src_y < native_h) {
+                cover += bits[src_y * gw + src_x];
+              }
+            }
+          }
+          // cover 0..12 (4 samples × ink 0..3)
+          if (cover <= 0) continue;
+          uint8_t ink = 1;
+          if (cover >= 9) ink = 3;
+          else if (cover >= 5) ink = 2;
+          set_pixel(cx + ox, y + oy, ink_to_gray(ink, g));
+        }
+      }
+    }
+    cx += adv * scale;
+  }
+}
+
 void Canvas::draw_text_centered(int cx, int y, std::string_view text, TextRole role, Gray g) {
   const int w = text_width(text, role);
   draw_text(cx - w / 2, y, text, role, g);
@@ -258,10 +193,9 @@ void Canvas::draw_text_fit(int x, int y, int max_w, std::string_view text, TextR
 
 void Canvas::draw_focus_tile(int x, int y, int w, int h, std::string_view label, TextRole role) {
   fill_rect(x, y, w, h, Gray::G0);
-  const int pad = 12;
+  const int pad = 10;
   const int max_w = std::max(8, w - pad * 2);
   const int th = text_height(role);
-  // Fit then center the (possibly truncated) label.
   std::string s(label);
   const std::string ell = "...";
   if (text_width(s, role) > max_w) {
@@ -281,17 +215,15 @@ bool Canvas::draw_qr(int x, int y, int size, std::string_view payload) {
     return false;
   }
   const int n = qrcodegen_getSize(qr);
-  if (n <= 0 || size < n) return false;
-  const int cell = size / n;
+  if (n <= 0) return false;
+  const int cell = std::max(1, size / n);
   const int drawn = cell * n;
-  const int x0 = x + (size - drawn) / 2;
-  const int y0 = y + (size - drawn) / 2;
-  fill_rect(x, y, size, size, Gray::G3);
-  for (int yy = 0; yy < n; ++yy) {
-    for (int xx = 0; xx < n; ++xx) {
-      if (qrcodegen_getModule(qr, xx, yy)) {
-        fill_rect(x0 + xx * cell, y0 + yy * cell, cell, cell, Gray::G0);
-      }
+  const int ox = x + (size - drawn) / 2;
+  const int oy = y + (size - drawn) / 2;
+  fill_rect(ox, oy, drawn, drawn, Gray::G3);
+  for (int r = 0; r < n; ++r) {
+    for (int c = 0; c < n; ++c) {
+      if (qrcodegen_getModule(qr, c, r)) fill_rect(ox + c * cell, oy + r * cell, cell, cell, Gray::G0);
     }
   }
   return true;

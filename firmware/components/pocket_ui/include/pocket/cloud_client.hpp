@@ -22,6 +22,8 @@ namespace pocket {
 inline constexpr const char* kPairCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 std::string companion_pair_url(std::string_view code);
+/** Unified Link flow in the app (Wi‑Fi setup + pairing). */
+std::string companion_link_url();
 std::string companion_wifi_setup_url();
 std::string companion_download_url();
 std::string companion_display_origin();

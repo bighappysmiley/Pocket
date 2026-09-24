@@ -302,8 +302,8 @@ say "Size:     $BIN_BYTES bytes"
 if [[ "$BIN_BYTES" -lt 450000 ]]; then
   die "Firmware file looks too small ($BIN_BYTES bytes). Re-download pocket-merged.bin from firmware-latest."
 fi
-if ! strings "$BIN_PATH" 2>/dev/null | grep -q 'POCKET-LIVE-v20'; then
-  say "WARNING: bin does not contain POCKET-LIVE-v20 — you may have an old download."
+if ! strings "$BIN_PATH" 2>/dev/null | grep -q 'POCKET-LIVE-v21'; then
+  say "WARNING: bin does not contain POCKET-LIVE-v21 — you may have an old download."
   say "Re-download from https://github.com/bighappysmiley/Pocket/releases/tag/firmware-latest"
 fi
 say "Port:     $PORT_PATH"
@@ -349,7 +349,7 @@ fi
 
 say ""
 say "Done. Unplug USB for 2 seconds, plug back in, wait up to ~20s."
-say "Serial MUST show:  *** POCKET-LIVE-v20-type-link ***"
+say "Serial MUST show:  *** POCKET-LIVE-v21-dejavu-link ***"
 say "Then: Welcome with larger Pocket wordmark; Wi-Fi scan lists real SSIDs."
 say "If you only see a PSRAM line, you flashed an old UART build — re-download."
 say "Rotary Up/Down moves focus; press selects Continue."

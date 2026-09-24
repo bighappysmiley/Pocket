@@ -15,9 +15,8 @@ import { ListsListPage } from './pages/ListsListPage'
 import { LoginPage } from './pages/LoginPage'
 import { NoteDetailPage } from './pages/NoteDetailPage'
 import { NotesListPage } from './pages/NotesListPage'
-import { PairPage } from './pages/PairPage'
+import { LinkPage, PairRedirect, WifiSetupRedirect } from './pages/LinkPage'
 import { PassesPage } from './pages/PassesPage'
-import { WifiSetupPage } from './pages/WifiSetupPage'
 import { UpgradePage } from './pages/UpgradePage'
 import { AdminPage } from './pages/AdminPage'
 
@@ -35,7 +34,8 @@ export default function App() {
           <Route element={<AppLayout bare />}>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
-            <Route path="/wifi-setup" element={<WifiSetupPage />} />
+            <Route path="/wifi-setup" element={<WifiSetupRedirect />} />
+            <Route path="/link" element={<LinkPage />} />
           </Route>
 
           <Route element={<RequireAuth />}>
@@ -45,7 +45,8 @@ export default function App() {
               <Route path="/devices" element={<DevicesPage />} />
               <Route path="/devices/:id" element={<DeviceDetailPage />} />
               <Route path="/devices/:id/setup" element={<DeviceSetupPage />} />
-              <Route path="/pair" element={<PairPage />} />
+              <Route path="/pair" element={<PairRedirect />} />
+              <Route path="/link" element={<LinkPage />} />
               <Route path="/billing" element={<BillingPage />} />
               <Route path="/billing/success" element={<BillingSuccessPage />} />
               <Route path="/billing/cancel" element={<BillingCancelPage />} />

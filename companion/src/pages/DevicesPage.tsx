@@ -44,10 +44,10 @@ export function DevicesPage() {
 
       {showHelp ? (
         <div className="panel stack-sm" role="dialog" aria-label="Link instructions">
-          <p>On your Pocket: finish Wi‑Fi, then open the QR screen (or Settings → Pocket Cloud).</p>
+          <p>On your Pocket: open Link, then continue in this app.</p>
           <div className="actions-row">
-            <Link className="btn btn-primary" to="/pair">
-              Enter code
+            <Link className="btn btn-primary" to="/link">
+              Link a Pocket
             </Link>
             <button type="button" className="btn btn-ghost" onClick={() => setShowHelp(false)}>
               Close
@@ -62,15 +62,11 @@ export function DevicesPage() {
         <div className="empty panel stack">
           <h2>No Pocket linked yet</h2>
           <p className="muted">
-            First set Wi‑Fi from this phone (Pocket → pick a network → join Pocket-XXXX here →{' '}
-            <Link to="/wifi-setup">Wi‑Fi setup</Link>). Then scan the pairing QR or enter the
-            8-character code.
+            On Pocket, open Link and join the Wi‑Fi shown there. This app walks you through home Wi‑Fi
+            and linking to your account in one flow.
           </p>
-          <Link className="btn btn-secondary" to="/wifi-setup">
-            Wi‑Fi setup
-          </Link>
-          <Link className="btn btn-primary" to="/pair">
-            Enter pairing code
+          <Link className="btn btn-primary" to="/link">
+            Link a Pocket
           </Link>
         </div>
       ) : (

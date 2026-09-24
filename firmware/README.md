@@ -37,10 +37,10 @@ Boot forces a **full 4-gray refresh** so any latched factory demo image is clear
 ## Onboarding (v1.1 + companion required)
 
 ```
-welcome → companion download (QR) → Pocket Wi-Fi (SSID + password, no QR) → connecting → companion_pair (QR + code) → pin_* → timezone → mic_test → done → home
+welcome → companion download (QR) → Link (SoftAP + /link) → connecting → Link (pair code) → pin_* → timezone → mic_test → done → home
 ```
 
-Wi‑Fi **password is never typed on the dial**. Device starts SoftAP `Pocket-XXXX` with a short WPA2 password shown on screen; join that network on the phone, then use the Pocket app or captive portal at `192.168.4.1` to send home SSID + password.
+**Link** is one flow in the Pocket app (`/link`): join SoftAP, send home Wi‑Fi, then link to the same account. No separate Wi‑Fi setup vs pairing.
 
 Companion download + pairing are **required** — no Skip.
 
