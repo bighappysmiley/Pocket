@@ -377,6 +377,7 @@ async function ensureAdminSchema() {
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS pending_wifi_password TEXT`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS pending_wifi_at TIMESTAMPTZ`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS parental_json TEXT NOT NULL DEFAULT '{}'`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS lock_message TEXT NOT NULL DEFAULT ''`);
   await query(`CREATE TABLE IF NOT EXISTS badges (
     id TEXT PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
@@ -722,7 +723,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v11-v1-polish" });
+        return json(req, { ok: true, build: "scram-api-v12-lock-icons" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
@@ -889,7 +890,7 @@ export default {
         if (!user) return json(req, { message: "Sign in to continue." }, 401);
         const id = decodeURIComponent(deviceIdMatch[1]);
         const rows = await query(
-          `SELECT id, device_id, device_name, linked_at, last_seen_at, parental_json FROM device_links WHERE (id='${esc(id)}' OR device_id='${esc(id)}') AND user_id='${esc(user.id)}' LIMIT 1`,
+          `SELECT id, device_id, device_name, linked_at, last_seen_at, parental_json, lock_message FROM device_links WHERE (id='${esc(id)}' OR device_id='${esc(id)}') AND user_id='${esc(user.id)}' LIMIT 1`,
         );
         const row = rows[0];
         if (!row) return json(req, { message: "That device wasn't found." }, 404);
@@ -903,22 +904,41 @@ export default {
             linked_at: row.linked_at,
             last_seen_at: row.last_seen_at,
             parental,
+            lock_message: row.lock_message || "",
           });
         }
         const body = await req.json().catch(() => ({}));
-        let name = typeof body.device_name === "string" ? body.device_name.trim() : "";
-        if (!name) return json(req, { message: "Enter a name" }, 400);
-        if (name.length > 20) return json(req, { message: "Name must be 20 characters or fewer." }, 400);
-        if (!/^[\p{L}\p{N} \-']+$/u.test(name)) {
-          return json(req, { message: "That name uses characters that aren't allowed." }, 400);
+        const hasName = typeof body.device_name === "string";
+        const hasLockMessage = typeof body.lock_message === "string";
+        if (!hasName && !hasLockMessage) {
+          return json(req, { message: "Nothing to update." }, 400);
         }
-        await query(`UPDATE device_links SET device_name='${esc(name)}' WHERE id='${esc(row.id)}'`);
+        const sets = [];
+        let name = row.device_name;
+        if (hasName) {
+          name = body.device_name.trim();
+          if (!name) return json(req, { message: "Enter a name" }, 400);
+          if (name.length > 20) return json(req, { message: "Name must be 20 characters or fewer." }, 400);
+          if (!/^[\p{L}\p{N} \-']+$/u.test(name)) {
+            return json(req, { message: "That name uses characters that aren't allowed." }, 400);
+          }
+          sets.push(`device_name=${sqlStr(name)}`);
+        }
+        let lockMessage = row.lock_message || "";
+        if (hasLockMessage) {
+          lockMessage = body.lock_message.trim().slice(0, 40);
+          sets.push(`lock_message=${sqlStr(lockMessage)}`);
+        }
+        if (sets.length) {
+          await query(`UPDATE device_links SET ${sets.join(", ")} WHERE id='${esc(row.id)}'`);
+        }
         return json(req, {
           id: row.id,
           device_id: row.device_id,
           device_name: name,
           linked_at: row.linked_at,
           last_seen_at: row.last_seen_at,
+          lock_message: lockMessage,
         });
       }
 
@@ -989,7 +1009,7 @@ export default {
         if (!userId) return json(req, { message: "Sign in to continue." }, 401);
         const now = new Date().toISOString();
         const links = await query(
-          `SELECT id, device_id, device_name, pending_wifi_ssid, pending_wifi_password, pending_wifi_at, parental_json
+          `SELECT id, device_id, device_name, pending_wifi_ssid, pending_wifi_password, pending_wifi_at, parental_json, lock_message
            FROM device_links WHERE device_id='${esc(deviceId)}' ORDER BY linked_at DESC LIMIT 1`,
         );
         const link = links[0];
@@ -1019,6 +1039,7 @@ export default {
           cloud_entitled: entitled,
           device_id: link.device_id,
           device_name: link.device_name,
+          lock_message: link.lock_message || "",
           parental,
           pin_gated_apps: Array.isArray(parental.pin_gated_apps) ? parental.pin_gated_apps : [],
           hide_pass_share: parental.hide_pass_share === true,
