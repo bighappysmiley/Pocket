@@ -1,7 +1,7 @@
 /* Pocket Cloud shell service worker — caches app shell for A2HS offline open.
  * Paths are scoped to the SW URL so project Pages (/Pocket/) and root hosts both work.
  */
-const CACHE = 'pocket-shell-v2'
+const CACHE = 'pocket-shell-v3'
 const BASE = self.location.pathname.replace(/\/sw\.js$/, '') || ''
 const SHELL = [`${BASE}/`, `${BASE}/index.html`, `${BASE}/manifest.webmanifest`, `${BASE}/favicon.svg`]
 

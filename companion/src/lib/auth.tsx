@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { api, getApiBase, isApiConfigured, isNetworkError } from './api'
+import { api, getApiBase, getSessionToken, isApiConfigured, isNetworkError } from './api'
 import { clearMutationQueue, flushMutationQueue, type QueuedMutation } from './queue'
 import { ApiError, type Entitlement, type User } from './types'
 
@@ -59,10 +59,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (me.entitlement.entitled) {
         await flushQueued(async (m) => {
           const base = getApiBase()
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          }
+          const session = getSessionToken()
+          if (session) headers['x-pocket-session'] = session
           const res = await fetch(`${base}${m.path}`, {
             method: m.method,
             credentials: 'include',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            headers,
             body: m.body !== undefined ? JSON.stringify(m.body) : undefined,
           })
           if (!res.ok) {

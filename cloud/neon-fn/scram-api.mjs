@@ -39,7 +39,8 @@ function cors(req) {
   if (o) {
     h["access-control-allow-origin"] = o;
     h["access-control-allow-credentials"] = "true";
-    h["access-control-allow-headers"] = "content-type,authorization,x-device-key";
+    // x-pocket-session: bearer alternative — third-party cookies often blocked on mobile Safari / ITP.
+    h["access-control-allow-headers"] = "content-type,authorization,x-device-key,x-pocket-session";
     h["access-control-allow-methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
   }
   return h;
@@ -241,7 +242,10 @@ async function query(sql) {
   }
 }
 async function userFromSession(req) {
-  const token = getCookie(req, SESSION_COOKIE);
+  // Prefer explicit header (works cross-site when cookies are blocked on mobile).
+  const headerTok = (req.headers.get("x-pocket-session") || "").trim();
+  const cookieTok = getCookie(req, SESSION_COOKIE);
+  const token = headerTok || cookieTok;
   if (!token) return null;
   const sessions = await query(`SELECT user_id, expires_at FROM sessions WHERE token_hash='${esc(sha256Hex(token))}'`);
   const session = sessions[0];
@@ -711,7 +715,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v9-no-email-verify" });
+        return json(req, { ok: true, build: "scram-api-v9-session-header" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
@@ -754,13 +758,23 @@ export default {
         }
         await query(`INSERT INTO sessions (id,user_id,token_hash,created_at,expires_at) VALUES ('${esc(newId())}','${esc(user.id)}','${esc(sha256Hex(token))}','${nowIso}','${expires}')`);
         await query(`UPDATE users SET last_login_at='${nowIso}' WHERE id='${esc(user.id)}'`);
-        return json(req, { ok: true, user: { id: user.id, email: user.email, role: user.role || "user", is_admin: isAdminUser(user) } }, 200, {
-          "set-cookie": sessionCookie(token, 30 * 86400),
-        });
+        // session_token in body: required on mobile where cross-site cookies are blocked.
+        return json(
+          req,
+          {
+            ok: true,
+            session_token: token,
+            user: { id: user.id, email: user.email, role: user.role || "user", is_admin: isAdminUser(user) },
+          },
+          200,
+          { "set-cookie": sessionCookie(token, 30 * 86400) },
+        );
       }
 
       if (req.method === "POST" && path === "/v1/auth/logout") {
-        const token = getCookie(req, SESSION_COOKIE);
+        const headerTok = (req.headers.get("x-pocket-session") || "").trim();
+        const cookieTok = getCookie(req, SESSION_COOKIE);
+        const token = headerTok || cookieTok;
         if (token) await query(`DELETE FROM sessions WHERE token_hash='${esc(sha256Hex(token))}'`);
         return json(req, { ok: true }, 200, {
           "set-cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`,

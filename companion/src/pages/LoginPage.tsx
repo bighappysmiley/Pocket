@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
-import { api, isApiConfigured, isNetworkError } from '../lib/api'
+import { api, getSessionToken, isApiConfigured, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/types'
 import { ErrorState } from '../components/ErrorState'
@@ -42,6 +42,8 @@ export function LoginPage() {
       await api.login(email.trim(), password)
       await refresh()
       setState('idle')
+      // Cross-site cookie may be blocked; session_token in localStorage should keep /me alive.
+      // If still not authenticated after refresh, show a clear error instead of a silent no-op.
     } catch (err) {
       setState('error')
       if (isNetworkError(err)) {

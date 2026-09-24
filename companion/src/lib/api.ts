@@ -3,6 +3,7 @@ import { ApiError, type BackupMeta, type Connector, type ConnectorProvider, type
 const BUILD_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
 const PROD_DEFAULT = 'https://br-super-hill-b40yvyrj-api.compute.c-6.us-east-2.aws.neon.tech'
 const STORAGE_KEY = 'pocket_cloud_api_base'
+const SESSION_KEY = 'pocket_session_token'
 
 function normalizeOrigin(raw: string): string {
   return raw.trim().replace(/\/$/, '')
@@ -43,6 +44,28 @@ export function clearApiBaseOverride(): void {
   }
 }
 
+/** Cross-site session token — cookies often fail on mobile Safari (ITP). */
+export function getSessionToken(): string {
+  try {
+    return localStorage.getItem(SESSION_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function setSessionToken(token: string): void {
+  try {
+    if (!token) localStorage.removeItem(SESSION_KEY)
+    else localStorage.setItem(SESSION_KEY, token)
+  } catch {
+    // ignore
+  }
+}
+
+export function clearSessionToken(): void {
+  setSessionToken('')
+}
+
 function isLocalhostOrigin(origin: string): boolean {
   return /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(origin)
 }
@@ -72,12 +95,17 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
   const base = getApiBase()
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
+  const session = getSessionToken()
+  if (session) headers['x-pocket-session'] = session
+
   let res: Response
   try {
     res = await fetch(url, {
       method: opts.method ?? (opts.body ? 'POST' : 'GET'),
       credentials: 'include',
-      headers: opts.body ? { 'Content-Type': 'application/json', Accept: 'application/json' } : { Accept: 'application/json' },
+      headers,
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: opts.signal,
     })
@@ -100,6 +128,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   }
 
   if (!res.ok) {
+    if (res.status === 401) clearSessionToken()
     const msg =
       (data && typeof data === 'object' && 'message' in data && typeof (data as { message: unknown }).message === 'string'
         ? (data as { message: string }).message
@@ -123,23 +152,38 @@ export const api = {
       body: { email, password },
     })
   },
-  login(email: string, password: string) {
-    return request<{ ok: true; user: { id: string; email: string } }>('/v1/auth/login', {
+  async login(email: string, password: string) {
+    const res = await request<{
+      ok: true
+      session_token?: string
+      user: { id: string; email: string; role?: string; is_admin?: boolean }
+    }>('/v1/auth/login', {
       method: 'POST',
       body: { email, password },
     })
+    if (res.session_token) setSessionToken(res.session_token)
+    return res
+  },
+  async logout() {
+    try {
+      await request<{ ok: true }>('/v1/auth/logout', { method: 'POST' })
+    } finally {
+      clearSessionToken()
+    }
+  },
+  me() {
+    return request<MeResponse>('/v1/me')
   },
   requestMagicLink(email: string) {
     return request<{ ok: true }>('/v1/auth/magic-link', { method: 'POST', body: { email } })
   },
-  consumeMagicLink(token: string) {
-    return request<{ ok: true }>('/v1/auth/callback', { method: 'POST', body: { token } })
-  },
-  logout() {
-    return request<{ ok: true }>('/v1/auth/logout', { method: 'POST' })
-  },
-  me() {
-    return request<MeResponse>('/v1/me')
+  async consumeMagicLink(token: string) {
+    const res = await request<{ ok: true; session_token?: string }>('/v1/auth/callback', {
+      method: 'POST',
+      body: { token },
+    })
+    if (res.session_token) setSessionToken(res.session_token)
+    return res
   },
 
   // Notes
