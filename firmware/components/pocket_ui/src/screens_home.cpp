@@ -49,10 +49,10 @@ void App::handle_home(InputEvent e) {
   focus_.count = n;
   if (e == InputEvent::Up) {
     focus_.move(-1);
-    dirty_ = true;
+    mark_content_dirty();
   } else if (e == InputEvent::Down) {
     focus_.move(1);
-    dirty_ = true;
+    mark_content_dirty();
   } else if (e == InputEvent::Select && n > 0) {
     switch (visible[focus_.index]) {
       case HomeApp::Notes:

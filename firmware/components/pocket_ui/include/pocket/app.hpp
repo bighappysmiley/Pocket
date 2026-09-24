@@ -177,7 +177,7 @@ class App {
   void redraw(bool full);
 
  private:
-  enum class DirtyKind : uint8_t { FullCanvas, ContentBand, StatusBar };
+  enum class DirtyKind : uint8_t { FullCanvas, ContentBand, StatusBar, Region };
 
   void render();
   void draw_status_bar();
@@ -188,10 +188,16 @@ class App {
   void after_nav();
   void mark_content_dirty();
   void mark_status_dirty();
+  /** Tight e-ink region update (PIN digits, focus rows, etc.). */
+  void mark_region_dirty(int x, int y, int w, int h);
+  void mark_pin_dirty();
   void present_canvas(bool full);
   void play_sound(SoundId id);
   bool mint_pair_session();
   void begin_softap_link();
+  /** Draw PIN slots; mask_completed hides entered digits as dots (unlock). */
+  void draw_pin_entry(bool mask_completed, int band_top);
+  void pin_band_geometry(int& x, int& y, int& w, int& h) const;
 
   // Screen handlers
   void render_lock();
@@ -236,11 +242,16 @@ class App {
   InputMapper input_{};  // unused when events injected externally
   bool dirty_ = true;
   DirtyKind dirty_kind_ = DirtyKind::FullCanvas;
+  int dirty_rx_ = 0;
+  int dirty_ry_ = 0;
+  int dirty_rw_ = 0;
+  int dirty_rh_ = 0;
 
   // UI transient state
   FocusModel focus_{};
   std::string pin_entry_;
   std::string pin_pending_;
+  char pin_digit_working_ = '0';
   int pin_fail_count_ = 0;
   uint32_t pin_lockout_until_ms_ = 0;
   uint32_t error_until_ms_ = 0;

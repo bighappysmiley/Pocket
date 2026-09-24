@@ -109,7 +109,7 @@ inline bool screen_requires_full_enter(ScreenId s) {
   switch (s) {
     case ScreenId::Lock:
     case ScreenId::Home:
-    case ScreenId::Pin:
+    case ScreenId::Pin:  // full once; digit spins use region partial
     case ScreenId::PassDetail:
     case ScreenId::SettingsUpdateProgress:
     case ScreenId::OnboardingWelcome:
@@ -121,6 +121,7 @@ inline bool screen_requires_full_enter(ScreenId s) {
     case ScreenId::OnboardingPinLength:
     case ScreenId::OnboardingPinSet:
     case ScreenId::OnboardingPinConfirm:
+    case ScreenId::OnboardingTimezone:
     case ScreenId::NotesList:
     case ScreenId::ListsList:
     case ScreenId::LedgerComingSoon:

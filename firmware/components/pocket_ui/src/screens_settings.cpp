@@ -194,10 +194,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 9;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       ScreenId dest[] = {ScreenId::SettingsSecurity, ScreenId::SettingsWifi,     ScreenId::SettingsDisplay,
                          ScreenId::SettingsSound,    ScreenId::SettingsHomeApps, ScreenId::SettingsUnits,
@@ -212,11 +212,11 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 2;
     if (e == InputEvent::Up || e == InputEvent::Down) {
       focus_.move(e == InputEvent::Down ? 1 : -1);
-      dirty_ = true;
+      mark_content_dirty();
     } else {
       cfg_.weather_units = static_cast<uint8_t>(focus_.index);
       store_.save(cfg_);
-      dirty_ = true;
+      mark_content_dirty();
     }
     return;
   }
@@ -225,15 +225,15 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 6;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index != 5) {
         cfg_.home_visible ^= static_cast<uint8_t>(1u << focus_.index);
         store_.save(cfg_);
-        dirty_ = true;
+        mark_content_dirty();
       }
     }
     return;
@@ -243,10 +243,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 3;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 1) go_lock();
       else if (focus_.index == 2) {
@@ -261,10 +261,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 2;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         wifi_networks_ = wifi_.scan();
@@ -284,10 +284,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 5;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         const uint16_t opts[] = {30, 60, 120, 300};
@@ -296,11 +296,11 @@ void App::handle_settings(InputEvent e) {
           if (opts[i] == cfg_.idle_lock_s) cur = i;
         cfg_.idle_lock_s = opts[(cur + 1) % 4];
         store_.save(cfg_);
-        dirty_ = true;
+        mark_content_dirty();
       } else if (focus_.index == 1) {
         cfg_.show_batt_pct = !cfg_.show_batt_pct;
         store_.save(cfg_);
-        dirty_ = true;
+        mark_content_dirty();
       } else if (focus_.index == 2) {
         redraw(true);
       } else if (focus_.index == 4) {
@@ -315,10 +315,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 2;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         // Reset confirm — immediate wipe for v1 sim
@@ -340,22 +340,22 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 3;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 2) {
         // Link companion app — mint pair session + show QR
         if (!wifi_.connected()) {
           error_msg_ = "Connect to Wi-Fi first.";
           error_until_ms_ = now_ms_ + 2500;
-          dirty_ = true;
+          mark_content_dirty();
         } else {
           if (!mint_pair_session()) {
             error_msg_ = "Couldn't create pairing code.";
             error_until_ms_ = now_ms_ + 2500;
-            dirty_ = true;
+            mark_content_dirty();
             return;
           }
           focus_.index = 0;
@@ -364,7 +364,7 @@ void App::handle_settings(InputEvent e) {
         }
       } else {
         // Trial / subscribe — open companion billing via same pair path if unlinked
-        dirty_ = true;
+        mark_content_dirty();
       }
     }
     return;
@@ -373,10 +373,10 @@ void App::handle_settings(InputEvent e) {
   // Generic: Up/Down focus, Select/Back
   if (e == InputEvent::Up) {
     focus_.move(-1);
-    dirty_ = true;
+    mark_content_dirty();
   } else if (e == InputEvent::Down) {
     focus_.move(1);
-    dirty_ = true;
+    mark_content_dirty();
   } else if (e == InputEvent::Select) {
     nav_.replace(ScreenId::SettingsRoot);
     after_nav();

@@ -37,9 +37,10 @@ void App::render_onboarding() {
                                         "Notes, lists, and daily tools — quiet, focused, always with you.",
                                         Canvas::TextRole::Body, Gray::G0);
       canvas_.draw_text_wrapped(kSideMargin, y + 12, kWrapW, kLineGap,
-                                "Setup uses the Pocket app on your phone.", Canvas::TextRole::Secondary, Gray::G1);
+                                "A short setup with the Pocket app gets you online and linked.",
+                                Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = 1;
-      canvas_.draw_focus_tile(kSideMargin, 720, kCanvasW - 32, kFocusRowH, "Continue", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, 720, kCanvasW - 32, kFocusRowH, "Begin setup", Canvas::TextRole::Body);
       break;
     }
     case ScreenId::OnboardingCompanionDownload: {
@@ -169,46 +170,43 @@ void App::render_onboarding() {
       if (wifi_ap_ssid_.empty()) wifi_ap_ssid_ = wifi_.provision_ap_ssid();
       if (wifi_ap_pass_.empty()) wifi_ap_pass_ = wifi_.provision_ap_password();
 
-      canvas_.draw_text(kSideMargin, ty, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap, "1. Join this Wi-Fi on your phone",
+      canvas_.draw_text(kSideMargin, ty, "Phone setup", Canvas::TextRole::ScreenTitle, Gray::G0);
+      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 48, kWrapW, kLineGap,
+                                        "Join Pocket's Wi-Fi, then enter your home network password.",
                                         Canvas::TextRole::Secondary, Gray::G1);
-      y = canvas_.draw_text_wrapped(kSideMargin, y + 4, kWrapW, kLineGap, "2. Open http://192.168.4.1",
-                                    Canvas::TextRole::Body, Gray::G0);
-      y = canvas_.draw_text_wrapped(kSideMargin, y + 4, kWrapW, kLineGap, "3. Enter home Wi-Fi password there",
-                                    Canvas::TextRole::Secondary, Gray::G1);
 
-      canvas_.draw_text(kSideMargin, y + 16, "Network", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, y + 16, "Join this network", Canvas::TextRole::Secondary, Gray::G1);
       if (!wifi_ap_ssid_.empty()) {
-        canvas_.draw_text_fit(kSideMargin, y + 48, kWrapW, wifi_ap_ssid_, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin, y + 44, kWrapW, wifi_ap_ssid_, Canvas::TextRole::Body, Gray::G0);
       } else {
-        canvas_.draw_text(kSideMargin, y + 48, "Could not start Wi-Fi", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin, y + 44, "Could not start Wi-Fi", Canvas::TextRole::Body, Gray::G0);
       }
 
-      canvas_.draw_text(kSideMargin, y + 96, "Password", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, y + 88, "Password", Canvas::TextRole::Secondary, Gray::G1);
       if (!wifi_ap_pass_.empty()) {
-        canvas_.draw_text(kSideMargin, y + 128, wifi_ap_pass_, Canvas::TextRole::ScreenTitle, Gray::G0);
+        canvas_.draw_text(kSideMargin, y + 116, wifi_ap_pass_, Canvas::TextRole::ScreenTitle, Gray::G0);
       } else {
-        canvas_.draw_text_wrapped(kSideMargin, y + 128, kWrapW, kLineGap, "No password — go back",
+        canvas_.draw_text_wrapped(kSideMargin, y + 116, kWrapW, kLineGap, "No password — go back",
                                   Canvas::TextRole::Body, Gray::G0);
       }
 
       const int qr_size = 110;
       const int qr_x = (kCanvasW - qr_size) / 2;
-      const int qr_y = std::max(y + 180, 380);
+      const int qr_y = std::max(y + 168, 360);
       if (!canvas_.draw_qr(qr_x, qr_y, qr_size, softap_portal_url())) {
         canvas_.stroke_rect(qr_x, qr_y, qr_size, qr_size, Gray::G0);
       }
-      canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 14, "Scan to open Wi-Fi setup",
+      canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 12, "Scan · or open 192.168.4.1",
                                  Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 48, "Waiting for Wi-Fi password…",
+      canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 44, "Waiting for home Wi-Fi…",
                                  Canvas::TextRole::Secondary, Gray::G1);
 
       const bool already_online = wifi_.connected();
       focus_.count = already_online ? 3 : 2;
-      const char* actions_online[] = {"Waiting...", "Already online", "Cancel"};
-      const char* actions_wait[] = {"Waiting...", "Cancel"};
+      const char* actions_online[] = {"Waiting…", "Already online", "Cancel"};
+      const char* actions_wait[] = {"Waiting…", "Cancel"};
       const char** actions = already_online ? actions_online : actions_wait;
-      const int actions_top = std::min(qr_y + qr_size + 90, 640);
+      const int actions_top = std::min(qr_y + qr_size + 82, 640);
       for (int i = 0; i < focus_.count; ++i) {
         int row_y = actions_top + i * kRowPitch;
         if (i == focus_.index)
@@ -224,11 +222,11 @@ void App::render_onboarding() {
     case ScreenId::OnboardingWifiConnecting: {
       char buf[64];
       if (cfg_.wifi_ssid.empty()) {
-        std::snprintf(buf, sizeof(buf), "Connecting...");
+        std::snprintf(buf, sizeof(buf), "Connecting…");
       } else {
-        std::snprintf(buf, sizeof(buf), "Connecting to %s...", cfg_.wifi_ssid.c_str());
+        std::snprintf(buf, sizeof(buf), "Connecting to %s…", cfg_.wifi_ssid.c_str());
       }
-      canvas_.draw_text(kSideMargin, ty, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, ty, "Phone setup", Canvas::TextRole::ScreenTitle, Gray::G0);
       canvas_.draw_text_wrapped(kSideMargin, ty + 72, kWrapW, kLineGap, buf, Canvas::TextRole::Body, Gray::G0);
       break;
     }
@@ -239,9 +237,9 @@ void App::render_onboarding() {
         }
       }
 
-      canvas_.draw_text(kSideMargin, ty, "Link your Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, ty, "Link Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
       int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap,
-                                        "Almost done — scan to finish linking.", Canvas::TextRole::Secondary,
+                                        "Scan with the Pocket app to finish linking.", Canvas::TextRole::Secondary,
                                         Gray::G1);
 
       const int qr_size = 168;
@@ -276,7 +274,7 @@ void App::render_onboarding() {
                                    Canvas::TextRole::Secondary, Gray::G1);
       }
       focus_.count = 2;
-      const char* acts[] = {"Waiting for link...", "Refresh code"};
+      const char* acts[] = {"Waiting for link…", "Refresh code"};
       const int actions_top = std::min(qr_y + qr_size + 200, 560);
       for (int i = 0; i < 2; ++i) {
         int row_y = actions_top + i * kRowPitch;
@@ -288,14 +286,14 @@ void App::render_onboarding() {
       break;
     }
     case ScreenId::OnboardingPinLength: {
-      canvas_.draw_text(kSideMargin, ty, "Set a PIN", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, ty, "Choose a PIN", Canvas::TextRole::ScreenTitle, Gray::G0);
       int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap,
-                                        "You'll use this PIN to unlock Pocket.", Canvas::TextRole::Secondary,
-                                        Gray::G1);
+                                        "Unlock Pocket with a short code. You can change it later in Settings.",
+                                        Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = 2;
-      const char* opts[] = {"4 digits", "6 digits"};
+      const char* opts[] = {"4 digits — quicker", "6 digits — stronger"};
       for (int i = 0; i < 2; ++i) {
-        int row_y = y + 24 + i * kRowPitch;
+        int row_y = y + 28 + i * kRowPitch;
         if (i == focus_.index)
           canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, opts[i], Canvas::TextRole::Body);
         else
@@ -308,25 +306,18 @@ void App::render_onboarding() {
       const bool confirm = s == ScreenId::OnboardingPinConfirm;
       canvas_.draw_text(kSideMargin, ty, confirm ? "Confirm PIN" : "Create PIN", Canvas::TextRole::ScreenTitle,
                         Gray::G0);
-      const int n = cfg_.pin_length;
-      std::string& entry = pin_entry_;
-      const int slot_w = 48;
-      const int total = n * slot_w + (n - 1) * 12;
-      int x0 = (kCanvasW - total) / 2;
-      for (int i = 0; i < n; ++i) {
-        int x = x0 + i * (slot_w + 12);
-        bool focused = static_cast<int>(entry.size()) == i;
-        char dig = (i < static_cast<int>(entry.size())) ? entry[i] : '0';
-        char ds[2] = {dig, 0};
-        if (focused)
-          canvas_.draw_focus_tile(x, 220, slot_w, 64, ds, Canvas::TextRole::PinDigit);
-        else if (i < static_cast<int>(entry.size()))
-          canvas_.draw_text(x + 8, 232, ds, Canvas::TextRole::PinDigit, Gray::G0);
-        else
-          canvas_.hline(x, 270, slot_w, Gray::G2);
+      if (confirm) {
+        canvas_.draw_text_wrapped(kSideMargin, ty + 48, kWrapW, kLineGap, "Enter the same digits again.",
+                                  Canvas::TextRole::Secondary, Gray::G1);
+      } else {
+        canvas_.draw_text_wrapped(kSideMargin, ty + 48, kWrapW, kLineGap, "Turn the dial, then press to lock each digit.",
+                                  Canvas::TextRole::Secondary, Gray::G1);
       }
+      // Show digits during setup (not masked) so the user can verify.
+      draw_pin_entry(/*mask_completed=*/false, ty + 120);
       if (now_ms_ < error_until_ms_) {
-        canvas_.draw_text_wrapped(kSideMargin, 340, kWrapW, kLineGap, error_msg_, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_wrapped(kSideMargin, ty + 120 + 200, kWrapW, kLineGap, error_msg_, Canvas::TextRole::Body,
+                                  Gray::G0);
       }
       break;
     }
@@ -401,7 +392,8 @@ void App::render_onboarding() {
 void App::handle_onboarding(InputEvent e) {
   ScreenId s = nav_.current();
 
-  if (e == InputEvent::Back) {
+  // PIN set/confirm: digit-level Back is handled in the PIN branch below.
+  if (e == InputEvent::Back && s != ScreenId::OnboardingPinSet && s != ScreenId::OnboardingPinConfirm) {
     switch (s) {
       case ScreenId::OnboardingWelcome:
         break;
@@ -443,15 +435,6 @@ void App::handle_onboarding(InputEvent e) {
         break;
       case ScreenId::OnboardingPinLength:
         nav_.replace(ScreenId::OnboardingCompanionQr);
-        after_nav();
-        break;
-      case ScreenId::OnboardingPinSet:
-        nav_.replace(ScreenId::OnboardingPinLength);
-        after_nav();
-        break;
-      case ScreenId::OnboardingPinConfirm:
-        nav_.replace(ScreenId::OnboardingPinSet);
-        pin_entry_.clear();
         after_nav();
         break;
       case ScreenId::OnboardingTimezone:
@@ -574,14 +557,14 @@ void App::handle_onboarding(InputEvent e) {
     focus_.count = shown + 1;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index >= shown) {
         wifi_networks_ = wifi_.scan();
-        dirty_ = true;
+        mark_content_dirty();
       } else {
         cfg_.wifi_ssid = wifi_networks_[focus_.index];
         wifi_password_.clear();
@@ -590,7 +573,7 @@ void App::handle_onboarding(InputEvent e) {
         if (!wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
           error_msg_ = "Couldn't start phone setup.";
           error_until_ms_ = now_ms_ + 3000;
-          dirty_ = true;
+          mark_content_dirty();
           return;
         }
         wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
@@ -660,10 +643,10 @@ void App::handle_onboarding(InputEvent e) {
     focus_.count = 2;  // Waiting… · Refresh code — no Skip
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 1 || pair_status_ == "expired") {
         if (mint_pair_session()) {
@@ -683,13 +666,14 @@ void App::handle_onboarding(InputEvent e) {
     focus_.count = 2;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       cfg_.pin_length = focus_.index == 0 ? 4 : 6;
       pin_entry_.clear();
+      pin_digit_working_ = '0';
       focus_.index = 0;
       nav_.replace(ScreenId::OnboardingPinSet);
       after_nav();
@@ -698,30 +682,46 @@ void App::handle_onboarding(InputEvent e) {
   }
 
   if (s == ScreenId::OnboardingPinSet || s == ScreenId::OnboardingPinConfirm) {
-    static char working = '0';
     if (e == InputEvent::Up) {
-      working = static_cast<char>('0' + ((working - '0' + 9) % 10));
+      pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 9) % 10));
       if (pin_entry_.size() <= static_cast<size_t>(focus_.index)) {
-        if (pin_entry_.size() == static_cast<size_t>(focus_.index)) pin_entry_.push_back(working);
+        if (pin_entry_.size() == static_cast<size_t>(focus_.index)) pin_entry_.push_back(pin_digit_working_);
       } else {
-        pin_entry_[focus_.index] = working;
+        pin_entry_[focus_.index] = pin_digit_working_;
       }
-      dirty_ = true;
+      mark_pin_dirty();
     } else if (e == InputEvent::Down) {
-      working = static_cast<char>('0' + ((working - '0' + 1) % 10));
+      pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 1) % 10));
       if (pin_entry_.size() == static_cast<size_t>(focus_.index))
-        pin_entry_.push_back(working);
+        pin_entry_.push_back(pin_digit_working_);
       else if (focus_.index < static_cast<int>(pin_entry_.size()))
-        pin_entry_[focus_.index] = working;
-      dirty_ = true;
+        pin_entry_[focus_.index] = pin_digit_working_;
+      mark_pin_dirty();
+    } else if (e == InputEvent::Back) {
+      if (pin_entry_.empty()) {
+        if (s == ScreenId::OnboardingPinConfirm) {
+          nav_.replace(ScreenId::OnboardingPinSet);
+          pin_entry_.clear();
+          pin_digit_working_ = '0';
+          after_nav();
+        } else {
+          nav_.replace(ScreenId::OnboardingPinLength);
+          after_nav();
+        }
+      } else {
+        pin_entry_.pop_back();
+        pin_digit_working_ = '0';
+        focus_.index = static_cast<int>(pin_entry_.size());
+        mark_pin_dirty();
+      }
     } else if (e == InputEvent::Select) {
-      if (pin_entry_.size() == static_cast<size_t>(focus_.index)) pin_entry_.push_back(working);
+      if (pin_entry_.size() == static_cast<size_t>(focus_.index)) pin_entry_.push_back(pin_digit_working_);
       if (static_cast<int>(pin_entry_.size()) >= cfg_.pin_length) {
         if (s == ScreenId::OnboardingPinSet) {
           pin_pending_ = pin_entry_;
           pin_entry_.clear();
           focus_.index = 0;
-          working = '0';
+          pin_digit_working_ = '0';
           nav_.replace(ScreenId::OnboardingPinConfirm);
           after_nav();
         } else {
@@ -734,19 +734,19 @@ void App::handle_onboarding(InputEvent e) {
             nav_.replace(ScreenId::OnboardingTimezone);
             after_nav();
           } else {
-            error_msg_ = "PINs don't match. Try again.";
+            error_msg_ = "Those didn't match. Try again.";
             error_until_ms_ = now_ms_ + 2500;
             pin_entry_.clear();
             focus_.index = 0;
-            working = '0';
+            pin_digit_working_ = '0';
             nav_.replace(ScreenId::OnboardingPinSet);
             after_nav();
           }
         }
       } else {
         focus_.index = static_cast<int>(pin_entry_.size());
-        working = '0';
-        dirty_ = true;
+        pin_digit_working_ = '0';
+        mark_pin_dirty();
       }
     }
     return;
@@ -756,21 +756,21 @@ void App::handle_onboarding(InputEvent e) {
     focus_.count = kTzCount + 3;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index < kTzCount) {
         onboarding_tz_index_ = focus_.index;
         cfg_.tz_id = kTimezones[focus_.index];
-        dirty_ = true;
+        mark_content_dirty();
       } else if (focus_.index == kTzCount) {
         cfg_.time_format = 12;
-        dirty_ = true;
+        mark_content_dirty();
       } else if (focus_.index == kTzCount + 1) {
         cfg_.time_format = 24;
-        dirty_ = true;
+        mark_content_dirty();
       } else {
         store_.save(cfg_);
         focus_.index = 1;
@@ -785,25 +785,25 @@ void App::handle_onboarding(InputEvent e) {
   if (s == ScreenId::OnboardingMicTest) {
     if (e == InputEvent::PttStart) {
       ptt_active_ = true;
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::PttStop) {
       ptt_active_ = false;
       std::vector<uint8_t> fake;
       mic_result_ = cloud_.stt_transcribe(fake);
       if (mic_result_.empty()) mic_result_.clear();
-      dirty_ = true;
+      mark_content_dirty();
     } else {
       focus_.count = 2;
       if (e == InputEvent::Up) {
         focus_.move(-1);
-        dirty_ = true;
+        mark_content_dirty();
       } else if (e == InputEvent::Down) {
         focus_.move(1);
-        dirty_ = true;
+        mark_content_dirty();
       } else if (e == InputEvent::Select) {
         if (focus_.index == 0) {
           mic_result_.clear();
-          dirty_ = true;
+          mark_content_dirty();
         } else {
           cfg_.stt_path = 0;
           store_.save(cfg_);

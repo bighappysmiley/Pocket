@@ -102,7 +102,7 @@ void App::handle_notes(InputEvent e) {
   }
   if (e == InputEvent::PttStart) {
     ptt_active_ = true;
-    dirty_ = true;
+    mark_content_dirty();
     return;
   }
   if (e == InputEvent::PttStop) {
@@ -110,7 +110,7 @@ void App::handle_notes(InputEvent e) {
     if (!wifi_.connected() && cfg_.stt_path == 0) {
       error_msg_ = "You're offline. Dictation needs Wi-Fi.";
       error_until_ms_ = now_ms_ + 3000;
-      dirty_ = true;
+      mark_content_dirty();
       return;
     }
     std::vector<uint8_t> pcm;
@@ -133,7 +133,7 @@ void App::handle_notes(InputEvent e) {
       after_nav();
       return;
     }
-    dirty_ = true;
+    mark_content_dirty();
     return;
   }
 
@@ -141,10 +141,10 @@ void App::handle_notes(InputEvent e) {
     focus_.count = std::max(1, static_cast<int>(data_.notes.size()) + 1);
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index < static_cast<int>(data_.notes.size())) {
         note_index_ = focus_.index;
@@ -166,7 +166,7 @@ void App::handle_notes(InputEvent e) {
     focus_.count = 2;
     if (e == InputEvent::Up || e == InputEvent::Down) {
       focus_.move(e == InputEvent::Down ? 1 : -1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select && focus_.index == 1) {
       if (note_index_ < static_cast<int>(data_.notes.size())) {
         data_.notes.erase(data_.notes.begin() + note_index_);
@@ -246,10 +246,10 @@ void App::handle_clock(InputEvent e) {
   }
   if (e == InputEvent::Up) {
     clock_tab_ = (clock_tab_ + 2) % 3;
-    dirty_ = true;
+    mark_content_dirty();
   } else if (e == InputEvent::Down) {
     clock_tab_ = (clock_tab_ + 1) % 3;
-    dirty_ = true;
+    mark_content_dirty();
   }
 }
 
