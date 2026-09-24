@@ -21,12 +21,17 @@ Optional: set env `STRIPE_PRODUCT_NAME=Pocket Cloud` (this is already the defaul
 
 1. Stripe → **Developers** → **API keys**.
 2. Copy the **Secret key** (`sk_test_…` for test, `sk_live_…` for production).
-3. Set on the Cloud runtime:
+3. Preferred: open Companion **Admin → Stripe** and paste the secret key, monthly **Price ID**, and webhook
+   signing secret. Keys are stored server-side (never paste them into chat).
+4. Alternative (host env on Cloud / Neon Function):
 
 ```bash
 STRIPE_SECRET_KEY=sk_test_…
 STRIPE_PRICE_MONTHLY_ID=price_…
+STRIPE_WEBHOOK_SECRET=whsec_…
 ```
+
+Admin-saved settings override env when present. If neither has a secret key, Cloud runs **mock billing**.
 
 ## 3. Webhook
 

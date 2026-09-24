@@ -365,6 +365,40 @@ export const api = {
       }>
     }>('/v1/admin/activity')
   },
+  adminStripeStatus() {
+    return request<{
+      configured: boolean
+      mock_mode: boolean
+      source: string
+      secret_key_set: boolean
+      secret_key_masked: string | null
+      webhook_secret_set: boolean
+      webhook_secret_masked: string | null
+      price_monthly_id: string | null
+      product_name: string
+      webhook_url: string
+      updated: Array<{ key: string; updated_at: string; updated_by: string | null }>
+    }>('/v1/admin/stripe')
+  },
+  adminStripeConfigure(body: {
+    secret_key?: string
+    webhook_secret?: string
+    price_monthly_id?: string
+    product_name?: string
+    clear?: boolean
+  }) {
+    return request<{
+      ok: true
+      updates: string[]
+      configured: boolean
+      mock_mode: boolean
+      source: string
+      secret_key_masked: string | null
+      webhook_secret_masked: string | null
+      price_monthly_id: string | null
+      product_name: string
+    }>('/v1/admin/stripe', { method: 'PUT', body })
+  },
 }
 
 export function isNetworkError(err: unknown): boolean {

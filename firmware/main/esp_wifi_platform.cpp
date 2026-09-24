@@ -31,6 +31,8 @@ bool s_wifi_ready = false;
 bool s_sta_connected = false;
 bool s_ap_netif_ready = false;
 bool s_provision_active = false;
+/** True only while waiting for GOT_IP / terminal fail after esp_wifi_connect(). */
+bool s_sta_connecting = false;
 httpd_handle_t s_httpd = nullptr;
 char s_ap_ssid[33] = {};
 char s_ap_pass[17] = {};  // WPA2 short password shown on device (8 chars + NUL)
@@ -39,12 +41,19 @@ char s_cred_ssid[33] = {};
 char s_cred_pass[65] = {};
 bool s_creds_ready = false;
 
-void wifi_event_handler(void* /*arg*/, esp_event_base_t base, int32_t id, void* /*data*/) {
+void wifi_event_handler(void* /*arg*/, esp_event_base_t base, int32_t id, void* data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     s_sta_connected = false;
+    const auto* disc = static_cast<const wifi_event_sta_disconnected_t*>(data);
+    const uint8_t reason = disc ? disc->reason : 0;
+    ESP_LOGW(TAG, "STA disconnected reason=%u connecting=%d", static_cast<unsigned>(reason),
+             s_sta_connecting ? 1 : 0);
+    // Ignore disconnects from our own esp_wifi_disconnect() / mode flips before connect().
+    if (!s_sta_connecting) return;
     if (s_wifi_events) xEventGroupSetBits(s_wifi_events, kBitFail);
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     s_sta_connected = true;
+    s_sta_connecting = false;
     if (s_wifi_events) xEventGroupSetBits(s_wifi_events, kBitConnected);
   }
 }
@@ -390,12 +399,15 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
   if (ssid.empty() || ssid.size() > 31) return false;
   if (pass.size() > 63) return false;
 
+  // Do not treat SoftAP teardown / disconnect as a connect failure.
+  s_sta_connecting = false;
   stop_provision();
 
   wifi_config_t cfg = {};
   std::memcpy(cfg.sta.ssid, ssid.c_str(), ssid.size());
   std::memcpy(cfg.sta.password, pass.c_str(), pass.size());
-  cfg.sta.threshold.authmode = pass.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+  // Accept WPA/WPA2 (and WPA3-transition APs that still offer WPA2).
+  cfg.sta.threshold.authmode = pass.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA_WPA2_PSK;
   cfg.sta.pmf_cfg.capable = true;
   cfg.sta.pmf_cfg.required = false;
 
@@ -403,14 +415,21 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_config(WIFI_IF_STA, &cfg));
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_disconnect());
+  // Let the disconnect event settle, then clear any stale fail bit before connecting.
+  vTaskDelay(pdMS_TO_TICKS(100));
+  if (s_wifi_events) xEventGroupClearBits(s_wifi_events, kBitConnected | kBitFail);
+
+  s_sta_connecting = true;
   esp_err_t err = esp_wifi_connect();
   if (err != ESP_OK) {
+    s_sta_connecting = false;
     ESP_LOGW(TAG, "connect: %s", esp_err_to_name(err));
     return false;
   }
 
   EventBits_t bits =
       xEventGroupWaitBits(s_wifi_events, kBitConnected | kBitFail, pdTRUE, pdFALSE, pdMS_TO_TICKS(20000));
+  s_sta_connecting = false;
   if (bits & kBitConnected) {
     ESP_LOGI(TAG, "connected to %s", ssid.c_str());
     pocket_on_wifi_connected();
@@ -434,7 +453,10 @@ bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap
   }
 
   build_ap_ssid(s_ap_ssid, sizeof(s_ap_ssid));
-  build_ap_password(s_ap_pass, sizeof(s_ap_pass));
+  // Reuse SoftAP password across failed STA retries so the phone does not need to rejoin.
+  if (!s_ap_pass[0]) {
+    build_ap_password(s_ap_pass, sizeof(s_ap_pass));
+  }
   lock_prov();
   std::memset(s_preferred_ssid, 0, sizeof(s_preferred_ssid));
   if (!preferred_ssid.empty() && preferred_ssid.size() < sizeof(s_preferred_ssid)) {

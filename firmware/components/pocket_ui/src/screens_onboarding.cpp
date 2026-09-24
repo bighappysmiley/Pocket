@@ -184,10 +184,11 @@ void App::render_onboarding() {
       const int qr_size = 110;
       const int qr_x = (kCanvasW - qr_size) / 2;
       const int qr_y = 360;
-      if (!canvas_.draw_qr(qr_x, qr_y, qr_size, companion_link_url())) {
+      // SoftAP QR must be the local portal — HTTPS companion /link cannot POST to SoftAP.
+      if (!canvas_.draw_qr(qr_x, qr_y, qr_size, softap_portal_url())) {
         canvas_.stroke_rect(qr_x, qr_y, qr_size, qr_size, Gray::G0);
       }
-      canvas_.draw_text_centered(kCanvasW / 2, 484, "or open Pocket app /link", Canvas::TextRole::Secondary,
+      canvas_.draw_text_centered(kCanvasW / 2, 484, "Scan to open Wi-Fi setup", Canvas::TextRole::Secondary,
                                  Gray::G1);
       canvas_.draw_text_centered(kCanvasW / 2, 520, "Waiting for Wi-Fi password…", Canvas::TextRole::Secondary,
                                  Gray::G1);
