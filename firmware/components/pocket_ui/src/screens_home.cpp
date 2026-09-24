@@ -9,49 +9,65 @@ static const char* kAppLabels[kHomeGridSlots] = {
     "",      "",       "",      "",     "",        "",      "",         "",
 };
 
-/** Calm monochrome glyphs — single-weight strokes, no dense fills. */
+/** Bold geometric strokes (2px) — reads crisply on e-ink at small tile sizes. */
+void thick_hline(Canvas& c, int x, int y, int w, Gray g) {
+  c.hline(x, y, w, g);
+  c.hline(x, y + 1, w, g);
+}
+void thick_vline(Canvas& c, int x, int y, int h, Gray g) {
+  c.vline(x, y, h, g);
+  c.vline(x + 1, y, h, g);
+}
+
+/** Calm monochrome glyphs — bold single-weight strokes, minimal fills, e-ink friendly. */
 void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
   const int s = size;
   const int x0 = cx - s / 2;
   const int y0 = cy - s / 2;
   switch (app) {
     case HomeApp::Notes:
-      c.stroke_rect(x0 + 6, y0 + 4, s - 12, s - 8, g);
-      c.hline(x0 + 12, y0 + s / 3, s - 24, g);
-      c.hline(x0 + 12, y0 + s / 2, s - 24, g);
-      c.hline(x0 + 12, y0 + (2 * s) / 3, s - 28, g);
+      c.stroke_round_rect(x0 + 5, y0 + 3, s - 10, s - 6, 4, g, 2);
+      thick_hline(c, x0 + 11, y0 + s / 3, s - 22, g);
+      thick_hline(c, x0 + 11, y0 + s / 2, s - 22, g);
+      thick_hline(c, x0 + 11, y0 + (2 * s) / 3, s - 26, g);
       break;
     case HomeApp::Ledger:
-      c.hline(x0 + 8, y0 + s / 4, s - 16, g);
-      c.hline(x0 + 8, y0 + s / 2, s - 16, g);
-      c.hline(x0 + 8, y0 + (3 * s) / 4, s - 16, g);
+      c.fill_rect(x0 + 7, y0 + s / 4 - 1, s - 14, 3, g);
+      c.fill_rect(x0 + 7, y0 + s / 2 - 1, s - 14, 3, g);
+      c.fill_rect(x0 + 7, y0 + (3 * s) / 4 - 1, s - 14, 3, g);
+      c.fill_round_rect(x0 + 3, y0 + s / 4 - 4, 5, 5, 2, g);
+      c.fill_round_rect(x0 + 3, y0 + s / 2 - 4, 5, 5, 2, g);
+      c.fill_round_rect(x0 + 3, y0 + (3 * s) / 4 - 4, 5, 5, 2, g);
       break;
     case HomeApp::Clock:
-      c.stroke_rect(cx - s / 2 + 4, cy - s / 2 + 4, s - 8, s - 8, g);
-      c.vline(cx, cy - s / 4, s / 4, g);
-      c.hline(cx, cy, s / 5, g);
+      c.stroke_round_rect(cx - s / 2 + 3, cy - s / 2 + 3, s - 6, s - 6, (s - 6) / 2, g, 2);
+      thick_vline(c, cx, cy - s / 4, s / 4, g);
+      thick_hline(c, cx, cy, s / 5, g);
       break;
     case HomeApp::Pass:
-      c.stroke_rect(x0 + 4, y0 + 10, s - 8, s - 20, g);
-      c.hline(x0 + 12, cy - 2, s - 24, g);
+      c.stroke_round_rect(x0 + 3, y0 + 9, s - 6, s - 18, 5, g, 2);
+      thick_hline(c, x0 + 11, cy - 3, s - 22, g);
+      c.fill_round_rect(x0 + 11, cy + 6, 8, 8, 4, g);
       break;
     case HomeApp::Weather:
-      c.stroke_rect(cx - 8, cy - 4, 16, 12, g);
-      c.vline(cx, y0 + 6, 6, g);
+      c.fill_round_rect(cx - 3, y0 + 4, 6, 6, 3, g);
+      c.stroke_round_rect(cx - 11, cy - 6, 22, 15, 7, g, 2);
       break;
     case HomeApp::Music:
-      c.vline(cx + 4, y0 + 8, s - 16, g);
-      c.hline(cx - 6, y0 + 8, 10, g);
-      c.fill_rect(cx - 8, cy + 4, 10, 8, g);
+      thick_vline(c, cx + 4, y0 + 6, s - 14, g);
+      c.line(cx + 4, y0 + 6, cx + 4 + s / 3, y0 + 3, g);
+      c.line(cx + 5, y0 + 6, cx + 5 + s / 3, y0 + 3, g);
+      c.fill_round_rect(cx - 9, cy + 6, 11, 9, 4, g);
       break;
     case HomeApp::Settings:
-      c.stroke_rect(cx - s / 3, cy - s / 3, (2 * s) / 3, (2 * s) / 3, g);
-      c.fill_rect(cx - 3, cy - 3, 6, 6, g);
+      c.stroke_round_rect(cx - s / 3, cy - s / 3, (2 * s) / 3, (2 * s) / 3, 6, g, 2);
+      c.fill_round_rect(cx - 4, cy - 4, 8, 8, 4, g);
       break;
     case HomeApp::Update:
-      c.hline(cx - 10, cy, 20, g);
-      c.vline(cx + 6, cy - 6, 12, g);
-      c.hline(cx + 2, cy - 6, 8, g);
+      c.stroke_round_rect(cx - s / 2 + 4, cy - s / 2 + 4, s - 8, s - 8, (s - 8) / 2, g, 2);
+      thick_vline(c, cx, cy - s / 4 + 2, s / 2 - 6, g);
+      c.line(cx - 6, cy - 2, cx, cy - s / 4 + 2, g);
+      c.line(cx + 6, cy - 2, cx, cy - s / 4 + 2, g);
       break;
     default:
       break;

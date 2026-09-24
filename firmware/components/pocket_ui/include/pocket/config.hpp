@@ -38,7 +38,7 @@ struct DeviceConfig {
   bool companion_linked = false;
   std::string fw_channel = "stable";
   /** Consumer-facing semver shown in About / Update — never a POCKET-LIVE flash marker. */
-  std::string fw_version = "1.1.0";
+  std::string fw_version = "1.1.1";
   std::string fw_build_id;  // internal OTA id e.g. POCKET-LIVE-v38-… (not shown to users)
   std::string device_id;  // UUID
   std::string device_token;
@@ -49,11 +49,14 @@ struct DeviceConfig {
   bool parental_block_connectors = false;
   /** Seen What’s New for this build (skip auto tips once acknowledged). */
   std::string seen_whats_new_build;
+  /** Optional name/message shown at the foot of the lock/sleep face. Empty = none. Set in
+   * Settings → Display or Companion → device; persists across boots and syncs from Companion. */
+  std::string lock_message;
 };
 
 /** Consumer product branding (UI). Flash markers stay in `fw_build_id` only. */
 inline constexpr const char* kProductName = "Pocket Classic";
-inline constexpr const char* kConsumerVersion = "1.1.0";
+inline constexpr const char* kConsumerVersion = "1.1.1";
 
 /** Insert or update SSID; move to front as preferred (`wifi_ssid`). Cap at kMaxKnownWifi. */
 void wifi_known_upsert(DeviceConfig& cfg, const std::string& ssid, const std::string& password);

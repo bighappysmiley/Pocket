@@ -50,7 +50,7 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, 5,
-        "Pocket Classic · calmer Home · simpler Wi‑Fi · Version 1.1.0.",
+        "Calmer lock screen, quieter icons, optional lock message.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);
@@ -97,13 +97,15 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kTitleY, "Display", Canvas::TextRole::ScreenTitle, Gray::G0);
     char idle[48];
     std::snprintf(idle, sizeof(idle), "Idle lock: %ds", cfg_.idle_lock_s);
+    std::string lockmsg =
+        cfg_.lock_message.empty() ? "Lock message: Off" : "Lock message: " + cfg_.lock_message;
     const char* rows[] = {idle,
-                          cfg_.show_batt_pct ? "Show battery %: On" : "Show battery %: Off", "Full refresh: Now",
-                          "Ghosting control", "Back"};
-    draw_focus_rows(canvas_, focus_, rows, 5, kListTop);
-    canvas_.draw_text_wrapped(kSideMargin, kListTop + 5 * kRowPitch + 16, kContentW, 6,
-                              "Pocket refreshes the screen to keep it clear.", Canvas::TextRole::Secondary,
-                              Gray::G1);
+                          cfg_.show_batt_pct ? "Show battery %: On" : "Show battery %: Off",
+                          lockmsg.c_str(), "Full refresh: Now", "Ghosting control", "Back"};
+    draw_focus_rows(canvas_, focus_, rows, 6, kListTop);
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + 6 * kRowPitch + 16, kContentW, 6,
+                              "Set a custom lock message in Pocket Companion.",
+                              Canvas::TextRole::Secondary, Gray::G1);
     return;
   }
 
@@ -496,7 +498,7 @@ void App::handle_settings(InputEvent e) {
   }
 
   if (s == ScreenId::SettingsDisplay) {
-    focus_.count = 5;
+    focus_.count = 6;
     if (e == InputEvent::Up) {
       focus_.move(-1);
       mark_content_dirty();
@@ -517,8 +519,13 @@ void App::handle_settings(InputEvent e) {
         store_.save(cfg_);
         mark_content_dirty();
       } else if (focus_.index == 2) {
+        // Quick on-device toggle: Off ↔ device name. Custom text: Companion.
+        cfg_.lock_message = cfg_.lock_message.empty() ? cfg_.device_name : std::string();
+        store_.save(cfg_);
+        mark_content_dirty();
+      } else if (focus_.index == 3) {
         redraw(true);
-      } else if (focus_.index == 4) {
+      } else if (focus_.index == 5) {
         nav_.replace(ScreenId::SettingsRoot);
         after_nav();
       }

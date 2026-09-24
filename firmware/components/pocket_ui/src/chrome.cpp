@@ -1,5 +1,6 @@
 #include "pocket/canvas.hpp"
 #include "pocket/config.hpp"
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -7,60 +8,51 @@ namespace pocket {
 
 namespace {
 
-/** Draw a filled circle (nodule). */
-void fill_disk(Canvas& c, int cx, int cy, int r, Gray g) {
-  for (int dy = -r; dy <= r; ++dy) {
-    for (int dx = -r; dx <= r; ++dx) {
-      if (dx * dx + dy * dy <= r * r) c.set_pixel(cx + dx, cy + dy, g);
-    }
+/**
+ * Wi‑Fi status glyph sized for StatusBar type (~28px tall): three ascending signal
+ * bars, solid blocks for crisp e-ink rendering (no thin-arc anti-aliasing). Slash
+ * through the bars when offline.
+ */
+void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
+  const Gray g_on = Gray::G0;
+  const Gray g_off = Gray::G2;
+  constexpr int kBarW = 5;
+  constexpr int kGap = 3;
+  constexpr int kBaseY = 20;  // bar baseline within the 22px-tall icon box
+  const int heights[3] = {7, 13, 19};
+  for (int i = 0; i < 3; ++i) {
+    const int bx = x + i * (kBarW + kGap);
+    const int bh = heights[i];
+    c.fill_rect(bx, y + kBaseY - bh, kBarW, bh, active ? g_on : g_off);
+  }
+  if (!active) {
+    c.line(x - 1, y + 21, x + 21, y - 1, Gray::G0);
+    c.line(x, y + 21, x + 22, y - 1, Gray::G0);
   }
 }
 
 /**
- * Wi‑Fi fan icon sized for StatusBar type (~28px tall).
- * Three concentric arcs + center disk; slash when offline.
+ * Battery gauge sized for StatusBar type: rounded body + terminal nub, filled with
+ * distinct segments (not a continuous sweep) so charge level reads clearly at a
+ * glance on e-ink.
  */
-void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
-  const Gray g = active ? Gray::G0 : Gray::G1;
-  const int cx = x + 11;
-  const int cy = y + 20;
-
-  fill_disk(c, cx, cy, 2, g);
-
-  auto thick_arc = [&](int r_outer, int r_inner) {
-    for (int yy = y; yy <= cy; ++yy) {
-      for (int xx = x; xx <= x + 22; ++xx) {
-        const int dx = xx - cx;
-        const int dy = yy - cy;
-        if (dy > 0) continue;  // upper half only
-        const int d2 = dx * dx + dy * dy;
-        if (d2 <= r_outer * r_outer && d2 >= r_inner * r_inner) {
-          c.set_pixel(xx, yy, g);
-        }
-      }
-    }
-  };
-
-  thick_arc(7, 5);
-  thick_arc(13, 11);
-  thick_arc(19, 16);
-
-  if (!active) {
-    c.line(x + 2, y + 20, x + 20, y + 2, Gray::G1);
-    c.line(x + 3, y + 20, x + 21, y + 2, Gray::G1);
-  }
-}
-
 void draw_battery_icon(Canvas& c, int x, int y, int pct) {
   constexpr int kW = 28;
   constexpr int kH = 16;
-  c.stroke_rect(x, y, kW, kH, Gray::G0);
+  constexpr int kSegs = 4;
+  c.stroke_round_rect(x, y, kW, kH, 3, Gray::G0, 2);
   c.fill_rect(x + kW, y + 4, 3, 8, Gray::G0);
 
-  const int inner = kW - 4;
-  int fill_w = static_cast<int>(inner * (pct / 100.0));
-  if (fill_w > 0) {
-    c.fill_rect(x + 2, y + 2, fill_w, kH - 4, pct <= 15 ? Gray::G1 : Gray::G0);
+  const int pad = 3;
+  const int inner_w = kW - 2 * pad;
+  const int seg_gap = 2;
+  const int seg_w = (inner_w - (kSegs - 1) * seg_gap) / kSegs;
+  const int lit = std::max(pct > 0 ? 1 : 0, (pct * kSegs + 50) / 100);
+  const Gray fill_g = pct <= 15 ? Gray::G1 : Gray::G0;
+  for (int i = 0; i < kSegs; ++i) {
+    if (i >= lit) continue;
+    const int sx = x + pad + i * (seg_w + seg_gap);
+    c.fill_rect(sx, y + pad, seg_w, kH - 2 * pad, fill_g);
   }
 }
 

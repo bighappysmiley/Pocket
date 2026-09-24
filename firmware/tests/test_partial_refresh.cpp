@@ -77,6 +77,7 @@ int main() {
   App app(store, clock, wifi, cloud, disp);
   app.boot();
   CHECK(app.screen() == ScreenId::Lock);
+  CHECK(app.config().lock_message.empty());  // default: no bottom message on lock face
 
   // Unlock → PIN screen (full enter once)
   app.handle(InputEvent::Select);
@@ -110,6 +111,10 @@ int main() {
   app.tick(clock.t);
   CHECK(disp.region > after_min_region);
   CHECK(disp.full_or_fast == after_prime_full);
+
+  // Lock face starts on the first of the rotating calm motifs (no clock hands).
+  CHECK(app.lock_motif_index() == 0);
+  CHECK(app.lock_motif_index() >= 0 && app.lock_motif_index() < kLockMotifCount);
 
   if (failures) {
     std::printf("%d failures\n", failures);

@@ -1,5 +1,6 @@
 #include "pocket/app.hpp"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 
@@ -347,6 +348,7 @@ void App::go_lock() {
   pin_entry_.clear();
   parental_session_unlocked_ = false;
   parental_pin_for_app_ = false;
+  lock_motif_index_ = (lock_motif_index_ + 1) % kLockMotifCount;
   after_nav();
 }
 
@@ -431,6 +433,12 @@ void App::maybe_cloud_attest() {
   const std::string dname = json_str(body, "device_name");
   if (!dname.empty() && dname != cfg_.device_name) {
     cfg_.device_name = dname;
+  }
+  // Optional lock/sleep face message — Companion is the source of truth once linked.
+  const size_t lm_key = body.find("\"lock_message\"");
+  if (lm_key != std::string::npos) {
+    const std::string lmsg = json_str(body, "lock_message");
+    if (lmsg != cfg_.lock_message) cfg_.lock_message = lmsg;
   }
 
   // Parental pin_gated_apps: ["notes","music",...]
@@ -795,40 +803,136 @@ void App::render() {
 // --- Lock / PIN -----------------------------------------------------------
 
 void App::render_lock() {
-  // Calm abstract face — no clock (static art needs no minute refresh).
-  canvas_.draw_text_centered(kCanvasW / 2, 56, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
+  // Calm face — no clock, no press hint, no battery %. Static art needs no ticking refresh.
+  const int wm_w = canvas_.text_width("Pocket", Canvas::TextRole::WordMark);
+  const int wm_cx = kCanvasW / 2 + 18;  // nudge right so the mark balances the wordmark
+  draw_pocket_mark(wm_cx - wm_w / 2 - 14, 56 + canvas_.text_height(Canvas::TextRole::WordMark) / 2);
+  canvas_.draw_text_centered(wm_cx, 56, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
+
   draw_lock_motif();
-  char batt[32];
-  const int pct = clock_.battery_percent();
-  last_lock_battery_ = pct;
-  std::snprintf(batt, sizeof(batt), "Battery %d%%", pct < 0 ? 0 : (pct > 100 ? 100 : pct));
-  canvas_.draw_text_centered(kCanvasW / 2, 735, batt, Canvas::TextRole::Secondary, Gray::G1);
-  canvas_.draw_text_centered(kCanvasW / 2, 770, "Press to unlock", Canvas::TextRole::Secondary, Gray::G1);
+
+  // Optional custom message — set in Settings → Display or Companion. Empty by default.
+  if (!cfg_.lock_message.empty()) {
+    canvas_.draw_text_fit(kSideMargin, 762, kContentW, cfg_.lock_message, Canvas::TextRole::Secondary,
+                          Gray::G1);
+  }
+}
+
+/** Small geometric mark to the left of the "Pocket" wordmark: a folded-corner square,
+ * echoing a pocket without being a literal icon. `right_x` is the mark's right edge. */
+void App::draw_pocket_mark(int right_x, int cy) {
+  constexpr int kSize = 30;
+  const int x = right_x - kSize;
+  const int y = cy - kSize / 2;
+  canvas_.stroke_round_rect(x, y, kSize, kSize, 6, Gray::G0, 2);
+  // Folded corner — small filled triangle at top-right, reads as a pocket flap.
+  constexpr int kFold = 11;
+  for (int i = 0; i < kFold; ++i) {
+    canvas_.hline(x + kSize - kFold + i, y + i, kFold - i, Gray::G0);
+  }
 }
 
 void App::draw_lock_motif() {
-  // Minimal line field that resolves into a quiet pocket-fold silhouette.
   constexpr int kTop = 180;
   constexpr int kBot = 620;
   constexpr int cx = kCanvasW / 2;
+  const int motif = ((lock_motif_index_ % kLockMotifCount) + kLockMotifCount) % kLockMotifCount;
 
-  for (int i = 0; i < 9; ++i) {
-    const int y = kTop + i * 48;
-    const int inset = 36 + ((i * 17) % 5) * 22;
-    const Gray g = (i % 3 == 0) ? Gray::G1 : Gray::G2;
-    canvas_.hline(inset, y, kCanvasW - 2 * inset, g);
+  switch (motif) {
+    case 0: {
+      // Pocket fold — quiet horizontal field converging into a seam.
+      for (int i = 0; i < 9; ++i) {
+        const int y = kTop + i * 48;
+        const int inset = 36 + ((i * 17) % 5) * 22;
+        const Gray g = (i % 3 == 0) ? Gray::G1 : Gray::G2;
+        canvas_.hline(inset, y, kCanvasW - 2 * inset, g);
+      }
+      canvas_.line(48, kTop + 20, cx - 12, kBot - 40, Gray::G1);
+      canvas_.line(kCanvasW - 48, kTop + 20, cx + 12, kBot - 40, Gray::G1);
+      canvas_.line(72, kTop + 80, cx, kBot - 100, Gray::G2);
+      canvas_.line(kCanvasW - 72, kTop + 80, cx, kBot - 100, Gray::G2);
+      canvas_.vline(cx, kTop + 60, kBot - kTop - 120, Gray::G0);
+      canvas_.hline(cx - 90, kBot - 48, 180, Gray::G0);
+      canvas_.hline(cx - 60, kBot - 36, 120, Gray::G1);
+      break;
+    }
+    case 1: {
+      // Terraced dunes — stacked soft arcs, calm and horizonal.
+      const int mid = (kTop + kBot) / 2;
+      for (int i = 0; i < 5; ++i) {
+        const int band_y = kTop + 30 + i * 90;
+        const int amp = 60 - i * 8;
+        const Gray g = (i % 2 == 0) ? Gray::G1 : Gray::G2;
+        for (int x = 40; x < kCanvasW - 40; x += 4) {
+          const double t = (x - cx) / 220.0;
+          const int y = band_y - static_cast<int>(amp * std::exp(-t * t));
+          canvas_.set_pixel(x, y, g);
+          canvas_.set_pixel(x, y + 1, g);
+        }
+      }
+      canvas_.hline(cx - 70, mid + 150, 140, Gray::G0);
+      break;
+    }
+    case 2: {
+      // Facet field — a lattice of quiet triangles, like folded paper.
+      constexpr int kRows = 6;
+      constexpr int kCols = 5;
+      const int band_h = (kBot - kTop) / kRows;
+      const int col_w = (kCanvasW - 80) / kCols;
+      for (int r = 0; r < kRows; ++r) {
+        const int y0 = kTop + r * band_h;
+        const int y1 = y0 + band_h;
+        const Gray g = (r % 2 == 0) ? Gray::G1 : Gray::G2;
+        for (int col = 0; col < kCols; ++col) {
+          const int x0 = 40 + col * col_w;
+          const int x1 = x0 + col_w;
+          const int xm = (x0 + x1) / 2;
+          if ((col + r) % 2 == 0) {
+            canvas_.line(x0, y1, xm, y0, g);
+            canvas_.line(xm, y0, x1, y1, g);
+          } else {
+            canvas_.line(x0, y0, xm, y1, g);
+            canvas_.line(xm, y1, x1, y0, g);
+          }
+        }
+      }
+      canvas_.hline(40, kTop, kCanvasW - 80, Gray::G0);
+      canvas_.hline(40, kBot, kCanvasW - 80, Gray::G0);
+      break;
+    }
+    case 3: {
+      // Constellation — a quiet scatter of nodes joined by thin lines. No clock hands.
+      struct Pt { int x, y; };
+      const Pt pts[] = {
+          {cx - 120, kTop + 60},  {cx + 40, kTop + 30},   {cx + 130, kTop + 140},
+          {cx - 30, kTop + 190},  {cx - 150, kTop + 260}, {cx + 90, kTop + 280},
+          {cx, kTop + 360},       {cx - 90, kTop + 420},  {cx + 150, kTop + 400},
+      };
+      constexpr int kEdges[][2] = {{0, 1}, {1, 2}, {1, 3}, {3, 4}, {3, 5}, {2, 5}, {5, 6}, {4, 7}, {6, 8}, {6, 7}};
+      for (const auto& e : kEdges) {
+        canvas_.line(pts[e[0]].x, pts[e[0]].y, pts[e[1]].x, pts[e[1]].y, Gray::G2);
+      }
+      for (const auto& p : pts) {
+        canvas_.fill_round_rect(p.x - 5, p.y - 5, 10, 10, 5, Gray::G0);
+      }
+      break;
+    }
+    default: {
+      // Nested frames — concentric rounded squares settling toward the center.
+      constexpr int kSteps = 6;
+      const int max_size = kBot - kTop;
+      for (int i = 0; i < kSteps; ++i) {
+        const int size = max_size - i * 70;
+        if (size <= 40) break;
+        const int x = cx - size / 2;
+        const int y = kTop + (max_size - size) / 2;
+        const Gray g = (i % 2 == 0) ? Gray::G1 : Gray::G2;
+        canvas_.stroke_round_rect(x, y, size, size, 24, g, 2);
+      }
+      canvas_.fill_round_rect(cx - 8, kTop + max_size / 2 - 8, 16, 16, 8, Gray::G0);
+      break;
+    }
   }
-
-  // Converging diagonals — abstract lines that meet as a fold.
-  canvas_.line(48, kTop + 20, cx - 12, kBot - 40, Gray::G1);
-  canvas_.line(kCanvasW - 48, kTop + 20, cx + 12, kBot - 40, Gray::G1);
-  canvas_.line(72, kTop + 80, cx, kBot - 100, Gray::G2);
-  canvas_.line(kCanvasW - 72, kTop + 80, cx, kBot - 100, Gray::G2);
-
-  // Soft vertical seam + base — reads as a pocket edge without being literal.
-  canvas_.vline(cx, kTop + 60, kBot - kTop - 120, Gray::G0);
-  canvas_.hline(cx - 90, kBot - 48, 180, Gray::G0);
-  canvas_.hline(cx - 60, kBot - 36, 120, Gray::G1);
 }
 
 void App::handle_lock(InputEvent e) {
@@ -1012,20 +1116,7 @@ void App::maybe_tick_status_chrome() {
     // Welcome is full-bleed brand; still has status bar in onboarding path.
   }
   if (!screen_has_status_bar()) {
-    // Lock: only battery footer can change without a full remount.
-    if (nav_.current() == ScreenId::Lock) {
-      const int pct = clock_.battery_percent();
-      if (last_lock_battery_ >= 0 && pct != last_lock_battery_) {
-        last_lock_battery_ = pct;
-        mark_region_dirty(0, 700, kCanvasW, 100);
-        if (dirty_) {
-          present_canvas(false);
-          dirty_ = false;
-        }
-      } else if (last_lock_battery_ < 0) {
-        last_lock_battery_ = pct;
-      }
-    }
+    // Lock: static art + optional message only — nothing here ticks, so no partial refresh needed.
     return;
   }
 

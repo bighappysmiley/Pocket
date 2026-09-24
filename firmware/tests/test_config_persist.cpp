@@ -41,6 +41,8 @@ int main() {
   cfg.idle_lock_s = 90;
   cfg.show_batt_pct = false;
   cfg.time_format = 24;
+  CHECK(cfg.lock_message.empty());  // default: no message on lock/sleep face
+  cfg.lock_message = "Emma's Pocket";
 
   std::vector<uint8_t> blob;
   CHECK(pack_device_config(cfg, blob));
@@ -68,6 +70,7 @@ int main() {
   CHECK(round.idle_lock_s == 90);
   CHECK(!round.show_batt_pct);
   CHECK(round.time_format == 24);
+  CHECK(round.lock_message == "Emma's Pocket");
 
   // Corrupt magic → fail
   blob[0] ^= 0xff;

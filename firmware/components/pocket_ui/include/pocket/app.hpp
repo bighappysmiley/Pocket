@@ -10,6 +10,9 @@
 
 namespace pocket {
 
+/** Number of calm abstract motifs the lock/sleep face rotates through. */
+inline constexpr int kLockMotifCount = 5;
+
 struct PlatformClock {
   virtual ~PlatformClock() = default;
   virtual uint32_t now_ms() = 0;
@@ -220,6 +223,8 @@ class App {
 
   ScreenId screen() const { return nav_.current(); }
   const DeviceConfig& config() const { return cfg_; }
+  /** Which of kLockMotifCount calm designs the lock/sleep face is currently showing. */
+  int lock_motif_index() const { return lock_motif_index_; }
   const Canvas& canvas() const { return canvas_; }
   bool needs_redraw() const { return dirty_; }
 
@@ -266,6 +271,8 @@ class App {
   void handle_home(InputEvent e);
   void draw_home_clock();
   void draw_lock_motif();
+  /** Small geometric mark to the left of the "Pocket" wordmark on the lock face. */
+  void draw_pocket_mark(int right_x, int cy);
   void maybe_tick_home_clock();
   void present_home_clock_partial();
   /** Status bar time / battery / wifi — region partial, not full screen. */
@@ -372,7 +379,8 @@ class App {
   int last_status_battery_ = -1;
   bool last_status_wifi_ = false;
   bool last_status_time_ok_ = false;
-  int last_lock_battery_ = -1;
+  /** Which calm e-ink motif to draw on the lock/sleep face; advances on each lock. */
+  int lock_motif_index_ = 0;
   SdContentKind sd_kind_ = SdContentKind::Absent;
   bool sd_waiting_eject_ = false;
   uint32_t last_sd_poll_ms_ = 0;

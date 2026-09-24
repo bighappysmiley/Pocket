@@ -7,7 +7,7 @@ namespace pocket {
 namespace {
 
 constexpr uint32_t kMagic = 0x314B4350u;  // 'PCK1' LE
-constexpr uint16_t kVersion = 4;
+constexpr uint16_t kVersion = 5;
 constexpr size_t kMaxString = 128;
 constexpr size_t kMaxBlob = 8192;
 
@@ -165,6 +165,8 @@ bool pack_device_config(const DeviceConfig& cfg, std::vector<uint8_t>& out) {
   put_u8(out, cfg.parental_block_connectors ? 1 : 0);
   put_str(out, cfg.seen_whats_new_build);
   put_str(out, cfg.fw_build_id);
+  // v5: optional lock/sleep face message
+  put_str(out, cfg.lock_message);
   return out.size() <= kMaxBlob;
 }
 
@@ -175,7 +177,7 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
   uint16_t ver = 0;
   uint16_t flags = 0;
   if (!get_u32(data, len, off, magic) || magic != kMagic) return false;
-  if (!get_u16(data, len, off, ver) || (ver != 2 && ver != 3 && ver != 4)) return false;
+  if (!get_u16(data, len, off, ver) || (ver != 2 && ver != 3 && ver != 4 && ver != 5)) return false;
   if (!get_u16(data, len, off, flags)) return false;
   (void)flags;
 
@@ -230,6 +232,10 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
     cfg.parental_block_connectors = b != 0;
     if (!get_str(data, len, off, cfg.seen_whats_new_build)) return false;
     if (!get_str(data, len, off, cfg.fw_build_id)) return false;
+  }
+
+  if (ver >= 5) {
+    if (!get_str(data, len, off, cfg.lock_message)) return false;
   }
 
   out = std::move(cfg);
