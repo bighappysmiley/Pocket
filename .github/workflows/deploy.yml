@@ -328,21 +328,23 @@ jobs:
           BUILD_ID=$(strings -n 12 build/pocket.bin | grep -m1 'POCKET-LIVE-' || echo "POCKET-LIVE-unknown")
           SIZE=$(wc -c < build/pocket.bin | tr -d ' ')
           SHA=$(sha256sum build/pocket.bin | awk '{print $1}')
-          python3 - <<PY
-import json
-from pathlib import Path
-data = {
-  "build_id": "${BUILD_ID}",
-  "version": "${BUILD_ID}",
-  "url": "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/pocket.bin",
-  "size": int("${SIZE}"),
-  "sha256": "${SHA}",
-  "channel": "stable",
-  "git_sha": "${{ github.sha }}",
-}
-Path("firmware-manifest.json").write_text(json.dumps(data, indent=2) + "\n")
-print(data)
-PY
+          export BUILD_ID SIZE SHA
+          export GIT_SHA='${{ github.sha }}'
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = {
+            "build_id": os.environ["BUILD_ID"],
+            "version": os.environ["BUILD_ID"],
+            "url": "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/pocket.bin",
+            "size": int(os.environ["SIZE"]),
+            "sha256": os.environ["SHA"],
+            "channel": "stable",
+            "git_sha": os.environ["GIT_SHA"],
+          }
+          Path("firmware-manifest.json").write_text(json.dumps(data, indent=2) + "\n")
+          print(data)
+          PY
           cp -f build/pocket.bin ./pocket.bin
           echo "OTA build_id=${BUILD_ID} size=${SIZE}"
       - name: Upload firmware artifact
