@@ -14,6 +14,7 @@
 #include "pocket_board/sdcard.hpp"
 #include "esp_wifi_platform.hpp"
 #include "esp_cloud_platform.hpp"
+#include "esp_config_store.hpp"
 
 #ifdef POCKET_HOST
 #error "app_main is for ESP-IDF only"
@@ -31,7 +32,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v27-deploy-fix";
+static const char* kBuildId = "POCKET-LIVE-v28-persist-cfg";
 
 namespace {
 
@@ -235,7 +236,8 @@ extern "C" void app_main(void) {
   buttons.init();
 
   static pocket::board::EpdDisplay epd;
-  static pocket::MemoryConfigStore store;
+  // Durable config: NVS always; SD mirror at /sdcard/pocket/config.bin when usable.
+  static EspPersistentConfigStore store;
   static EspClock clock;
   static EspWifi wifi;
   static EspCloud cloud;

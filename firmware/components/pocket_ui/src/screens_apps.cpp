@@ -22,7 +22,7 @@ void App::render_notes() {
   if (s == ScreenId::NotesList) {
     if (data_.notes.empty()) {
       canvas_.draw_text_centered(kCanvasW / 2, 300, "No notes yet", Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text_centered(kCanvasW / 2, 340, "Hold BOOT to dictate a note", Canvas::TextRole::Secondary,
+      canvas_.draw_text_centered(kCanvasW / 2, 340, "Hold the side button to dictate a note", Canvas::TextRole::Secondary,
                                  Gray::G1);
     } else {
       focus_.count = static_cast<int>(data_.notes.size()) + 1;

@@ -3,10 +3,11 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace pocket {
 
-/** NVS-backed device config (Spec §11.1 + Part B amendments). */
+/** Device config (Spec §11.1 + Part B). Persisted via NVS and optional SD mirror. */
 struct DeviceConfig {
   std::string device_name = "Pocket";
   uint8_t pin_length = 4;
@@ -64,6 +65,21 @@ class MemoryConfigStore : public ConfigStore {
  private:
   DeviceConfig cfg_{};
 };
+
+/** Host/tests: persist a packed DeviceConfig blob to a filesystem path. */
+class FileConfigStore : public ConfigStore {
+ public:
+  explicit FileConfigStore(std::string path) : path_(std::move(path)) {}
+  DeviceConfig load() override;
+  void save(const DeviceConfig& cfg) override;
+
+ private:
+  std::string path_;
+};
+
+/** Pack/unpack versioned DeviceConfig blobs (NVS + SD / file). */
+bool pack_device_config(const DeviceConfig& cfg, std::vector<uint8_t>& out);
+bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out);
 
 bool verify_pin(const DeviceConfig& cfg, std::string_view digits);
 void set_pin(DeviceConfig& cfg, std::string_view digits);

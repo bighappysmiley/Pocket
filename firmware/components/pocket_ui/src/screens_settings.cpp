@@ -103,7 +103,7 @@ void App::render_settings() {
   if (s == ScreenId::SettingsSound) {
     canvas_.draw_text(kSideMargin, kTitleY, "Sound & mic", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(kSideMargin, kListTop, "Speech recognition: Cloud", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + 40, "Hold BOOT in Notes.", Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text(kSideMargin, kListTop + 40, "Hold the side button in Notes.", Canvas::TextRole::Secondary, Gray::G1);
     const char* rows[] = {"Mic test", "Back"};
     draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 100);
     return;

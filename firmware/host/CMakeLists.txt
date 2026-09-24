@@ -40,3 +40,8 @@ add_executable(test_onboarding ../tests/test_onboarding_flow.cpp ${POCKET_UI_SRC
 target_include_directories(test_onboarding PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_onboarding PRIVATE POCKET_HOST=1)
 add_test(NAME test_onboarding COMMAND test_onboarding)
+
+add_executable(test_config_persist ../tests/test_config_persist.cpp ${POCKET_UI}/src/config_store.cpp)
+target_include_directories(test_config_persist PRIVATE ${POCKET_UI}/include)
+target_compile_definitions(test_config_persist PRIVATE POCKET_HOST=1)
+add_test(NAME test_config_persist COMMAND test_config_persist)
