@@ -113,6 +113,7 @@ inline bool screen_requires_full_enter(ScreenId s) {
     case ScreenId::OnboardingWelcome:
     case ScreenId::OnboardingCompanionDownload:  // QR clarity
     case ScreenId::OnboardingCompanionQr:        // QR clarity
+    case ScreenId::OnboardingWifiPassword:  // SoftAP Link phase — password + QR clarity
     case ScreenId::OnboardingWifiConnecting:
     case ScreenId::OnboardingPinLength:
     case ScreenId::OnboardingPinSet:

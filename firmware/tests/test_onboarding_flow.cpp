@@ -29,6 +29,7 @@ struct TWifi : PlatformWifi {
   bool ok = false;
   bool provisioned = false;
   std::string ap = "Pocket-TEST";
+  std::string ap_pass = "AB23CD45";
   std::string pending_ssid = "NetA";
   std::string pending_pass = "secret";
   std::vector<std::string> scan() override { return {"NetA"}; }
@@ -37,9 +38,11 @@ struct TWifi : PlatformWifi {
     return ok;
   }
   bool connected() const override { return ok; }
-  bool start_provision(const std::string& /*preferred*/, std::string* ap_ssid_out) override {
+  bool start_provision(const std::string& /*preferred*/, std::string* ap_ssid_out,
+                       std::string* ap_pass_out) override {
     provisioned = true;
     if (ap_ssid_out) *ap_ssid_out = ap;
+    if (ap_pass_out) *ap_pass_out = ap_pass;
     return true;
   }
   void stop_provision() override { provisioned = false; }
@@ -51,6 +54,7 @@ struct TWifi : PlatformWifi {
     return true;
   }
   std::string provision_ap_ssid() const override { return ap; }
+  std::string provision_ap_password() const override { return ap_pass; }
 };
 struct TCloud : PlatformCloud {
   std::string st = "pending";
@@ -82,13 +86,10 @@ int main() {
   app.handle(InputEvent::Power);
   CHECK(app.screen() == ScreenId::OnboardingCompanionDownload);
 
-  // Continue → Wi‑Fi
-  app.handle(InputEvent::Select);
-  CHECK(app.screen() == ScreenId::OnboardingWifiList);
-
-  // Select network → SoftAP phone-wait screen
+  // Continue → Link SoftAP (unified Wi‑Fi + pair; no separate Wi‑Fi list)
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::OnboardingWifiPassword);
+  CHECK(wifi.provisioned);
 
   // Phone posts credentials via SoftAP (polled in tick)
   clock.t += 500;

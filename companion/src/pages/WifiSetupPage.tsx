@@ -80,17 +80,20 @@ export function WifiSetupPage() {
       <div className="stack-sm">
         <h1>Wi‑Fi for your Pocket</h1>
         <p className="muted">
-          Pocket has a dial, not a keyboard. You type the Wi‑Fi password here on your phone.
+          Pocket has a dial, not a keyboard. You type the home Wi‑Fi password here on your phone.
         </p>
       </div>
 
       {phase === 'instructions' || phase === 'error' ? (
         <div className="panel stack">
           <ol className="stack-sm" style={{ paddingLeft: '1.2rem', margin: 0 }}>
-            <li>On Pocket, choose a Wi‑Fi network (or “Use phone”).</li>
             <li>
-              On this phone, open Wi‑Fi settings and join the open network named like{' '}
+              On this phone, open Wi‑Fi settings and join{' '}
               <strong>{status?.ap_ssid || 'Pocket-XXXX'}</strong> shown on the device.
+            </li>
+            <li>
+              Enter the short password shown on Pocket (under the network name). It is not an open
+              network.
             </li>
             <li>Come back here — this page will continue automatically.</li>
           </ol>
