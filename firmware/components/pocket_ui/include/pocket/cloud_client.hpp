@@ -22,6 +22,7 @@ namespace pocket {
 inline constexpr const char* kPairCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 std::string companion_pair_url(std::string_view code);
+std::string companion_wifi_setup_url();
 std::string generate_pair_code();
 
 }  // namespace pocket

@@ -172,10 +172,11 @@ void App::render_settings() {
   if (s == ScreenId::SettingsWifi) {
     canvas_.draw_text(16, 40, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(16, 100, wifi_.connected() ? cfg_.wifi_ssid : "Not connected", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(16, 140, "Password is entered on your phone.", Canvas::TextRole::Secondary, Gray::G1);
     focus_.count = 2;
-    const char* rows[] = {"Choose network...", "Back"};
+    const char* rows[] = {"Set up with phone…", "Back"};
     for (int i = 0; i < 2; ++i) {
-      int y = 180 + i * 56;
+      int y = 200 + i * 56;
       if (i == focus_.index)
         canvas_.draw_focus_tile(16, y, kCanvasW - 32, 48, rows[i], Canvas::TextRole::Body);
       else
@@ -275,6 +276,29 @@ void App::handle_settings(InputEvent e) {
     } else if (e == InputEvent::Select) {
       if (focus_.index == 1) go_lock();
       else if (focus_.index == 2) {
+        nav_.replace(ScreenId::SettingsRoot);
+        after_nav(true);
+      }
+    }
+    return;
+  }
+
+  if (s == ScreenId::SettingsWifi) {
+    focus_.count = 2;
+    if (e == InputEvent::Up) {
+      focus_.move(-1);
+      dirty_ = true;
+    } else if (e == InputEvent::Down) {
+      focus_.move(1);
+      dirty_ = true;
+    } else if (e == InputEvent::Select) {
+      if (focus_.index == 0) {
+        wifi_networks_ = wifi_.scan();
+        cfg_.wifi_ssid.clear();
+        focus_.index = 0;
+        nav_.push(ScreenId::OnboardingWifiList);
+        after_nav(true);
+      } else {
         nav_.replace(ScreenId::SettingsRoot);
         after_nav(true);
       }

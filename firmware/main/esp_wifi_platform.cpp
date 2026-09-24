@@ -1,16 +1,20 @@
 #include "esp_wifi_platform.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #include "esp_event.h"
+#include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 namespace {
@@ -21,8 +25,17 @@ constexpr EventBits_t kBitConnected = BIT0;
 constexpr EventBits_t kBitFail = BIT1;
 
 EventGroupHandle_t s_wifi_events = nullptr;
+SemaphoreHandle_t s_prov_mu = nullptr;
 bool s_wifi_ready = false;
 bool s_sta_connected = false;
+bool s_ap_netif_ready = false;
+bool s_provision_active = false;
+httpd_handle_t s_httpd = nullptr;
+char s_ap_ssid[33] = {};
+char s_preferred_ssid[33] = {};
+char s_cred_ssid[33] = {};
+char s_cred_pass[65] = {};
+bool s_creds_ready = false;
 
 void wifi_event_handler(void* /*arg*/, esp_event_base_t base, int32_t id, void* /*data*/) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -55,17 +68,21 @@ bool wifi_ensure() {
   ESP_ERROR_CHECK(esp_wifi_start());
 
   s_wifi_events = xEventGroupCreate();
+  s_prov_mu = xSemaphoreCreateMutex();
   s_wifi_ready = true;
   ESP_LOGI(TAG, "STA ready");
   return true;
 }
 
-}  // namespace
+void lock_prov() {
+  if (s_prov_mu) xSemaphoreTake(s_prov_mu, portMAX_DELAY);
+}
+void unlock_prov() {
+  if (s_prov_mu) xSemaphoreGive(s_prov_mu);
+}
 
-std::vector<std::string> EspWifi::scan() {
+std::vector<std::string> scan_networks_locked() {
   std::vector<std::string> out;
-  if (!wifi_ensure()) return out;
-
   wifi_scan_config_t sc = {};
   sc.show_hidden = false;
   sc.scan_type = WIFI_SCAN_TYPE_ACTIVE;
@@ -100,16 +117,255 @@ std::vector<std::string> EspWifi::scan() {
     std::string name(ssid);
     if (std::find(out.begin(), out.end(), name) != out.end()) continue;
     out.push_back(std::move(name));
-    if (out.size() >= 6) break;
+    if (out.size() >= 12) break;
   }
-  ESP_LOGI(TAG, "scan found %u unique SSIDs", static_cast<unsigned>(out.size()));
   return out;
+}
+
+void json_escape(const std::string& in, std::string& out) {
+  out.clear();
+  out.reserve(in.size() + 8);
+  for (char c : in) {
+    if (c == '"' || c == '\\') {
+      out.push_back('\\');
+      out.push_back(c);
+    } else if (static_cast<unsigned char>(c) < 0x20) {
+      char buf[8];
+      std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+      out += buf;
+    } else {
+      out.push_back(c);
+    }
+  }
+}
+
+bool extract_json_string(const char* body, const char* key, char* dest, size_t dest_len) {
+  if (!body || !key || !dest || dest_len < 2) return false;
+  std::string needle = std::string("\"") + key + "\"";
+  const char* p = std::strstr(body, needle.c_str());
+  if (!p) return false;
+  p = std::strchr(p + needle.size(), ':');
+  if (!p) return false;
+  ++p;
+  while (*p == ' ' || *p == '\t') ++p;
+  if (*p != '"') return false;
+  ++p;
+  size_t i = 0;
+  while (*p && *p != '"' && i + 1 < dest_len) {
+    if (*p == '\\' && p[1]) {
+      ++p;
+      dest[i++] = *p++;
+    } else {
+      dest[i++] = *p++;
+    }
+  }
+  dest[i] = 0;
+  return true;
+}
+
+void add_cors(httpd_req_t* req) {
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type");
+}
+
+esp_err_t handle_options(httpd_req_t* req) {
+  add_cors(req);
+  httpd_resp_set_status(req, "204 No Content");
+  return httpd_resp_send(req, nullptr, 0);
+}
+
+esp_err_t handle_status(httpd_req_t* req) {
+  add_cors(req);
+  httpd_resp_set_type(req, "application/json");
+  char preferred[33] = {};
+  char ap[33] = {};
+  lock_prov();
+  std::strncpy(preferred, s_preferred_ssid, sizeof(preferred) - 1);
+  std::strncpy(ap, s_ap_ssid, sizeof(ap) - 1);
+  const bool ready = s_creds_ready;
+  unlock_prov();
+
+  std::string pref_esc, ap_esc;
+  json_escape(preferred, pref_esc);
+  json_escape(ap, ap_esc);
+  char buf[384];
+  std::snprintf(buf, sizeof(buf),
+                "{\"ok\":true,\"provisioning\":true,\"ap_ssid\":\"%s\",\"preferred_ssid\":\"%s\",\"credentials_received\":%s}",
+                ap_esc.c_str(), pref_esc.c_str(), ready ? "true" : "false");
+  return httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
+}
+
+esp_err_t handle_scan(httpd_req_t* req) {
+  add_cors(req);
+  httpd_resp_set_type(req, "application/json");
+  auto nets = scan_networks_locked();
+  std::string body = "{\"ok\":true,\"networks\":[";
+  for (size_t i = 0; i < nets.size(); ++i) {
+    std::string esc;
+    json_escape(nets[i], esc);
+    if (i) body += ',';
+    body += '"';
+    body += esc;
+    body += '"';
+  }
+  body += "]}";
+  return httpd_resp_send(req, body.c_str(), body.size());
+}
+
+esp_err_t handle_wifi_post(httpd_req_t* req) {
+  add_cors(req);
+  if (req->content_len <= 0 || req->content_len > 512) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    return httpd_resp_send(req, "{\"ok\":false,\"message\":\"Bad request\"}", HTTPD_RESP_USE_STRLEN);
+  }
+  std::vector<char> body(static_cast<size_t>(req->content_len) + 1);
+  int r = httpd_req_recv(req, body.data(), req->content_len);
+  if (r <= 0) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    return httpd_resp_send(req, "{\"ok\":false,\"message\":\"Bad request\"}", HTTPD_RESP_USE_STRLEN);
+  }
+  body[static_cast<size_t>(r)] = 0;
+
+  char ssid[33] = {};
+  char pass[65] = {};
+  if (!extract_json_string(body.data(), "ssid", ssid, sizeof(ssid)) || !ssid[0]) {
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_status(req, "400 Bad Request");
+    return httpd_resp_send(req, "{\"ok\":false,\"message\":\"Choose a network\"}", HTTPD_RESP_USE_STRLEN);
+  }
+  extract_json_string(body.data(), "password", pass, sizeof(pass));
+
+  lock_prov();
+  std::strncpy(s_cred_ssid, ssid, sizeof(s_cred_ssid) - 1);
+  std::strncpy(s_cred_pass, pass, sizeof(s_cred_pass) - 1);
+  s_creds_ready = true;
+  unlock_prov();
+  ESP_LOGI(TAG, "provision credentials received for %s", ssid);
+
+  httpd_resp_set_type(req, "application/json");
+  return httpd_resp_send(req, "{\"ok\":true,\"message\":\"Connecting Pocket to Wi-Fi\"}", HTTPD_RESP_USE_STRLEN);
+}
+
+static const char kPortalHtml[] = R"HTML(<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pocket Wi-Fi</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:1.25rem;max-width:28rem;color:#111;background:#f7f5f2}
+h1{font-size:1.35rem;margin:0 0 .35rem}p{color:#555;line-height:1.4}
+label{display:block;margin:.85rem 0 .35rem;font-weight:600}
+input,select,button{width:100%;box-sizing:border-box;font:inherit;padding:.7rem .8rem;border-radius:8px;border:1px solid #ccc}
+button{background:#111;color:#fff;border:none;margin-top:1rem;font-weight:600}
+.msg{margin-top:1rem;padding:.75rem;border-radius:8px;background:#eee}
+</style></head><body>
+<h1>Set up Pocket Wi-Fi</h1>
+<p>Pick your home network and type the password here on your phone. Pocket cannot type passwords with the dial.</p>
+<label for="ssid">Network</label>
+<select id="ssid"></select>
+<label for="password">Password</label>
+<input id="password" type="password" autocomplete="current-password"/>
+<button id="go" type="button">Connect Pocket</button>
+<div class="msg" id="msg">Looking for networks…</div>
+<script>
+const msg=document.getElementById('msg');
+const sel=document.getElementById('ssid');
+async function load(){
+  try{
+    const st=await fetch('/api/status').then(r=>r.json());
+    const sc=await fetch('/api/scan').then(r=>r.json());
+    sel.innerHTML='';
+    const nets=sc.networks||[];
+    if(!nets.length){msg.textContent='No networks found. Move closer to your router, then reload.';return;}
+    for(const n of nets){
+      const o=document.createElement('option');o.value=n;o.textContent=n;
+      if(st.preferred_ssid&&st.preferred_ssid===n)o.selected=true;
+      sel.appendChild(o);
+    }
+    msg.textContent='Ready — enter the Wi‑Fi password, then Connect Pocket.';
+  }catch(e){msg.textContent='Could not reach Pocket. Stay joined to the Pocket Wi‑Fi network.';}
+}
+document.getElementById('go').onclick=async()=>{
+  msg.textContent='Sending…';
+  try{
+    const body={ssid:sel.value,password:document.getElementById('password').value};
+    const res=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await res.json();
+    if(!res.ok){msg.textContent=j.message||'Could not send.';return;}
+    msg.textContent='Sent. Pocket is connecting. Rejoin your home Wi‑Fi, then open the Pocket app to finish.';
+  }catch(e){msg.textContent='Send failed. Stay on the Pocket Wi‑Fi and try again.';}
+};
+load();
+</script></body></html>)HTML";
+
+esp_err_t handle_root(httpd_req_t* req) {
+  add_cors(req);
+  httpd_resp_set_type(req, "text/html");
+  return httpd_resp_send(req, kPortalHtml, HTTPD_RESP_USE_STRLEN);
+}
+
+esp_err_t handle_captive(httpd_req_t* req) {
+  httpd_resp_set_status(req, "302 Found");
+  httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+  return httpd_resp_send(req, nullptr, 0);
+}
+
+void stop_httpd() {
+  if (s_httpd) {
+    httpd_stop(s_httpd);
+    s_httpd = nullptr;
+  }
+}
+
+bool start_httpd() {
+  stop_httpd();
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = 80;
+  config.lru_purge_enable = true;
+  config.max_uri_handlers = 12;
+  if (httpd_start(&s_httpd, &config) != ESP_OK) {
+    ESP_LOGE(TAG, "httpd_start failed");
+    s_httpd = nullptr;
+    return false;
+  }
+
+  const httpd_uri_t routes[] = {
+      {.uri = "/", .method = HTTP_GET, .handler = handle_root, .user_ctx = nullptr},
+      {.uri = "/api/status", .method = HTTP_GET, .handler = handle_status, .user_ctx = nullptr},
+      {.uri = "/api/scan", .method = HTTP_GET, .handler = handle_scan, .user_ctx = nullptr},
+      {.uri = "/api/wifi", .method = HTTP_POST, .handler = handle_wifi_post, .user_ctx = nullptr},
+      {.uri = "/api/wifi", .method = HTTP_OPTIONS, .handler = handle_options, .user_ctx = nullptr},
+      {.uri = "/api/status", .method = HTTP_OPTIONS, .handler = handle_options, .user_ctx = nullptr},
+      {.uri = "/api/scan", .method = HTTP_OPTIONS, .handler = handle_options, .user_ctx = nullptr},
+      {.uri = "/generate_204", .method = HTTP_GET, .handler = handle_captive, .user_ctx = nullptr},
+      {.uri = "/hotspot-detect.html", .method = HTTP_GET, .handler = handle_captive, .user_ctx = nullptr},
+      {.uri = "/connecttest.txt", .method = HTTP_GET, .handler = handle_captive, .user_ctx = nullptr},
+  };
+  for (const auto& r : routes) {
+    httpd_register_uri_handler(s_httpd, &r);
+  }
+  return true;
+}
+
+void build_ap_ssid(char* out, size_t out_len) {
+  uint8_t mac[6] = {};
+  esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+  std::snprintf(out, out_len, "Pocket-%02X%02X", mac[4], mac[5]);
+}
+
+}  // namespace
+
+std::vector<std::string> EspWifi::scan() {
+  if (!wifi_ensure()) return {};
+  return scan_networks_locked();
 }
 
 bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
   if (!wifi_ensure()) return false;
   if (ssid.empty() || ssid.size() > 31) return false;
   if (pass.size() > 63) return false;
+
+  stop_provision();
 
   wifi_config_t cfg = {};
   std::memcpy(cfg.sta.ssid, ssid.c_str(), ssid.size());
@@ -119,6 +375,7 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
   cfg.sta.pmf_cfg.required = false;
 
   if (s_wifi_events) xEventGroupClearBits(s_wifi_events, kBitConnected | kBitFail);
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_config(WIFI_IF_STA, &cfg));
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_disconnect());
   esp_err_t err = esp_wifi_connect();
@@ -139,3 +396,72 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
 }
 
 bool EspWifi::connected() const { return s_sta_connected; }
+
+bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap_ssid_out) {
+  if (!wifi_ensure()) return false;
+  stop_httpd();
+
+  if (!s_ap_netif_ready) {
+    esp_netif_create_default_wifi_ap();
+    s_ap_netif_ready = true;
+  }
+
+  build_ap_ssid(s_ap_ssid, sizeof(s_ap_ssid));
+  lock_prov();
+  std::memset(s_preferred_ssid, 0, sizeof(s_preferred_ssid));
+  if (!preferred_ssid.empty() && preferred_ssid.size() < sizeof(s_preferred_ssid)) {
+    std::strncpy(s_preferred_ssid, preferred_ssid.c_str(), sizeof(s_preferred_ssid) - 1);
+  }
+  s_creds_ready = false;
+  std::memset(s_cred_ssid, 0, sizeof(s_cred_ssid));
+  std::memset(s_cred_pass, 0, sizeof(s_cred_pass));
+  unlock_prov();
+
+  wifi_config_t ap = {};
+  std::strncpy(reinterpret_cast<char*>(ap.ap.ssid), s_ap_ssid, sizeof(ap.ap.ssid) - 1);
+  ap.ap.ssid_len = static_cast<uint8_t>(std::strlen(s_ap_ssid));
+  ap.ap.channel = 1;
+  ap.ap.max_connection = 4;
+  ap.ap.authmode = WIFI_AUTH_OPEN;
+  ap.ap.ssid_hidden = 0;
+
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_mode(WIFI_MODE_APSTA));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_config(WIFI_IF_AP, &ap));
+  // wifi already started in wifi_ensure
+
+  if (!start_httpd()) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_mode(WIFI_MODE_STA));
+    s_provision_active = false;
+    return false;
+  }
+
+  s_provision_active = true;
+  if (ap_ssid_out) *ap_ssid_out = s_ap_ssid;
+  ESP_LOGI(TAG, "SoftAP provision active: %s", s_ap_ssid);
+  return true;
+}
+
+void EspWifi::stop_provision() {
+  stop_httpd();
+  lock_prov();
+  s_provision_active = false;
+  unlock_prov();
+  if (s_wifi_ready) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_mode(WIFI_MODE_STA));
+  }
+}
+
+bool EspWifi::take_provision_credentials(std::string* ssid, std::string* password) {
+  lock_prov();
+  if (!s_creds_ready) {
+    unlock_prov();
+    return false;
+  }
+  if (ssid) *ssid = s_cred_ssid;
+  if (password) *password = s_cred_pass;
+  s_creds_ready = false;
+  unlock_prov();
+  return true;
+}
+
+std::string EspWifi::provision_ap_ssid() const { return s_ap_ssid; }

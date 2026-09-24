@@ -14,6 +14,12 @@ std::string companion_pair_url(std::string_view code) {
   return url;
 }
 
+std::string companion_wifi_setup_url() {
+  std::string url = POCKET_PWA_ORIGIN;
+  url += "/wifi-setup";
+  return url;
+}
+
 std::string generate_pair_code() {
   static std::mt19937 rng{static_cast<unsigned>(std::time(nullptr))};
   std::uniform_int_distribution<int> dist(0, 31);  // alphabet length 32

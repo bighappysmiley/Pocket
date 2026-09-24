@@ -21,6 +21,11 @@ struct PlatformWifi {
   virtual std::vector<std::string> scan() = 0;
   virtual bool connect(const std::string& ssid, const std::string& password) = 0;
   virtual bool connected() const = 0;
+  /** SoftAP + HTTP portal so the phone can send Wi‑Fi credentials (no on-device typing). */
+  virtual bool start_provision(const std::string& preferred_ssid, std::string* ap_ssid_out) = 0;
+  virtual void stop_provision() = 0;
+  virtual bool take_provision_credentials(std::string* ssid, std::string* password) = 0;
+  virtual std::string provision_ap_ssid() const = 0;
 };
 
 struct PlatformCloud {
@@ -181,8 +186,8 @@ class App {
   std::string error_msg_;
   std::string wifi_password_;
   std::vector<std::string> wifi_networks_;
-  bool wifi_show_pw_ = false;
-  bool wifi_char_editing_ = true;  // Spec: spin changes char while editing picker
+  std::string wifi_ap_ssid_;
+  uint32_t last_wifi_prov_poll_ms_ = 0;
   std::string pair_code_;
   uint32_t pair_expires_ms_ = 0;
   uint32_t last_pair_poll_ms_ = 0;

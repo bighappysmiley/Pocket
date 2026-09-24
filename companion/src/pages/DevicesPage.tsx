@@ -62,8 +62,13 @@ export function DevicesPage() {
         <div className="empty panel stack">
           <h2>No Pocket linked yet</h2>
           <p className="muted">
-            On your Pocket: finish Wi‑Fi, then scan the pairing QR — or enter the 8-character code here.
+            First set Wi‑Fi from this phone (Pocket → pick a network → join Pocket-XXXX here →{' '}
+            <Link to="/wifi-setup">Wi‑Fi setup</Link>). Then scan the pairing QR or enter the
+            8-character code.
           </p>
+          <Link className="btn btn-secondary" to="/wifi-setup">
+            Wi‑Fi setup
+          </Link>
           <Link className="btn btn-primary" to="/pair">
             Enter pairing code
           </Link>
