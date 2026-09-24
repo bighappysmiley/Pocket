@@ -28,18 +28,34 @@ struct TClock : PlatformClock {
 struct TWifi : PlatformWifi {
   bool ok = false;
   bool provisioned = false;
+  bool creds_ready = true;
+  int connect_calls = 0;
+  int start_calls = 0;
+  bool fail_connect = false;
   std::string ap = "Pocket-TEST";
   std::string ap_pass = "AB23CD45";
   std::string pending_ssid = "NetA";
   std::string pending_pass = "secret";
   std::vector<std::string> scan() override { return {"NetA"}; }
   bool connect(const std::string&, const std::string& pw) override {
+    ++connect_calls;
+    if (fail_connect) {
+      ok = false;
+      return false;
+    }
     ok = !pw.empty();
+    if (ok) provisioned = false;  // SoftAP stopped after GOT_IP
     return ok;
   }
   bool connected() const override { return ok; }
   bool start_provision(const std::string& /*preferred*/, std::string* ap_ssid_out,
                        std::string* ap_pass_out) override {
+    ++start_calls;
+    if (provisioned) {
+      if (ap_ssid_out) *ap_ssid_out = ap;
+      if (ap_pass_out) *ap_pass_out = ap_pass;
+      return true;
+    }
     provisioned = true;
     if (ap_ssid_out) *ap_ssid_out = ap;
     if (ap_pass_out) *ap_pass_out = ap_pass;
@@ -47,10 +63,10 @@ struct TWifi : PlatformWifi {
   }
   void stop_provision() override { provisioned = false; }
   bool take_provision_credentials(std::string* ssid, std::string* password) override {
-    if (!provisioned) return false;
+    if (!provisioned || !creds_ready) return false;
     if (ssid) *ssid = pending_ssid;
     if (password) *password = pending_pass;
-    provisioned = false;
+    creds_ready = false;
     return true;
   }
   std::string provision_ap_ssid() const override { return ap; }
@@ -203,6 +219,81 @@ int main() {
     CHECK(app3.screen() == ScreenId::OnboardingCompanionQr);
     CHECK(cloud3.creates >= 1);
     CHECK(!wifi3.provisioned);
+  }
+
+  // Failed SoftAP connect stays on SoftAP (no remount loop / second start unless needed)
+  {
+    MemoryConfigStore store4;
+    TClock clock4;
+    TWifi wifi4;
+    wifi4.fail_connect = true;
+    wifi4.creds_ready = true;
+    TCloud cloud4;
+    TDisp disp4;
+    TStorage storage4;
+    TAudio audio4;
+    App app4(store4, clock4, wifi4, cloud4, disp4, &storage4, &audio4);
+    app4.boot();
+    app4.handle(InputEvent::Select);
+    app4.handle(InputEvent::Select);
+    app4.handle(InputEvent::Down);
+    app4.handle(InputEvent::Select);
+    CHECK(app4.screen() == ScreenId::OnboardingWifiPassword);
+    const int starts = wifi4.start_calls;
+    clock4.t += 500;
+    app4.tick(clock4.t);
+    CHECK(app4.screen() == ScreenId::OnboardingWifiPassword);
+    CHECK(wifi4.connect_calls == 1);
+    // SoftAP still up — idempotent start_provision, not a full remount restart
+    CHECK(wifi4.provisioned);
+    CHECK(wifi4.start_calls == starts);  // ensure_softap uses provisioning() → no new start
+  }
+
+  // Reboot mid-setup resumes past Welcome when progress was saved
+  {
+    MemoryConfigStore store5;
+    store5.mut().wifi_ssid = "HomeNet";
+    store5.mut().companion_linked = true;
+    store5.mut().device_id = "00000000-0000-4000-8000-000000000099";
+    TClock clock5;
+    TWifi wifi5;
+    TCloud cloud5;
+    TDisp disp5;
+    TStorage storage5;
+    TAudio audio5;
+    App app5(store5, clock5, wifi5, cloud5, disp5, &storage5, &audio5);
+    app5.boot();
+    CHECK(app5.screen() == ScreenId::OnboardingPinLength);
+  }
+  {
+    MemoryConfigStore store6;
+    store6.mut().wifi_ssid = "HomeNet";
+    store6.mut().device_id = "00000000-0000-4000-8000-000000000098";
+    TClock clock6;
+    TWifi wifi6;
+    TCloud cloud6;
+    TDisp disp6;
+    TStorage storage6;
+    TAudio audio6;
+    App app6(store6, clock6, wifi6, cloud6, disp6, &storage6, &audio6);
+    app6.boot();
+    CHECK(app6.screen() == ScreenId::OnboardingWifiPassword);
+    CHECK(wifi6.provisioned);
+  }
+  {
+    MemoryConfigStore store7;
+    store7.mut().companion_linked = true;
+    set_pin(store7.mut(), "1234");
+    store7.mut().device_id = "00000000-0000-4000-8000-000000000097";
+    TClock clock7;
+    TWifi wifi7;
+    TCloud cloud7;
+    TDisp disp7;
+    TStorage storage7;
+    TAudio audio7;
+    App app7(store7, clock7, wifi7, cloud7, disp7, &storage7, &audio7);
+    app7.boot();
+    CHECK(app7.screen() == ScreenId::OnboardingTimezone);
   }
 
   if (failures) {

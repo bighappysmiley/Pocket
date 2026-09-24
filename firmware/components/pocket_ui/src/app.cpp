@@ -38,11 +38,53 @@ void App::boot() {
   now_ms_ = clock_.now_ms();
   last_input_ms_ = now_ms_;
   if (!cfg_.onboarding_complete) {
-    nav_.reset(ScreenId::OnboardingWelcome);
+    const ScreenId resume = resume_onboarding_screen();
+    if (resume == ScreenId::OnboardingWifiPassword || resume == ScreenId::OnboardingCompanionQr) {
+      // SoftAP / pair need live sessions — restart Link without Welcome → Download → SD.
+      begin_softap_link();
+      return;
+    }
+    nav_.reset(resume);
   } else {
     nav_.reset(ScreenId::Lock);
   }
   after_nav();
+}
+
+static bool pin_hash_set(const DeviceConfig& cfg) {
+  for (uint8_t b : cfg.pin_hash) {
+    if (b != 0) return true;
+  }
+  return false;
+}
+
+ScreenId App::resume_onboarding_screen() const {
+  // Prefer farthest durable progress so reboot does not restart Welcome.
+  if (pin_hash_set(cfg_)) {
+    return ScreenId::OnboardingTimezone;
+  }
+  if (cfg_.companion_linked) {
+    return ScreenId::OnboardingPinLength;
+  }
+  if (!cfg_.wifi_ssid.empty()) {
+    // Password is not persisted — SoftAP Link again (or skip if already online).
+    return ScreenId::OnboardingWifiPassword;
+  }
+  return ScreenId::OnboardingWelcome;
+}
+
+void App::ensure_softap_credentials_shown() {
+  if (!wifi_.provisioning()) {
+    std::string ap;
+    std::string pass;
+    if (wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
+      wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
+      wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
+    }
+  } else {
+    wifi_ap_ssid_ = wifi_.provision_ap_ssid();
+    wifi_ap_pass_ = wifi_.provision_ap_password();
+  }
 }
 
 void App::play_sound(SoundId id) {
@@ -124,8 +166,14 @@ void App::begin_softap_link() {
   }
   wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
   wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
+  wifi_sta_connecting_ = false;
   last_wifi_prov_poll_ms_ = 0;
   focus_.index = 0;
+  // Stay on SoftAP screen if already there — avoid full remount bounce.
+  if (nav_.current() == ScreenId::OnboardingWifiPassword) {
+    mark_content_dirty();
+    return;
+  }
   nav_.replace(ScreenId::OnboardingWifiPassword);
   after_nav();
 }
@@ -184,7 +232,7 @@ void App::tick(uint32_t now_ms) {
     }
   }
   // SoftAP Wi‑Fi provision: wait for phone to POST credentials
-  if (nav_.current() == ScreenId::OnboardingWifiPassword) {
+  if (nav_.current() == ScreenId::OnboardingWifiPassword && !wifi_sta_connecting_) {
     if (now_ms - last_wifi_prov_poll_ms_ >= 400) {
       last_wifi_prov_poll_ms_ = now_ms;
       std::string ssid;
@@ -192,9 +240,12 @@ void App::tick(uint32_t now_ms) {
       if (wifi_.take_provision_credentials(&ssid, &pass)) {
         cfg_.wifi_ssid = ssid;
         wifi_password_ = pass;
-        nav_.replace(ScreenId::OnboardingWifiConnecting);
-        after_nav();  // connecting: full per Spec
+        wifi_sta_connecting_ = true;
+        error_msg_.clear();
+        mark_content_dirty();
+        // Stay on SoftAP screen — SoftAP stays up (APSTA) during STA attempt.
         const bool ok = wifi_.connect(cfg_.wifi_ssid, wifi_password_);
+        wifi_sta_connecting_ = false;
         if (ok) {
           store_.save(cfg_);
           if (cfg_.onboarding_complete) {
@@ -208,26 +259,14 @@ void App::tick(uint32_t now_ms) {
             after_nav();  // QR: full
           } else {
             play_sound(SoundId::Attention);
-            std::string ap;
-            std::string pass;
-            wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass);
-            wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
-            wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
-            focus_.index = 0;
-            nav_.replace(ScreenId::OnboardingWifiPassword);
-            after_nav();
+            ensure_softap_credentials_shown();
+            mark_content_dirty();
           }
         } else {
           error_msg_ = "Couldn't connect. Check the password on your phone.";
           error_until_ms_ = now_ms_ + 4000;
-          std::string ap;
-          std::string pass;
-          wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass);
-          wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
-          wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
-          focus_.index = 0;
-          nav_.replace(ScreenId::OnboardingWifiPassword);
-          after_nav();
+          ensure_softap_credentials_shown();
+          mark_content_dirty();
         }
       }
     }

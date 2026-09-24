@@ -40,6 +40,10 @@ char s_preferred_ssid[33] = {};
 char s_cred_ssid[33] = {};
 char s_cred_pass[65] = {};
 bool s_creds_ready = false;
+/** Cached STA scan while SoftAP is up — avoid repeated disruptive scans. */
+std::vector<std::string> s_scan_cache;
+uint32_t s_scan_cache_ms = 0;
+constexpr uint32_t kScanCacheTtlMs = 45000;
 
 void wifi_event_handler(void* /*arg*/, esp_event_base_t base, int32_t id, void* data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -210,7 +214,20 @@ esp_err_t handle_status(httpd_req_t* req) {
 esp_err_t handle_scan(httpd_req_t* req) {
   add_cors(req);
   httpd_resp_set_type(req, "application/json");
-  auto nets = scan_networks_locked();
+  // SoftAP + STA scan briefly drops phone clients. Prefer a short-lived cache.
+  const uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+  std::vector<std::string> nets;
+  if (s_provision_active && !s_scan_cache.empty() && (now - s_scan_cache_ms) < kScanCacheTtlMs) {
+    nets = s_scan_cache;
+  } else {
+    nets = scan_networks_locked();
+    if (!nets.empty()) {
+      s_scan_cache = nets;
+      s_scan_cache_ms = now;
+    } else if (!s_scan_cache.empty()) {
+      nets = s_scan_cache;
+    }
+  }
   std::string body = "{\"ok\":true,\"networks\":[";
   for (size_t i = 0; i < nets.size(); ++i) {
     std::string esc;
@@ -270,9 +287,9 @@ input,select,button{width:100%;box-sizing:border-box;font:inherit;padding:.7rem 
 button{background:#111;color:#fff;border:none;margin-top:1rem;font-weight:600}
 .msg{margin-top:1rem;padding:.75rem;border-radius:8px;background:#eee}
 </style></head><body>
-<h1>Set up Pocket Wi-Fi</h1>
-<p>Enter your <strong>home Wi‑Fi password</strong> here. When Pocket connects, your phone will show a pairing code next.</p>
-<label for="ssid">Network</label>
+<h1>Pocket Wi‑Fi</h1>
+<p>Stay on <strong>Pocket’s Wi‑Fi</strong>. Choose your home network and enter its password here — Pocket joins home Wi‑Fi while this page stays up.</p>
+<label for="ssid">Home network</label>
 <select id="ssid"></select>
 <label for="password">Password</label>
 <input id="password" type="password" autocomplete="current-password"/>
@@ -293,7 +310,7 @@ async function load(){
       if(st.preferred_ssid&&st.preferred_ssid===n)o.selected=true;
       sel.appendChild(o);
     }
-    msg.textContent='Ready — enter the Wi‑Fi password, then Connect Pocket.';
+    msg.textContent='Enter the home Wi‑Fi password, then Connect Pocket.';
   }catch(e){msg.textContent='Could not reach Pocket. Stay joined to the Pocket Wi‑Fi network.';}
 }
 document.getElementById('go').onclick=async()=>{
@@ -303,7 +320,7 @@ document.getElementById('go').onclick=async()=>{
     const res=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await res.json();
     if(!res.ok){msg.textContent=j.message||'Could not send.';return;}
-    msg.textContent='Sent. Rejoin your home Wi‑Fi, open the Pocket app, then enter the pairing code shown on Pocket.';
+    msg.textContent='Connecting… Keep this page open. When Pocket shows a pairing code, open the Pocket app on home Wi‑Fi.';
   }catch(e){msg.textContent='Send failed. Stay on the Pocket Wi‑Fi and try again.';}
 };
 load();
@@ -399,9 +416,12 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
   if (ssid.empty() || ssid.size() > 31) return false;
   if (pass.size() > 63) return false;
 
-  // Do not treat SoftAP teardown / disconnect as a connect failure.
+  // Keep SoftAP up during STA attempts so the phone does not drop mid-setup.
+  const bool keep_softap = s_provision_active;
   s_sta_connecting = false;
-  stop_provision();
+  if (!keep_softap) {
+    stop_provision();
+  }
 
   wifi_config_t cfg = {};
   std::memcpy(cfg.sta.ssid, ssid.c_str(), ssid.size());
@@ -412,7 +432,7 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
   cfg.sta.pmf_cfg.required = false;
 
   if (s_wifi_events) xEventGroupClearBits(s_wifi_events, kBitConnected | kBitFail);
-  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_mode(WIFI_MODE_STA));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_mode(keep_softap ? WIFI_MODE_APSTA : WIFI_MODE_STA));
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_config(WIFI_IF_STA, &cfg));
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_disconnect());
   // Let the disconnect event settle, then clear any stale fail bit before connecting.
@@ -433,10 +453,13 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
   if (bits & kBitConnected) {
     ESP_LOGI(TAG, "connected to %s", ssid.c_str());
     pocket_on_wifi_connected();
+    // SoftAP no longer needed once home Wi‑Fi has an IP.
+    if (keep_softap) stop_provision();
     return true;
   }
   ESP_LOGW(TAG, "connect failed / timeout for %s", ssid.c_str());
   s_sta_connected = false;
+  // SoftAP + httpd remain up for another password attempt.
   return false;
 }
 
@@ -445,6 +468,20 @@ bool EspWifi::connected() const { return s_sta_connected; }
 bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap_ssid_out,
                               std::string* ap_pass_out) {
   if (!wifi_ensure()) return false;
+
+  // Already advertising SoftAP — refresh preferred SSID only; do not drop phone sessions.
+  if (s_provision_active && s_httpd) {
+    lock_prov();
+    std::memset(s_preferred_ssid, 0, sizeof(s_preferred_ssid));
+    if (!preferred_ssid.empty() && preferred_ssid.size() < sizeof(s_preferred_ssid)) {
+      std::strncpy(s_preferred_ssid, preferred_ssid.c_str(), sizeof(s_preferred_ssid) - 1);
+    }
+    unlock_prov();
+    if (ap_ssid_out) *ap_ssid_out = s_ap_ssid;
+    if (ap_pass_out) *ap_pass_out = s_ap_pass;
+    return true;
+  }
+
   stop_httpd();
 
   if (!s_ap_netif_ready) {
@@ -487,6 +524,8 @@ bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap
   }
 
   s_provision_active = true;
+  s_scan_cache.clear();
+  s_scan_cache_ms = 0;
   if (ap_ssid_out) *ap_ssid_out = s_ap_ssid;
   if (ap_pass_out) *ap_pass_out = s_ap_pass;
   ESP_LOGI(TAG, "SoftAP provision active: %s pass_len=%u", s_ap_ssid,

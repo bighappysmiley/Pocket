@@ -217,6 +217,9 @@ class App {
   void play_sound(SoundId id);
   bool mint_pair_session();
   void begin_softap_link();
+  /** Resume mid-setup from saved DeviceConfig fields (avoid Welcome loop). */
+  ScreenId resume_onboarding_screen() const;
+  void ensure_softap_credentials_shown();
   /** Draw PIN slots; mask_completed hides entered digits as dots (unlock). */
   void draw_pin_entry(bool mask_completed, int band_top);
   void pin_band_geometry(int& x, int& y, int& w, int& h) const;
@@ -285,6 +288,8 @@ class App {
   std::vector<std::string> wifi_networks_;
   std::string wifi_ap_ssid_;
   std::string wifi_ap_pass_;
+  /** SoftAP screen is connecting to home Wi‑Fi (no Connecting screen remount). */
+  bool wifi_sta_connecting_ = false;
   uint32_t last_wifi_prov_poll_ms_ = 0;
   std::string pair_code_;
   uint32_t pair_expires_ms_ = 0;
