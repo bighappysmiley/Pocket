@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "esp_random.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -32,6 +33,7 @@ bool s_ap_netif_ready = false;
 bool s_provision_active = false;
 httpd_handle_t s_httpd = nullptr;
 char s_ap_ssid[33] = {};
+char s_ap_pass[17] = {};  // WPA2 short password shown on device (8 chars + NUL)
 char s_preferred_ssid[33] = {};
 char s_cred_ssid[33] = {};
 char s_cred_pass[65] = {};
@@ -353,6 +355,21 @@ void build_ap_ssid(char* out, size_t out_len) {
   std::snprintf(out, out_len, "Pocket-%02X%02X", mac[4], mac[5]);
 }
 
+/** Short WPA2 password (8 chars) — easy to type from the e-ink display. */
+void build_ap_password(char* out, size_t out_len) {
+  // Unambiguous alphabet (no 0/O, 1/I/L). WPA2 requires ≥8 characters.
+  static constexpr char kAlphabet[] = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+  static constexpr size_t kLen = 8;
+  if (out_len <= kLen) {
+    if (out_len) out[0] = 0;
+    return;
+  }
+  for (size_t i = 0; i < kLen; ++i) {
+    out[i] = kAlphabet[esp_random() % (sizeof(kAlphabet) - 1)];
+  }
+  out[kLen] = 0;
+}
+
 }  // namespace
 
 std::vector<std::string> EspWifi::scan() {
@@ -397,7 +414,8 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
 
 bool EspWifi::connected() const { return s_sta_connected; }
 
-bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap_ssid_out) {
+bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap_ssid_out,
+                              std::string* ap_pass_out) {
   if (!wifi_ensure()) return false;
   stop_httpd();
 
@@ -407,6 +425,7 @@ bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap
   }
 
   build_ap_ssid(s_ap_ssid, sizeof(s_ap_ssid));
+  build_ap_password(s_ap_pass, sizeof(s_ap_pass));
   lock_prov();
   std::memset(s_preferred_ssid, 0, sizeof(s_preferred_ssid));
   if (!preferred_ssid.empty() && preferred_ssid.size() < sizeof(s_preferred_ssid)) {
@@ -420,9 +439,10 @@ bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap
   wifi_config_t ap = {};
   std::strncpy(reinterpret_cast<char*>(ap.ap.ssid), s_ap_ssid, sizeof(ap.ap.ssid) - 1);
   ap.ap.ssid_len = static_cast<uint8_t>(std::strlen(s_ap_ssid));
+  std::strncpy(reinterpret_cast<char*>(ap.ap.password), s_ap_pass, sizeof(ap.ap.password) - 1);
   ap.ap.channel = 1;
   ap.ap.max_connection = 4;
-  ap.ap.authmode = WIFI_AUTH_OPEN;
+  ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
   ap.ap.ssid_hidden = 0;
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_mode(WIFI_MODE_APSTA));
@@ -437,7 +457,8 @@ bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap
 
   s_provision_active = true;
   if (ap_ssid_out) *ap_ssid_out = s_ap_ssid;
-  ESP_LOGI(TAG, "SoftAP provision active: %s", s_ap_ssid);
+  if (ap_pass_out) *ap_pass_out = s_ap_pass;
+  ESP_LOGI(TAG, "SoftAP provision active: %s (password on device)", s_ap_ssid);
   return true;
 }
 
@@ -465,3 +486,5 @@ bool EspWifi::take_provision_credentials(std::string* ssid, std::string* passwor
 }
 
 std::string EspWifi::provision_ap_ssid() const { return s_ap_ssid; }
+
+std::string EspWifi::provision_ap_password() const { return s_ap_pass; }

@@ -60,17 +60,17 @@ bool ink_at(const uint8_t* cols, int c, int r) {
   return (cols[c] & (1u << r)) != 0;
 }
 
-Gray coverage_to_gray(int cover /*0..4*/, Gray fg) {
+Gray coverage_to_gray(int cover /*0..16*/, Gray fg) {
   if (cover <= 0) return Gray::G3;  // unused
   if (fg == Gray::G0) {
-    // Black ink on light background — soft edges via mid grays.
-    if (cover >= 3) return Gray::G0;
-    if (cover == 2) return Gray::G1;
+    // Black ink on light background — soft edges via mid grays (4×4 AA).
+    if (cover >= 12) return Gray::G0;
+    if (cover >= 7) return Gray::G1;
     return Gray::G2;
   }
   // Light ink on dark (focus tiles).
-  if (cover >= 3) return fg;
-  if (cover == 2) return Gray::G2;
+  if (cover >= 12) return fg;
+  if (cover >= 7) return Gray::G2;
   return Gray::G1;
 }
 
@@ -96,7 +96,26 @@ int Canvas::role_px(TextRole r) {
   return 22;
 }
 
-int Canvas::role_scale(TextRole r) { return std::max(1, role_px(r) / 8); }
+int Canvas::role_scale(TextRole r) {
+  // Prefer denser scales so 5×7 glyphs read smoother on e-ink (less chunky).
+  switch (r) {
+    case TextRole::StatusBar:
+      return 2;
+    case TextRole::Secondary:
+      return 2;
+    case TextRole::Body:
+      return 3;
+    case TextRole::ScreenTitle:
+      return 4;
+    case TextRole::WordMark:
+      return 5;
+    case TextRole::PinDigit:
+      return 5;
+    case TextRole::HugeClock:
+      return 8;
+  }
+  return 3;
+}
 
 void Canvas::clear(Gray g) {
   const uint8_t v = static_cast<uint8_t>(g) & 0x3;
@@ -182,14 +201,19 @@ void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray 
         }
       }
     } else {
-      // Supersampled edges → 2-bit gray so large type isn't chunky.
+      // 4×4 supersampled edges → 2-bit gray so type isn't chunky/pixelated.
+      constexpr int kAA = 4;
       for (int oy = 0; oy < 7 * scale; ++oy) {
         for (int ox = 0; ox < 5 * scale; ++ox) {
           int cover = 0;
-          for (int sy = 0; sy < 2; ++sy) {
-            for (int sx = 0; sx < 2; ++sx) {
-              const float fx = (static_cast<float>(ox) + (sx + 0.5f) * 0.5f) / static_cast<float>(scale);
-              const float fy = (static_cast<float>(oy) + (sy + 0.5f) * 0.5f) / static_cast<float>(scale);
+          for (int sy = 0; sy < kAA; ++sy) {
+            for (int sx = 0; sx < kAA; ++sx) {
+              const float fx =
+                  (static_cast<float>(ox) + (static_cast<float>(sx) + 0.5f) / static_cast<float>(kAA)) /
+                  static_cast<float>(scale);
+              const float fy =
+                  (static_cast<float>(oy) + (static_cast<float>(sy) + 0.5f) / static_cast<float>(kAA)) /
+                  static_cast<float>(scale);
               if (ink_at(cols, static_cast<int>(fx), static_cast<int>(fy))) ++cover;
             }
           }

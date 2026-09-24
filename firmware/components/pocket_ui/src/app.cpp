@@ -92,8 +92,10 @@ void App::tick(uint32_t now_ms) {
           error_msg_ = "Couldn't connect. Check the password on your phone.";
           error_until_ms_ = now_ms_ + 4000;
           std::string ap;
-          wifi_.start_provision(cfg_.wifi_ssid, &ap);
+          std::string pass;
+          wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass);
           wifi_ap_ssid_ = ap;
+          wifi_ap_pass_ = pass;
           focus_.index = 0;
           nav_.replace(ScreenId::OnboardingWifiPassword);
           after_nav();
