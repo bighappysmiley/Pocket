@@ -50,8 +50,11 @@ bool name_is_media(const char* name) {
   return false;
 }
 
-bool mount_internal(bool format_if_failed) {
-  if (mounted_) return true;
+bool mount_internal(bool format_if_failed, int width, esp_err_t* out_err) {
+  if (mounted_) {
+    if (out_err) *out_err = ESP_OK;
+    return true;
+  }
 
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {};
   mount_config.format_if_mount_failed = format_if_failed;
@@ -59,37 +62,80 @@ bool mount_internal(bool format_if_failed) {
   mount_config.allocation_unit_size = 16 * 1024;
 
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-  host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+  // Start conservative for blank / flaky cards, then IDF negotiates up.
+  host.max_freq_khz = SDMMC_FREQ_PROBING;
 
   sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
-  slot.width = 4;
+  slot.width = width;
   slot.clk = static_cast<gpio_num_t>(kPinSdClk);
   slot.cmd = static_cast<gpio_num_t>(kPinSdCmd);
   slot.d0 = static_cast<gpio_num_t>(kPinSdD0);
   slot.d1 = static_cast<gpio_num_t>(kPinSdD1);
   slot.d2 = static_cast<gpio_num_t>(kPinSdD2);
   slot.d3 = static_cast<gpio_num_t>(kPinSdD3);
+#if SOC_SDMMC_USE_GPIO_MATRIX
+  slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
+#endif
 
   esp_err_t ret = esp_vfs_fat_sdmmc_mount(kMount, &host, &slot, &mount_config, &card_);
+  if (out_err) *out_err = ret;
   if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "mount failed: %s", esp_err_to_name(ret));
+    ESP_LOGW(TAG, "mount failed (width=%d format=%d): %s", width, format_if_failed ? 1 : 0,
+             esp_err_to_name(ret));
     card_ = nullptr;
     mounted_ = false;
     return false;
   }
   mounted_ = true;
-  ESP_LOGI(TAG, "mounted at %s", kMount);
+  ESP_LOGI(TAG, "mounted at %s (width=%d)", kMount, width);
   return true;
+}
+
+bool try_mount(bool format_if_failed, esp_err_t* out_err) {
+  esp_err_t err = ESP_FAIL;
+  // Prefer 4-bit (Waveshare IDF); fall back to 1-bit (Arduino SD_MMC).
+  if (mount_internal(format_if_failed, 4, &err)) {
+    if (out_err) *out_err = ESP_OK;
+    return true;
+  }
+  if (err == ESP_ERR_NOT_FOUND || err == ESP_FAIL) {
+    ESP_LOGW(TAG, "4-bit mount failed; retrying 1-bit");
+    if (mount_internal(format_if_failed, 1, &err)) {
+      if (out_err) *out_err = ESP_OK;
+      return true;
+    }
+  }
+  if (out_err) *out_err = err;
+  return false;
 }
 
 }  // namespace
 
-bool sd_probe() { return mount_internal(false); }
+bool sd_probe() {
+  if (mounted_) return true;
+  esp_err_t err = ESP_FAIL;
+  if (try_mount(false, &err)) return true;
 
-bool sd_present() { return mounted_ || mount_internal(false); }
+  // Unformatted / corrupt FAT often returns ESP_FAIL. One-shot format so a
+  // blank inserted card is detected as Empty instead of Absent.
+  if (err == ESP_FAIL || err == ESP_ERR_INVALID_STATE || err == ESP_ERR_INVALID_RESPONSE) {
+    ESP_LOGW(TAG, "mount failed (%s); trying one-shot format for empty card", esp_err_to_name(err));
+    if (try_mount(true, &err)) {
+      ESP_LOGI(TAG, "formatted blank/corrupt card");
+      return true;
+    }
+  }
+  return false;
+}
+
+bool sd_present() {
+  if (mounted_) return true;
+  esp_err_t err = ESP_FAIL;
+  return try_mount(false, &err);
+}
 
 SdContentKind sd_classify() {
-  if (!sd_present()) return SdContentKind::Absent;
+  if (!sd_present() && !mounted_) return SdContentKind::Absent;
 
   DIR* dir = opendir(kMount);
   if (!dir) return SdContentKind::Unknown;
@@ -102,7 +148,6 @@ SdContentKind sd_classify() {
     any = true;
     if (name_is_firmware_risk(ent->d_name)) risk = true;
     if (name_is_media(ent->d_name)) media = true;
-    // Peek one level into directories named like firmware
     if (ent->d_type == DT_DIR && name_is_firmware_risk(ent->d_name)) risk = true;
   }
   closedir(dir);
@@ -114,18 +159,16 @@ SdContentKind sd_classify() {
 }
 
 bool sd_erase() {
-  if (!mounted_ && !mount_internal(false)) {
-    // Try format-on-mount for blank/corrupt cards
-    if (!mount_internal(true)) return false;
+  if (!mounted_ && !try_mount(false, nullptr)) {
+    if (!try_mount(true, nullptr)) return false;
     return true;
   }
   if (!card_) return false;
   esp_err_t err = esp_vfs_fat_sdcard_format(kMount, card_);
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "format failed: %s", esp_err_to_name(err));
-    // Remount with format
     sd_unmount();
-    return mount_internal(true);
+    return try_mount(true, nullptr);
   }
   ESP_LOGI(TAG, "card erased");
   return true;

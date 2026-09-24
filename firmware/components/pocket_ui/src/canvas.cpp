@@ -43,7 +43,7 @@ bool Canvas::use_display_font(TextRole r) {
 }
 
 int Canvas::role_scale(TextRole r) {
-  return r == TextRole::HugeClock ? 2 : 1;
+  return r == TextRole::HugeClock ? 3 : 1;
 }
 
 int Canvas::text_height(TextRole role) const {

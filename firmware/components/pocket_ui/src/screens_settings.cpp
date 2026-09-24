@@ -7,8 +7,8 @@ namespace pocket {
 namespace {
 
 constexpr int kTitleY = kContentTop;
-constexpr int kListTop = kContentTop + 52;
-constexpr int kRowTextPad = 10;
+constexpr int kListTop = kContentTop + kTitleToBody;
+constexpr int kRowTextPad = 12;
 
 void draw_focus_rows(Canvas& c, FocusModel& focus, const char* const* rows, int count, int top_y) {
   focus.count = count;
@@ -43,13 +43,16 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kListTop, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
     char ver[48];
     std::snprintf(ver, sizeof(ver), "Version %s", cfg_.fw_version.c_str());
-    canvas_.draw_text(kSideMargin, kListTop + 52, ver, Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + 92, cfg_.device_name, Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + 132, "Pocket Display", Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text(kSideMargin, kListTop + 180, "Pocket Cloud", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + 212, cfg_.cloud_entitled ? "Subscribed" : "Not subscribed",
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody, ver, Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + kBodyLinePitch, cfg_.device_name, Canvas::TextRole::Body,
+                      Gray::G0);
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 2 * kBodyLinePitch, "Pocket Display",
                       Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text(kSideMargin, kListTop + 252,
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 12, "Pocket Cloud",
+                      Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 4 * kBodyLinePitch + 12,
+                      cfg_.cloud_entitled ? "Subscribed" : "Not subscribed", Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 5 * kBodyLinePitch + 12,
                       cfg_.companion_linked ? "Companion: Linked" : "Companion: Not linked",
                       Canvas::TextRole::Secondary, Gray::G1);
     const char* acts[] = {"Reset Pocket...", "Back"};

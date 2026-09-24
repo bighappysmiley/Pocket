@@ -11,11 +11,11 @@ void App::render_notes() {
   // Tabs
   if (s == ScreenId::NotesList || s == ScreenId::ListsList) {
     if (notes_tab_ == 0) {
-      canvas_.draw_focus_tile(kSideMargin, kContentTop, 100, 40, "Notes", Canvas::TextRole::Secondary);
-      canvas_.draw_text(kSideMargin + 114, kContentTop + 8, "Lists", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_focus_tile(kSideMargin, kContentTop, 120, kFocusRowH, "Notes", Canvas::TextRole::Secondary);
+      canvas_.draw_text(kSideMargin + 134, kContentTop + 12, "Lists", Canvas::TextRole::Secondary, Gray::G1);
     } else {
-      canvas_.draw_text(kSideMargin + 8, kContentTop + 8, "Notes", Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_focus_tile(kSideMargin + 104, kContentTop, 100, 40, "Lists", Canvas::TextRole::Secondary);
+      canvas_.draw_text(kSideMargin + 8, kContentTop + 12, "Notes", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_focus_tile(kSideMargin + 124, kContentTop, 120, kFocusRowH, "Lists", Canvas::TextRole::Secondary);
     }
   }
 
@@ -35,7 +35,7 @@ void App::render_notes() {
           canvas_.draw_text(kSideMargin + 8, y + 10, data_.notes[i].title, Canvas::TextRole::Body, Gray::G0);
       }
     }
-    int y = 720;
+    int y = kBottomCtaY;
     bool fab = focus_.index == static_cast<int>(data_.notes.size()) || data_.notes.empty();
     if (data_.notes.empty()) focus_.count = 1;
     if (fab || focus_.index == static_cast<int>(data_.notes.size()))
@@ -70,7 +70,7 @@ void App::render_notes() {
       else
         canvas_.draw_text(kSideMargin + 8, y + 10, data_.lists[i].title, Canvas::TextRole::Body, Gray::G0);
     }
-    canvas_.draw_text(kSideMargin + 8, 720, "New list", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin + 8, kBottomCtaY, "New list", Canvas::TextRole::Body, Gray::G0);
   } else if (s == ScreenId::ListsDetail) {
     if (note_index_ < static_cast<int>(data_.lists.size())) {
       auto& L = data_.lists[note_index_];
@@ -194,7 +194,7 @@ void App::render_ledger() {
   canvas_.draw_text_centered(kCanvasW / 2, kContentTop + 140, "Coming soon", Canvas::TextRole::Body, Gray::G0);
   canvas_.draw_text_centered(kCanvasW / 2, kContentTop + 180, "IOU tracking will arrive in a free update.",
                              Canvas::TextRole::Secondary, Gray::G1);
-  canvas_.draw_text_centered(kCanvasW / 2, 720, "Press Back for Home", Canvas::TextRole::Secondary, Gray::G1);
+  canvas_.draw_text_centered(kCanvasW / 2, kBottomCtaY, "Press Back for Home", Canvas::TextRole::Secondary, Gray::G1);
   canvas_.draw_focus_tile(kSideMargin, 660, kCanvasW - 32, kFocusRowH, "Back", Canvas::TextRole::Body);
 }
 
@@ -211,9 +211,9 @@ void App::render_clock() {
   for (int i = 0; i < 3; ++i) {
     int x = kSideMargin + i * 150;
     if (i == clock_tab_)
-      canvas_.draw_focus_tile(x, kContentTop, 140, 40, tabs[i], Canvas::TextRole::Secondary);
+      canvas_.draw_focus_tile(x, kContentTop, 140, kFocusRowH, tabs[i], Canvas::TextRole::Secondary);
     else
-      canvas_.draw_text(x + 20, kContentTop + 8, tabs[i], Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(x + 20, kContentTop + 12, tabs[i], Canvas::TextRole::Secondary, Gray::G1);
   }
   ScreenId s = nav_.current();
   if (s == ScreenId::ClockFace || clock_tab_ == 0) {
@@ -231,10 +231,10 @@ void App::render_clock() {
   } else if (clock_tab_ == 1) {
     if (data_.alarms.empty())
       canvas_.draw_text_centered(kCanvasW / 2, 300, "No alarms", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(24, 720, "Add alarm", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(24, kBottomCtaY, "Add alarm", Canvas::TextRole::Body, Gray::G0);
   } else {
     canvas_.draw_text_centered(kCanvasW / 2, 300, "Timers", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(24, 720, "Start", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(24, kBottomCtaY, "Start", Canvas::TextRole::Body, Gray::G0);
   }
 }
 

@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v27-deploy-fix";
+static const char* kBuildId = "POCKET-LIVE-v28-font-sd-audio";
 
 namespace {
 
@@ -182,6 +182,10 @@ static void epd_boot_task(void* /*arg*/) {
   ESP_LOGI(TAG, "epd_boot_task: enabling AXP");
   pocket::board::axp_enable_epd_rails();
 
+  // Codec after rails — AVDD/PA need a stable supply for audible playback.
+  esp_rom_printf("epd_boot_task: audio\n");
+  (void)pocket::board::audio_init();
+
   esp_rom_printf("epd_boot_task: epd.init\n");
   ESP_LOGI(TAG, "epd_boot_task: e-paper init / factory wipe");
   if (g_boot.epd && !g_boot.epd->init()) {
@@ -245,8 +249,6 @@ extern "C" void app_main(void) {
   static EspIdentity identity;
   static pocket::InputMapper mapper;
   static pocket::App app(store, clock, wifi, cloud, display, &storage, &audio, &identity);
-
-  (void)pocket::board::audio_init();
 
   g_boot.buttons = &buttons;
   g_boot.epd = &epd;
