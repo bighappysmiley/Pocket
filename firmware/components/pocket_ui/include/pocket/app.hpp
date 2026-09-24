@@ -304,8 +304,6 @@ class App {
   void begin_add_wifi_network();
   /** Poll Cloud when online: last_seen, entitlement, pending Wi‑Fi, parental. */
   void maybe_cloud_attest();
-  /** STA just associated — refresh clock sync + Cloud heartbeat promptly. */
-  void notify_wifi_connected();
   bool parental_requires_pin(HomeApp app) const;
   void launch_home_app(HomeApp app);
 
