@@ -355,7 +355,7 @@ void App::render_onboarding() {
     }
     case ScreenId::OnboardingMicTest: {
       canvas_.draw_text(kSideMargin, ty, "Voice", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap, "Hold BOOT and say something.",
+      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap, "Hold the side button and say something.",
                                         Canvas::TextRole::Body, Gray::G0);
       y = canvas_.draw_text_wrapped(kSideMargin, y + 8, kWrapW, kLineGap, "Speech recognition: Cloud",
                                     Canvas::TextRole::Secondary, Gray::G1);
