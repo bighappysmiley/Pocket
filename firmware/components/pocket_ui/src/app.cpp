@@ -15,10 +15,6 @@ static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 static const char* kTimezones[] = {"America/New_York", "America/Chicago", "America/Denver",
                                    "America/Los_Angeles", "America/Phoenix", "UTC", "Europe/London"};
 
-// Wi‑Fi password charset (Spec §10.8)
-static const char* kWifiPasswordCharset =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ._-!@#$%^&*()+=?";
-
 App::App(ConfigStore& store, PlatformClock& clock, PlatformWifi& wifi, PlatformCloud& cloud,
          PlatformDisplay& display)
     : store_(store), clock_(clock), wifi_(wifi), cloud_(cloud), display_(display) {}
@@ -61,6 +57,46 @@ void App::tick(uint32_t now_ms) {
     if (now_ms - last_input_ms_ >= static_cast<uint32_t>(cfg_.idle_lock_s) * 1000u) {
       go_lock();
       return;
+    }
+  }
+  // SoftAP Wi‑Fi provision: wait for phone to POST credentials
+  if (nav_.current() == ScreenId::OnboardingWifiPassword) {
+    if (now_ms - last_wifi_prov_poll_ms_ >= 400) {
+      last_wifi_prov_poll_ms_ = now_ms;
+      std::string ssid;
+      std::string pass;
+      if (wifi_.take_provision_credentials(&ssid, &pass)) {
+        cfg_.wifi_ssid = ssid;
+        wifi_password_ = pass;
+        nav_.replace(ScreenId::OnboardingWifiConnecting);
+        after_nav(true);
+        const bool ok = wifi_.connect(cfg_.wifi_ssid, wifi_password_);
+        if (ok) {
+          store_.save(cfg_);
+          if (cfg_.onboarding_complete) {
+            focus_.index = 0;
+            nav_.replace(ScreenId::SettingsWifi);
+            after_nav(true);
+          } else {
+            pair_code_ = cloud_.create_pair_session(cfg_.device_id);
+            pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
+            pair_status_ = "pending";
+            last_pair_poll_ms_ = 0;
+            focus_.index = 0;
+            nav_.replace(ScreenId::OnboardingCompanionQr);
+            after_nav(true);
+          }
+        } else {
+          error_msg_ = "Couldn't connect. Check the password on your phone.";
+          error_until_ms_ = now_ms_ + 4000;
+          std::string ap;
+          wifi_.start_provision(cfg_.wifi_ssid, &ap);
+          wifi_ap_ssid_ = ap;
+          focus_.index = 0;
+          nav_.replace(ScreenId::OnboardingWifiPassword);
+          after_nav(true);
+        }
+      }
     }
   }
   // Pairing poll (throttle HTTP — UI loop is ~50ms)

@@ -35,12 +35,35 @@ struct HostClock : PlatformClock {
 
 struct HostWifi : PlatformWifi {
   bool ok = false;
+  bool provisioning = false;
+  std::string ap = "Pocket-HOST";
+  std::string queued_ssid;
+  std::string queued_pass;
+  bool has_queued = false;
   std::vector<std::string> scan() override { return {"HomeNet", "CafeWiFi", "PocketLab"}; }
   bool connect(const std::string& /*ssid*/, const std::string& password) override {
     ok = password.size() >= 1;
     return ok;
   }
   bool connected() const override { return ok; }
+  bool start_provision(const std::string& preferred, std::string* ap_ssid_out) override {
+    provisioning = true;
+    // Host sim: auto-deliver credentials after start (stands in for phone SoftAP POST).
+    queued_ssid = preferred.empty() ? "HomeNet" : preferred;
+    queued_pass = "host-sim-pass";
+    has_queued = true;
+    if (ap_ssid_out) *ap_ssid_out = ap;
+    return true;
+  }
+  void stop_provision() override { provisioning = false; }
+  bool take_provision_credentials(std::string* ssid, std::string* password) override {
+    if (!has_queued) return false;
+    if (ssid) *ssid = queued_ssid;
+    if (password) *password = queued_pass;
+    has_queued = false;
+    return true;
+  }
+  std::string provision_ap_ssid() const override { return ap; }
 };
 
 struct HostCloud : PlatformCloud {

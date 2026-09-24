@@ -142,6 +142,9 @@ export function HomePage() {
         {devices.length === 0 ? (
           <>
             <p className="muted">No Pocket linked yet</p>
+            <Link className="btn btn-secondary" to="/wifi-setup">
+              Set up Wi‑Fi
+            </Link>
             <Link className="btn btn-primary" to="/pair">
               Link a Pocket
             </Link>

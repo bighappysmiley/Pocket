@@ -37,8 +37,10 @@ Boot forces a **full 4-gray refresh** so any latched factory demo image is clear
 ## Onboarding (v1.1)
 
 ```
-welcome → wifi_* → companion_qr → pin_* → timezone → mic_test → done → home
+welcome → wifi_list → phone SoftAP wait → connecting → companion_qr → pin_* → timezone → mic_test → done → home
 ```
+
+Wi‑Fi **password is never typed on the dial**. Device starts SoftAP `Pocket-XXXX`; the phone (companion `/wifi-setup` or captive portal at `192.168.4.1`) sends SSID + password.
 
 Default `device_name` = `"Pocket"` until renamed in the Companion PWA.
 

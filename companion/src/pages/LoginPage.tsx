@@ -68,7 +68,7 @@ export function LoginPage() {
         <h1>{mode === 'signup' ? 'Create your account' : 'Sign in to Pocket'}</h1>
         <p className="muted">
           {mode === 'signup'
-            ? 'We’ll email you a verification link, then you can sign in with your password.'
+            ? 'Create a Pocket Cloud account with your email and a password (8+ characters).'
             : 'Use the email and password for your Pocket Cloud account.'}
         </p>
       </div>
@@ -116,8 +116,11 @@ export function LoginPage() {
 
       {state === 'registered' ? (
         <div className="panel stack-sm">
-          <p>Check your email for a verification link.</p>
-          <p className="muted">After you verify, come back here and sign in with your password.</p>
+          <p>Account created. You can sign in now.</p>
+          <p className="muted">
+            Inbox verification email needs a mail provider (Resend/SMTP) configured once on Pocket
+            Cloud. Today you can sign in right away with the password you just chose.
+          </p>
           <button
             type="button"
             className="btn btn-secondary"

@@ -17,6 +17,7 @@ import { NoteDetailPage } from './pages/NoteDetailPage'
 import { NotesListPage } from './pages/NotesListPage'
 import { PairPage } from './pages/PairPage'
 import { PassesPage } from './pages/PassesPage'
+import { WifiSetupPage } from './pages/WifiSetupPage'
 import { UpgradePage } from './pages/UpgradePage'
 
 const routerBasename = (() => {
@@ -33,6 +34,7 @@ export default function App() {
           <Route element={<AppLayout bare />}>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            <Route path="/wifi-setup" element={<WifiSetupPage />} />
           </Route>
 
           <Route element={<RequireAuth />}>

@@ -27,12 +27,30 @@ struct TClock : PlatformClock {
 };
 struct TWifi : PlatformWifi {
   bool ok = false;
+  bool provisioned = false;
+  std::string ap = "Pocket-TEST";
+  std::string pending_ssid = "NetA";
+  std::string pending_pass = "secret";
   std::vector<std::string> scan() override { return {"NetA"}; }
   bool connect(const std::string&, const std::string& pw) override {
     ok = !pw.empty();
     return ok;
   }
   bool connected() const override { return ok; }
+  bool start_provision(const std::string& /*preferred*/, std::string* ap_ssid_out) override {
+    provisioned = true;
+    if (ap_ssid_out) *ap_ssid_out = ap;
+    return true;
+  }
+  void stop_provision() override { provisioned = false; }
+  bool take_provision_credentials(std::string* ssid, std::string* password) override {
+    if (!provisioned) return false;
+    if (ssid) *ssid = pending_ssid;
+    if (password) *password = pending_pass;
+    provisioned = false;
+    return true;
+  }
+  std::string provision_ap_ssid() const override { return ap; }
 };
 struct TCloud : PlatformCloud {
   std::string st = "pending";
@@ -60,17 +78,13 @@ int main() {
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::OnboardingWifiList);
 
-  // Select network
+  // Select network → SoftAP phone-wait screen
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::OnboardingWifiPassword);
 
-  // Enter one char, exit char-edit (Back), focus Connect, select
-  app.handle(InputEvent::Select);  // enter char while editing picker
-  app.handle(InputEvent::Back);    // leave char edit → action focus
-  app.handle(InputEvent::Down);
-  app.handle(InputEvent::Down);
-  app.handle(InputEvent::Down);
-  app.handle(InputEvent::Select);  // Connect
+  // Phone posts credentials via SoftAP (polled in tick)
+  clock.t += 500;
+  app.tick(clock.t);
   CHECK(app.screen() == ScreenId::OnboardingCompanionQr);
 
   // Skip for now
