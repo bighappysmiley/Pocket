@@ -1,6 +1,7 @@
 import { ApiError, type BackupMeta, type Connector, type ConnectorProvider, type Device, type MeResponse, type Note, type PairClaimResult, type PairSession, type PocketList } from './types'
 
 const BUILD_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
+const PROD_DEFAULT = 'https://br-super-hill-b40yvyrj-api.compute.c-6.us-east-2.aws.neon.tech'
 const STORAGE_KEY = 'pocket_cloud_api_base'
 
 function normalizeOrigin(raw: string): string {
@@ -20,7 +21,7 @@ function readStoredApiBase(): string {
 export function getApiBase(): string {
   const stored = readStoredApiBase()
   if (stored) return stored
-  return BUILD_API_BASE || 'http://localhost:8787'
+  return BUILD_API_BASE || (import.meta.env.PROD ? PROD_DEFAULT : 'http://localhost:8787')
 }
 
 /** Persist a Cloud API origin so Pages builds can connect without a rebuild. */
@@ -50,8 +51,10 @@ function isLocalhostOrigin(origin: string): boolean {
 export function isApiConfigured(): boolean {
   const base = getApiBase()
   if (!base) return false
-  // Build baked empty + no override → treat as not connected in production.
-  if (!BUILD_API_BASE && !readStoredApiBase() && import.meta.env.PROD) return false
+  // Build baked empty + no override → still configured in production via PROD_DEFAULT.
+  if (!BUILD_API_BASE && !readStoredApiBase() && import.meta.env.PROD) {
+    return base === PROD_DEFAULT
+  }
   if (import.meta.env.PROD && isLocalhostOrigin(base) && !readStoredApiBase()) return false
   return true
 }

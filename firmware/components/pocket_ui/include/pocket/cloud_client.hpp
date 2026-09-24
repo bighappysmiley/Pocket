@@ -11,7 +11,7 @@ namespace pocket {
 
 /** Pocket Cloud API origin (no trailing slash). */
 #ifndef POCKET_CLOUD_BASE
-#define POCKET_CLOUD_BASE "https://pocket-cloud.fly.dev"
+#define POCKET_CLOUD_BASE "https://br-super-hill-b40yvyrj-api.compute.c-6.us-east-2.aws.neon.tech"
 #endif
 
 #ifndef POCKET_DEVICE_API_KEY
