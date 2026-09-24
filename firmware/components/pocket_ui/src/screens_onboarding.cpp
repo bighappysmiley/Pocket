@@ -169,7 +169,7 @@ void App::render_onboarding() {
 
       canvas_.draw_text(kSideMargin, ty, "Link", Canvas::TextRole::ScreenTitle, Gray::G0);
       int y = canvas_.draw_text_wrapped(kSideMargin, ty + 48, kWrapW, kLineGap,
-                                        "On your phone: join Pocket Wi‑Fi, then enter the home password.",
+                                        "On your phone: join Pocket Wi‑Fi, then home Wi‑Fi or phone hotspot.",
                                         Canvas::TextRole::Secondary, Gray::G1);
 
       canvas_.draw_text(kSideMargin, y + 16, "Pocket Wi‑Fi", Canvas::TextRole::Secondary, Gray::G1);
@@ -195,7 +195,8 @@ void App::render_onboarding() {
       }
       canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 12, "Scan · or open 192.168.4.1",
                                  Canvas::TextRole::Secondary, Gray::G1);
-      const char* wait_line = wifi_sta_connecting_ ? "Connecting to home Wi‑Fi…" : "Waiting for home password…";
+      const char* wait_line =
+          wifi_sta_connecting_ ? "Connecting to Wi‑Fi…" : "Waiting for Wi‑Fi password…";
       canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 44, wait_line, Canvas::TextRole::Secondary,
                                  Gray::G1);
 

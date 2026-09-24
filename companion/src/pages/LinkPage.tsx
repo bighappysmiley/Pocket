@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -15,10 +15,39 @@ import { useDocumentTitle } from '../components/useDocumentTitle'
 import { WordMark } from '../components/WordMark'
 
 type WifiPhase = 'instructions' | 'connected' | 'sent' | 'error'
+/** How Pocket gets internet — home router or this phone’s Personal Hotspot (cell data). */
+type NetMode = 'home' | 'phone'
+
+function looksLikeHotspot(name: string): boolean {
+  const n = name.toLowerCase()
+  return (
+    n.includes('iphone') ||
+    n.includes('ipad') ||
+    n.includes('android') ||
+    n.includes('hotspot') ||
+    n.includes('galaxy') ||
+    n.includes('pixel') ||
+    n.startsWith('oneplus') ||
+    n.includes("'s iphone") ||
+    n.includes('’s iphone')
+  )
+}
+
+function sortNetworks(nets: string[], preferHotspot: boolean): string[] {
+  const uniq = [...new Set(nets.filter(Boolean))]
+  return uniq.sort((a, b) => {
+    const ah = looksLikeHotspot(a) ? 0 : 1
+    const bh = looksLikeHotspot(b) ? 0 : 1
+    if (preferHotspot && ah !== bh) return ah - bh
+    if (!preferHotspot && ah !== bh) return bh - ah
+    return a.localeCompare(b)
+  })
+}
 
 /**
- * Unified Link flow: SoftAP Wi‑Fi credentials, then claim pair code on the same account.
- * If Pocket is already on home Wi‑Fi, skip SoftAP and enter the pairing code.
+ * Unified Link flow: SoftAP credentials (home Wi‑Fi or phone hotspot), then claim pair code.
+ * Phone hotspot = Personal Hotspot / cell tether — Pocket STA to the phone, not Bluetooth PAN
+ * (Web Bluetooth cannot do classic PAN from a PWA).
  */
 export function LinkPage() {
   useDocumentTitle('Link your Pocket')
@@ -26,29 +55,43 @@ export function LinkPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const codeFromQuery = (params.get('code') || '').toUpperCase()
+  const modeFromQuery = params.get('mode') === 'phone' ? 'phone' : null
 
   const [wifiPhase, setWifiPhase] = useState<WifiPhase>(codeFromQuery ? 'sent' : 'instructions')
   /** True when user skipped SoftAP because Pocket is already online. */
   const [skipWifi, setSkipWifi] = useState(Boolean(codeFromQuery))
+  const [netMode, setNetMode] = useState<NetMode>(modeFromQuery || 'home')
   const [status, setStatus] = useState<DeviceProvisionStatus | null>(null)
   const [networks, setNetworks] = useState<string[]>([])
   const [ssid, setSsid] = useState('')
+  const [manualSsid, setManualSsid] = useState(false)
   const [wifiPassword, setWifiPassword] = useState('')
   const [wifiBusy, setWifiBusy] = useState(false)
   const [wifiError, setWifiError] = useState<string | null>(null)
-  const [homeWifiReady, setHomeWifiReady] = useState(Boolean(codeFromQuery))
+  const [onlineReady, setOnlineReady] = useState(Boolean(codeFromQuery))
 
   const [code, setCode] = useState(codeFromQuery)
   const [pairBusy, setPairBusy] = useState(false)
   const [pairError, setPairError] = useState<string | null>(null)
+
+  const orderedNetworks = useMemo(
+    () => sortNetworks(networks, netMode === 'phone'),
+    [networks, netMode],
+  )
 
   const tryReachDevice = useCallback(async () => {
     try {
       const st = await getDeviceStatus()
       setStatus(st)
       const sc = await scanDeviceNetworks()
-      setNetworks(sc.networks || [])
-      const preferred = st.preferred_ssid || sc.networks?.[0] || ''
+      const nets = sc.networks || []
+      setNetworks(nets)
+      const sorted = sortNetworks(nets, netMode === 'phone')
+      const preferred =
+        (netMode === 'phone' ? sorted.find(looksLikeHotspot) : undefined) ||
+        st.preferred_ssid ||
+        sorted[0] ||
+        ''
       setSsid((prev) => prev || preferred)
       setSkipWifi(false)
       setWifiPhase('connected')
@@ -58,7 +101,7 @@ export function LinkPage() {
       if (!codeFromQuery) setWifiPhase('instructions')
       return false
     }
-  }, [codeFromQuery])
+  }, [codeFromQuery, netMode])
 
   useEffect(() => {
     if (codeFromQuery || skipWifi || wifiPhase === 'sent') return
@@ -81,13 +124,31 @@ export function LinkPage() {
     setSkipWifi(true)
     setWifiError(null)
     setWifiPhase('sent')
-    setHomeWifiReady(true)
+    setOnlineReady(true)
+  }
+
+  function choosePhoneData() {
+    setNetMode('phone')
+    setManualSsid(false)
+    setSsid('')
+    setWifiPassword('')
+    setWifiError(null)
+    setWifiPhase('instructions')
+  }
+
+  function chooseHomeWifi() {
+    setNetMode('home')
+    setManualSsid(false)
+    setSsid('')
+    setWifiPassword('')
+    setWifiError(null)
+    setWifiPhase('instructions')
   }
 
   async function onSendWifi(e: FormEvent) {
     e.preventDefault()
     if (!ssid.trim()) {
-      setWifiError('Choose a network.')
+      setWifiError(netMode === 'phone' ? 'Enter your Personal Hotspot name.' : 'Choose a network.')
       return
     }
     setWifiBusy(true)
@@ -96,7 +157,7 @@ export function LinkPage() {
       await sendDeviceWifi(ssid.trim(), wifiPassword)
       setSkipWifi(false)
       setWifiPhase('sent')
-      setHomeWifiReady(false)
+      setOnlineReady(false)
     } catch (err) {
       setWifiPhase('error')
       setWifiError(err instanceof Error ? err.message : 'Could not send Wi‑Fi to Pocket.')
@@ -114,7 +175,7 @@ export function LinkPage() {
     }
     const trimmed = code.trim().toUpperCase()
     if (!trimmed) {
-      setPairError("Enter the code shown on your Pocket.")
+      setPairError('Enter the code shown on your Pocket.')
       return
     }
     setPairBusy(true)
@@ -141,7 +202,11 @@ export function LinkPage() {
           return
         }
         if (isNetworkError(err)) {
-          setPairError("You're offline or the server is unreachable. Rejoin your home Wi‑Fi first.")
+          setPairError(
+            netMode === 'phone'
+              ? "You're offline. Leave Pocket Wi‑Fi, turn Personal Hotspot back on, and use cell data."
+              : "You're offline or the server is unreachable. Rejoin your home Wi‑Fi first.",
+          )
           setPairBusy(false)
           return
         }
@@ -171,6 +236,7 @@ export function LinkPage() {
   }
 
   const showPair = wifiPhase === 'sent' || Boolean(codeFromQuery)
+  const phone = netMode === 'phone'
 
   return (
     <div className="page stack" style={{ maxWidth: '28rem', paddingTop: '2rem' }}>
@@ -180,7 +246,9 @@ export function LinkPage() {
         <p className="muted">
           {skipWifi || codeFromQuery
             ? 'Enter the pairing code from Pocket to link this account.'
-            : 'First send your home Wi‑Fi password to Pocket, then enter the pairing code — or skip Wi‑Fi if it is already online.'}
+            : phone
+              ? 'Share this phone’s cell data via Personal Hotspot — no home Wi‑Fi required.'
+              : 'Send a Wi‑Fi password to Pocket (home network or phone hotspot), then enter the pairing code.'}
         </p>
       </div>
 
@@ -188,33 +256,78 @@ export function LinkPage() {
         <>
           {wifiPhase === 'instructions' || wifiPhase === 'error' ? (
             <div className="panel stack">
-              <ol className="stack-sm" style={{ paddingLeft: '1.2rem', margin: 0 }}>
-                <li>
-                  On this phone, join <strong>{status?.ap_ssid || 'Pocket-XXXX'}</strong> using the
-                  password on Pocket.
-                </li>
-                <li>
-                  Open{' '}
-                  <a href={`${DEVICE_PROVISION_BASE}/`}>
-                    {DEVICE_PROVISION_BASE}
-                  </a>{' '}
-                  (best on SoftAP — avoids browser blocks) and enter your <strong>home Wi‑Fi password</strong>.
-                </li>
-                <li>Or stay here and tap continue once joined.</li>
-              </ol>
+              <div className="stack-sm" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={phone ? 'btn btn-block' : 'btn btn-primary btn-block'}
+                  onClick={chooseHomeWifi}
+                  style={{ flex: '1 1 8rem' }}
+                >
+                  Home Wi‑Fi
+                </button>
+                <button
+                  type="button"
+                  className={phone ? 'btn btn-primary btn-block' : 'btn btn-block'}
+                  onClick={choosePhoneData}
+                  style={{ flex: '1 1 8rem' }}
+                >
+                  Use phone data
+                </button>
+              </div>
+
+              {phone ? (
+                <ol className="stack-sm" style={{ paddingLeft: '1.2rem', margin: 0 }}>
+                  <li>
+                    Note your <strong>Personal Hotspot</strong> name and password (Settings → Personal
+                    Hotspot / Mobile Hotspot). On iPhone, turn on <strong>Maximize Compatibility</strong>{' '}
+                    if shown.
+                  </li>
+                  <li>
+                    Join <strong>{status?.ap_ssid || 'Pocket-XXXX'}</strong> with the password on Pocket
+                    (this briefly leaves cell data).
+                  </li>
+                  <li>
+                    Open{' '}
+                    <a href={`${DEVICE_PROVISION_BASE}/?mode=phone`}>
+                      {DEVICE_PROVISION_BASE}
+                    </a>{' '}
+                    and choose your hotspot — or continue here.
+                  </li>
+                  <li>
+                    After Pocket accepts it, leave Pocket Wi‑Fi and turn Personal Hotspot back on so
+                    Pocket can use your cell data.
+                  </li>
+                </ol>
+              ) : (
+                <ol className="stack-sm" style={{ paddingLeft: '1.2rem', margin: 0 }}>
+                  <li>
+                    On this phone, join <strong>{status?.ap_ssid || 'Pocket-XXXX'}</strong> using the
+                    password on Pocket.
+                  </li>
+                  <li>
+                    Open{' '}
+                    <a href={`${DEVICE_PROVISION_BASE}/`}>
+                      {DEVICE_PROVISION_BASE}
+                    </a>{' '}
+                    and enter your <strong>home Wi‑Fi</strong> password — or use{' '}
+                    <strong>Use phone data</strong> above for Personal Hotspot.
+                  </li>
+                  <li>Or stay here and tap continue once joined.</li>
+                </ol>
+              )}
+
               {wifiError ? (
                 <p role="alert" className="muted">
                   {wifiError}
                 </p>
               ) : null}
-              <a className="btn btn-primary btn-block" href={`${DEVICE_PROVISION_BASE}/`}>
+              <a
+                className="btn btn-primary btn-block"
+                href={`${DEVICE_PROVISION_BASE}/${phone ? '?mode=phone' : ''}`}
+              >
                 Open Pocket Wi‑Fi setup
               </a>
-              <button
-                type="button"
-                className="btn btn-block"
-                onClick={() => void tryReachDevice()}
-              >
+              <button type="button" className="btn btn-block" onClick={() => void tryReachDevice()}>
                 I’ve joined — continue in this app
               </button>
               <button type="button" className="btn btn-block" onClick={goPairWithoutWifi}>
@@ -226,31 +339,64 @@ export function LinkPage() {
           {wifiPhase === 'connected' ? (
             <form className="panel stack" onSubmit={(e) => void onSendWifi(e)}>
               <p className="muted">
-                Connected to Pocket. Choose your home network and enter its password — this is step 1.
-                Pairing code comes next on Pocket.
+                {phone
+                  ? 'Connected to Pocket. Pick this phone’s Personal Hotspot (or type the name), enter the hotspot password, then leave Pocket Wi‑Fi and turn the hotspot back on.'
+                  : 'Connected to Pocket. Choose your home network and enter its password — or switch to Use phone data for cell tether.'}
               </p>
+              <div className="stack-sm" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={!phone ? 'btn btn-primary' : 'btn'}
+                  onClick={chooseHomeWifi}
+                >
+                  Home Wi‑Fi
+                </button>
+                <button
+                  type="button"
+                  className={phone ? 'btn btn-primary' : 'btn'}
+                  onClick={() => {
+                    setNetMode('phone')
+                    const hot = orderedNetworks.find(looksLikeHotspot)
+                    if (hot) setSsid(hot)
+                    else setManualSsid(true)
+                  }}
+                >
+                  Use phone data
+                </button>
+              </div>
               <div className="field">
-                <label htmlFor="ssid">Home network</label>
-                {networks.length > 0 ? (
-                  <select id="ssid" value={ssid} onChange={(e) => setSsid(e.target.value)} required>
-                    {networks.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
+                <label htmlFor="ssid">{phone ? 'Personal Hotspot name' : 'Home network'}</label>
+                {!manualSsid && orderedNetworks.length > 0 ? (
+                  <>
+                    <select id="ssid" value={ssid} onChange={(e) => setSsid(e.target.value)} required>
+                      {orderedNetworks.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                          {looksLikeHotspot(n) ? ' · hotspot?' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn-block"
+                      style={{ marginTop: '0.5rem' }}
+                      onClick={() => setManualSsid(true)}
+                    >
+                      Type network name instead
+                    </button>
+                  </>
                 ) : (
                   <input
                     id="ssid"
                     value={ssid}
                     onChange={(e) => setSsid(e.target.value)}
-                    placeholder="Network name"
+                    placeholder={phone ? 'e.g. Jane’s iPhone' : 'Network name'}
                     required
                   />
                 )}
               </div>
               <div className="field">
-                <label htmlFor="password">Home Wi‑Fi password</label>
+                <label htmlFor="password">{phone ? 'Hotspot password' : 'Home Wi‑Fi password'}</label>
                 <input
                   id="password"
                   type="password"
@@ -265,7 +411,7 @@ export function LinkPage() {
                 </p>
               ) : null}
               <button type="submit" className="btn btn-primary btn-block" disabled={wifiBusy}>
-                {wifiBusy ? 'Sending…' : 'Send password & continue'}
+                {wifiBusy ? 'Sending…' : phone ? 'Send hotspot & continue' : 'Send password & continue'}
               </button>
               <button type="button" className="btn btn-block" onClick={goPairWithoutWifi}>
                 Skip — Pocket is already online
@@ -278,7 +424,9 @@ export function LinkPage() {
           <p>
             {skipWifi || codeFromQuery
               ? 'Enter the pairing code shown on Pocket to finish linking.'
-              : 'Pocket is joining Wi‑Fi. Rejoin your home network on this phone, wait for the pairing code on Pocket, then link below.'}
+              : phone
+                ? 'Pocket is joining your Personal Hotspot. Leave Pocket Wi‑Fi, turn the hotspot back on (cell data), wait for the pairing code on Pocket, then link below.'
+                : 'Pocket is joining Wi‑Fi. Rejoin your home network on this phone, wait for the pairing code on Pocket, then link below.'}
           </p>
           {skipWifi && !codeFromQuery ? (
             <button
@@ -287,15 +435,17 @@ export function LinkPage() {
               onClick={() => {
                 setSkipWifi(false)
                 setWifiPhase('instructions')
-                setHomeWifiReady(false)
+                setOnlineReady(false)
               }}
             >
               Back to Wi‑Fi setup
             </button>
           ) : null}
-          {!homeWifiReady ? (
-            <button type="button" className="btn btn-primary btn-block" onClick={() => setHomeWifiReady(true)}>
-              I’m back on home Wi‑Fi — enter pairing code
+          {!onlineReady ? (
+            <button type="button" className="btn btn-primary btn-block" onClick={() => setOnlineReady(true)}>
+              {phone
+                ? 'Hotspot is on — enter pairing code'
+                : 'I’m back on home Wi‑Fi — enter pairing code'}
             </button>
           ) : !isAuthenticated ? (
             <Link
@@ -326,7 +476,7 @@ export function LinkPage() {
                 <p className="chip">Code · {code}</p>
               )}
               {pairError ? (
-                pairError.includes('unreachable') ? (
+                pairError.includes('unreachable') || pairError.includes('offline') ? (
                   <ErrorState message={pairError} onRetry={() => void onClaim()} />
                 ) : (
                   <p role="alert" className="muted">
