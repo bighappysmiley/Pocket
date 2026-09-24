@@ -3,6 +3,7 @@ idf_component_register(
     "epd.cpp"
     "buttons.cpp"
     "axp.cpp"
-  INCLUDE_DIRS "include"
+    "vendor/waveshare_epd.c"
+  INCLUDE_DIRS "include" "vendor"
   REQUIRES pocket_ui driver freertos esp_timer
 )
