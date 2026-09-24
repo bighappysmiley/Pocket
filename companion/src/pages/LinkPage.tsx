@@ -18,6 +18,7 @@ type WifiPhase = 'instructions' | 'connected' | 'sent' | 'error'
 /**
  * Unified Link flow: SoftAP Wi‑Fi credentials, then claim pair code on the same account.
  * Replaces separate /wifi-setup and /pair entry points.
+ * If Pocket is already on home Wi‑Fi, skip SoftAP and enter the pairing code.
  */
 export function LinkPage() {
   useDocumentTitle('Link your Pocket')
@@ -27,6 +28,8 @@ export function LinkPage() {
   const codeFromQuery = (params.get('code') || '').toUpperCase()
 
   const [wifiPhase, setWifiPhase] = useState<WifiPhase>(codeFromQuery ? 'sent' : 'instructions')
+  /** True when user skipped SoftAP because Pocket is already online. */
+  const [skipWifi, setSkipWifi] = useState(Boolean(codeFromQuery))
   const [status, setStatus] = useState<DeviceProvisionStatus | null>(null)
   const [networks, setNetworks] = useState<string[]>([])
   const [ssid, setSsid] = useState('')
@@ -46,6 +49,7 @@ export function LinkPage() {
       setNetworks(sc.networks || [])
       const preferred = st.preferred_ssid || sc.networks?.[0] || ''
       setSsid((prev) => prev || preferred)
+      setSkipWifi(false)
       setWifiPhase('connected')
       setWifiError(null)
       return true
@@ -56,7 +60,7 @@ export function LinkPage() {
   }, [codeFromQuery])
 
   useEffect(() => {
-    if (codeFromQuery) return
+    if (codeFromQuery || skipWifi || wifiPhase === 'sent') return
     let cancelled = false
     const tick = async () => {
       if (cancelled) return
@@ -64,14 +68,19 @@ export function LinkPage() {
     }
     void tick()
     const id = window.setInterval(() => {
-      if (wifiPhase === 'sent') return
       void tick()
     }, 2500)
     return () => {
       cancelled = true
       window.clearInterval(id)
     }
-  }, [tryReachDevice, wifiPhase, codeFromQuery])
+  }, [tryReachDevice, wifiPhase, codeFromQuery, skipWifi])
+
+  function goPairWithoutWifi() {
+    setSkipWifi(true)
+    setWifiError(null)
+    setWifiPhase('sent')
+  }
 
   async function onSendWifi(e: FormEvent) {
     e.preventDefault()
@@ -163,7 +172,9 @@ export function LinkPage() {
       <div className="stack-sm">
         <h1>Link your Pocket</h1>
         <p className="muted">
-          One flow: connect Pocket to your home Wi‑Fi, then link it to this account.
+          {skipWifi || codeFromQuery
+            ? 'Enter the pairing code from Pocket to link it to this account.'
+            : 'Connect Pocket to your home Wi‑Fi, then link it to this account — or skip Wi‑Fi if it is already online.'}
         </p>
       </div>
 
@@ -189,6 +200,9 @@ export function LinkPage() {
                 onClick={() => void tryReachDevice()}
               >
                 I’ve joined Pocket Wi‑Fi — continue
+              </button>
+              <button type="button" className="btn btn-secondary btn-block" onClick={goPairWithoutWifi}>
+                Already on Wi‑Fi — enter pairing code
               </button>
             </div>
           ) : null}
@@ -234,14 +248,18 @@ export function LinkPage() {
               <button type="submit" className="btn btn-primary btn-block" disabled={wifiBusy}>
                 {wifiBusy ? 'Sending…' : 'Connect Pocket & continue'}
               </button>
+              <button type="button" className="btn btn-secondary btn-block" onClick={goPairWithoutWifi}>
+                Skip — Pocket is already online
+              </button>
             </form>
           ) : null}
         </>
       ) : (
         <div className="panel stack">
           <p>
-            Pocket is connecting to Wi‑Fi. Rejoin your home network on this phone, then link with the
-            code on Pocket.
+            {skipWifi || codeFromQuery
+              ? 'Use the pairing code shown on Pocket (or scan its QR).'
+              : 'Pocket is connecting to Wi‑Fi. Rejoin your home network on this phone, then link with the code on Pocket.'}
           </p>
           {!isAuthenticated ? (
             <Link
@@ -284,6 +302,18 @@ export function LinkPage() {
               </button>
             </form>
           )}
+          {skipWifi && !codeFromQuery ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-block"
+              onClick={() => {
+                setSkipWifi(false)
+                setWifiPhase('instructions')
+              }}
+            >
+              Set up Wi‑Fi instead
+            </button>
+          ) : null}
         </div>
       )}
     </div>

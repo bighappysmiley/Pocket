@@ -124,17 +124,23 @@ void App::render_onboarding() {
       canvas_.draw_text_centered(kCanvasW / 2, 492, "Waiting for your phone...", Canvas::TextRole::Secondary,
                                  Gray::G1);
 
-      focus_.count = 2;
-      const char* actions[] = {"Waiting...", "Cancel"};
-      for (int i = 0; i < 2; ++i) {
-        int y = 540 + i * 48;
+      // SoftAP runs APSTA — STA may already be online; offer skip.
+      const bool already_online = wifi_.connected();
+      focus_.count = already_online ? 3 : 2;
+      const char* actions_online[] = {"Waiting...", "Already online", "Cancel"};
+      const char* actions_wait[] = {"Waiting...", "Cancel"};
+      const char** actions = already_online ? actions_online : actions_wait;
+      const int actions_top = already_online ? 520 : 540;
+      for (int i = 0; i < focus_.count; ++i) {
+        int y = actions_top + i * 48;
         if (i == focus_.index)
           canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 40, actions[i], Canvas::TextRole::Body);
         else
           canvas_.draw_text(kSideMargin + 8, y + 10, actions[i], Canvas::TextRole::Body, Gray::G0);
       }
       if (now_ms_ < error_until_ms_) {
-        canvas_.draw_text_fit(kSideMargin, 640, kCanvasW - 32, error_msg_, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin, already_online ? 680 : 640, kCanvasW - 32, error_msg_,
+                              Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
@@ -339,6 +345,9 @@ void App::handle_onboarding(InputEvent e) {
       case ScreenId::OnboardingCompanionQr:
         if (cfg_.onboarding_complete) {
           nav_.replace(ScreenId::SettingsCloud);
+        } else if (wifi_.connected()) {
+          // Already online — don't tear down STA for SoftAP
+          nav_.replace(ScreenId::OnboardingCompanionDownload);
         } else {
           // Re-enter Link SoftAP phase
           std::string ap;
@@ -396,7 +405,18 @@ void App::handle_onboarding(InputEvent e) {
   }
 
   if (s == ScreenId::OnboardingCompanionDownload && e == InputEvent::Select) {
-    // Unified Link: skip Wi‑Fi list — start SoftAP and wait for phone.
+    // Already on home Wi‑Fi → mint pair code; skip SoftAP.
+    if (wifi_.connected()) {
+      pair_code_ = cloud_.create_pair_session(cfg_.device_id);
+      pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
+      pair_status_ = "pending";
+      last_pair_poll_ms_ = 0;
+      focus_.index = 0;
+      nav_.replace(ScreenId::OnboardingCompanionQr);
+      after_nav();
+      return;
+    }
+    // Unified Link: start SoftAP and wait for phone.
     std::string ap;
     std::string pass;
     if (!wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
@@ -451,7 +471,8 @@ void App::handle_onboarding(InputEvent e) {
   }
 
   if (s == ScreenId::OnboardingWifiPassword) {
-    focus_.count = 2;
+    const bool already_online = wifi_.connected();
+    focus_.count = already_online ? 3 : 2;
     if (e == InputEvent::Up) {
       focus_.move(-1);
       dirty_ = true;
@@ -459,7 +480,22 @@ void App::handle_onboarding(InputEvent e) {
       focus_.move(1);
       dirty_ = true;
     } else if (e == InputEvent::Select) {
-      if (focus_.index == 1) {
+      const int cancel_i = already_online ? 2 : 1;
+      const int skip_i = already_online ? 1 : -1;
+      if (focus_.index == skip_i) {
+        wifi_.stop_provision();
+        if (cfg_.onboarding_complete) {
+          nav_.replace(ScreenId::SettingsWifi);
+        } else {
+          pair_code_ = cloud_.create_pair_session(cfg_.device_id);
+          pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
+          pair_status_ = "pending";
+          last_pair_poll_ms_ = 0;
+          focus_.index = 0;
+          nav_.replace(ScreenId::OnboardingCompanionQr);
+        }
+        after_nav();
+      } else if (focus_.index == cancel_i) {
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           nav_.replace(ScreenId::OnboardingWifiList);

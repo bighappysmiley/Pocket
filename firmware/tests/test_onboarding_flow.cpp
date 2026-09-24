@@ -136,6 +136,27 @@ int main() {
   // No naming screen ever
   CHECK(app.config().device_name == "Pocket");
 
+  // --- Already on Wi‑Fi: Continue after companion download skips SoftAP ---
+  {
+    MemoryConfigStore store2;
+    TClock clock2;
+    TWifi wifi2;
+    wifi2.ok = true;  // STA already connected
+    TCloud cloud2;
+    TDisp disp2;
+    App app2(store2, clock2, wifi2, cloud2, disp2);
+    app2.boot();
+    app2.handle(InputEvent::Select);  // Welcome → Download
+    CHECK(app2.screen() == ScreenId::OnboardingCompanionDownload);
+    app2.handle(InputEvent::Select);  // Continue → pair QR (skip SoftAP)
+    CHECK(app2.screen() == ScreenId::OnboardingCompanionQr);
+    CHECK(!wifi2.provisioned);
+    // Back while online returns to download (does not start SoftAP)
+    app2.handle(InputEvent::Back);
+    CHECK(app2.screen() == ScreenId::OnboardingCompanionDownload);
+    CHECK(!wifi2.provisioned);
+  }
+
   if (failures) {
     std::printf("%d failures\n", failures);
     return 1;
