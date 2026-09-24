@@ -68,7 +68,7 @@ void draw_status_bar_impl(Canvas& c, const DeviceConfig& cfg, int hour, int minu
     if (h12 == 0) h12 = 12;
     std::snprintf(timebuf, sizeof(timebuf), "%d:%02d", h12, minute);
   }
-  c.draw_text(kSideMargin, 8, timebuf, Canvas::TextRole::StatusBar, Gray::G0);
+  c.draw_text(kSideMargin, 6, timebuf, Canvas::TextRole::StatusBar, Gray::G0);
 
   // Right: wifi icon + battery (real values from platform)
   int rx = kCanvasW - kSideMargin;
