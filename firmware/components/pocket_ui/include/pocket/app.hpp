@@ -43,6 +43,13 @@ struct PlatformCloud {
   virtual std::string pair_status(const std::string& code) = 0;  // pending|claimed|expired
   virtual void refresh_entitlement(DeviceConfig& cfg) = 0;
   virtual std::string stt_transcribe(const std::vector<uint8_t>& pcm) = 0;
+  /** List music library metadata JSON (id/title/filename/size). Empty on failure. */
+  virtual std::string music_list_json(const std::string& /*device_id*/) { return "[]"; }
+  /** Download track audio bytes by id. Returns empty on failure. */
+  virtual std::vector<uint8_t> music_download(const std::string& /*device_id*/,
+                                              const std::string& /*track_id*/) {
+    return {};
+  }
 };
 
 struct PlatformDisplay {
@@ -69,6 +76,10 @@ struct PlatformStorage {
   virtual SdContentKind classify() { return SdContentKind::Absent; }
   virtual bool erase_card() { return false; }
   virtual void unmount() {}
+  /** Prefer SD when mounted + space; else LittleFS internal. Empty if neither usable. */
+  virtual std::string music_root() { return {}; }
+  virtual bool music_ensure_root() { return false; }
+  virtual uint64_t free_bytes(const std::string& /*root*/) { return 0; }
 };
 
 enum class SoundId : uint8_t { Click = 0, Welcome, Success, Attention };
@@ -76,6 +87,17 @@ enum class SoundId : uint8_t { Click = 0, Welcome, Success, Attention };
 struct PlatformAudio {
   virtual ~PlatformAudio() = default;
   virtual void play(SoundId /*id*/) {}
+  /** Play a PCM/WAV file from local path (best-effort; may block). */
+  virtual bool play_file(const std::string& /*path*/) { return false; }
+  virtual void stop() {}
+};
+
+struct MusicTrack {
+  std::string id;
+  std::string title;
+  std::string filename;
+  std::string local_path;
+  int size_bytes = 0;
 };
 
 /** Optional: stable device UUID from MAC (ESP). Empty → App generates placeholder. */
@@ -177,7 +199,7 @@ class App {
   void redraw(bool full);
 
  private:
-  enum class DirtyKind : uint8_t { FullCanvas, ContentBand, StatusBar };
+  enum class DirtyKind : uint8_t { FullCanvas, ContentBand, StatusBar, Region };
 
   void render();
   void draw_status_bar();
@@ -188,10 +210,16 @@ class App {
   void after_nav();
   void mark_content_dirty();
   void mark_status_dirty();
+  /** Tight e-ink region update (PIN digits, focus rows, etc.). */
+  void mark_region_dirty(int x, int y, int w, int h);
+  void mark_pin_dirty();
   void present_canvas(bool full);
   void play_sound(SoundId id);
   bool mint_pair_session();
   void begin_softap_link();
+  /** Draw PIN slots; mask_completed hides entered digits as dots (unlock). */
+  void draw_pin_entry(bool mask_completed, int band_top);
+  void pin_band_geometry(int& x, int& y, int& w, int& h) const;
 
   // Screen handlers
   void render_lock();
@@ -216,6 +244,9 @@ class App {
   void handle_pass(InputEvent e);
   void render_weather();
   void handle_weather(InputEvent e);
+  void render_music();
+  void handle_music(InputEvent e);
+  void music_sync_from_cloud();
   void render_settings();
   void handle_settings(InputEvent e);
 
@@ -236,11 +267,16 @@ class App {
   InputMapper input_{};  // unused when events injected externally
   bool dirty_ = true;
   DirtyKind dirty_kind_ = DirtyKind::FullCanvas;
+  int dirty_rx_ = 0;
+  int dirty_ry_ = 0;
+  int dirty_rw_ = 0;
+  int dirty_rh_ = 0;
 
   // UI transient state
   FocusModel focus_{};
   std::string pin_entry_;
   std::string pin_pending_;
+  char pin_digit_working_ = '0';
   int pin_fail_count_ = 0;
   uint32_t pin_lockout_until_ms_ = 0;
   uint32_t error_until_ms_ = 0;
@@ -260,6 +296,10 @@ class App {
   int notes_tab_ = 0;  // 0 Notes 1 Lists
   int clock_tab_ = 0;
   int note_index_ = 0;
+  int music_index_ = 0;
+  std::vector<MusicTrack> music_tracks_;
+  bool music_playing_ = false;
+  std::string music_status_;
   uint32_t last_input_ms_ = 0;
   uint32_t now_ms_ = 0;
   bool ptt_active_ = false;

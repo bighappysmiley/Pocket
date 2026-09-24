@@ -7,7 +7,7 @@ import { ErrorState } from '../components/ErrorState'
 import { useDocumentTitle } from '../components/useDocumentTitle'
 import { relativeTime } from '../lib/utils'
 
-type Tab = 'overview' | 'users' | 'devices' | 'pairing' | 'badges' | 'activity'
+type Tab = 'overview' | 'users' | 'devices' | 'pairing' | 'badges' | 'activity' | 'stripe'
 
 type Overview = {
   users: number
@@ -17,6 +17,19 @@ type Overview = {
   subscriptions_active: number
   badges: number
   badge_awards: number
+}
+
+type StripeStatus = {
+  configured: boolean
+  mock_mode: boolean
+  source: string
+  secret_key_set: boolean
+  secret_key_masked: string | null
+  webhook_secret_set: boolean
+  webhook_secret_masked: string | null
+  price_monthly_id: string | null
+  product_name: string
+  webhook_url: string
 }
 
 type AdminUser = {
@@ -81,6 +94,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'pairing', label: 'Pairing' },
   { id: 'badges', label: 'Badges' },
   { id: 'activity', label: 'Activity' },
+  { id: 'stripe', label: 'Stripe' },
 ]
 
 export function AdminPage() {
@@ -105,6 +119,13 @@ export function AdminPage() {
   const [badgeForm, setBadgeForm] = useState({ name: '', key: '', icon_key: 'star', description: '' })
   const [awardForm, setAwardForm] = useState({ badge_id: '', user_id: '', note: '' })
   const [notice, setNotice] = useState<string | null>(null)
+  const [stripe, setStripe] = useState<StripeStatus | null>(null)
+  const [stripeForm, setStripeForm] = useState({
+    secret_key: '',
+    webhook_secret: '',
+    price_monthly_id: '',
+    product_name: 'Pocket Cloud',
+  })
 
   const isAdmin = Boolean(user && (user.is_admin || user.role === 'admin'))
 
@@ -149,6 +170,18 @@ export function AdminPage() {
     setActivity(data)
   }, [])
 
+  const loadStripe = useCallback(async () => {
+    const data = await api.adminStripeStatus()
+    setStripe(data)
+    setStripeForm((f) => ({
+      ...f,
+      price_monthly_id: data.price_monthly_id || '',
+      product_name: data.product_name || 'Pocket Cloud',
+      secret_key: '',
+      webhook_secret: '',
+    }))
+  }, [])
+
   const refresh = useCallback(async () => {
     setError(null)
     setBusy(true)
@@ -159,12 +192,13 @@ export function AdminPage() {
       else if (tab === 'pairing') await loadPairing()
       else if (tab === 'badges') await loadBadges()
       else if (tab === 'activity') await loadActivity()
+      else if (tab === 'stripe') await loadStripe()
     } catch (err) {
       fail(err)
     } finally {
       setBusy(false)
     }
-  }, [tab, loadOverview, loadUsers, loadDevices, loadPairing, loadBadges, loadActivity])
+  }, [tab, loadOverview, loadUsers, loadDevices, loadPairing, loadBadges, loadActivity, loadStripe])
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && isAdmin) void refresh()
@@ -295,12 +329,60 @@ export function AdminPage() {
     }
   }
 
+  async function onSaveStripe(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const body: {
+        secret_key?: string
+        webhook_secret?: string
+        price_monthly_id?: string
+        product_name?: string
+      } = {}
+      if (stripeForm.secret_key.trim()) body.secret_key = stripeForm.secret_key.trim()
+      if (stripeForm.webhook_secret.trim()) body.webhook_secret = stripeForm.webhook_secret.trim()
+      if (stripeForm.price_monthly_id.trim() || stripe?.price_monthly_id) {
+        body.price_monthly_id = stripeForm.price_monthly_id.trim()
+      }
+      if (stripeForm.product_name.trim()) body.product_name = stripeForm.product_name.trim()
+      if (!body.secret_key && !body.webhook_secret && body.price_monthly_id === undefined && !body.product_name) {
+        setError('Paste a Stripe secret key, webhook secret, or price id to save.')
+        setBusy(false)
+        return
+      }
+      await api.adminStripeConfigure(body)
+      setNotice('Stripe settings saved. Keys stay on the server — never paste them in chat.')
+      await loadStripe()
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onClearStripe() {
+    if (!window.confirm('Clear Admin-stored Stripe keys? Billing will fall back to env vars or mock mode.')) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.adminStripeConfigure({ clear: true })
+      setNotice('Cleared Admin Stripe settings.')
+      await loadStripe()
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="page page--wide stack admin-page">
       <div className="stack-sm">
         <p className="eyebrow">Pocket Cloud</p>
         <h1>Admin</h1>
-        <p className="muted">Users, devices, pairing, badges, and subscriptions for ops.</p>
+        <p className="muted">Users, devices, pairing, badges, Stripe, and subscriptions for ops.</p>
       </div>
 
       <div className="admin-tabs" role="tablist" aria-label="Admin sections">
@@ -515,7 +597,7 @@ export function AdminPage() {
             </div>
             <div className="field">
               <label htmlFor="badge-key">Key</label>
-              <input id="badge-key" className="input" value={badgeForm.key} onChange={(e) => setBadgeForm({ ...badgeForm, key: e.target.value })} placeholder="early_adopter" required />
+              <input id="badge-key" className="input" value={badgeForm.key} onChange={(e) => setBadgeForm({ ...badgeForm, key: e.target.value })} placeholder="unique_key" required />
             </div>
             <div className="field">
               <label htmlFor="badge-icon">Icon key</label>
@@ -643,6 +725,87 @@ export function AdminPage() {
               ))}
             </ul>
           </section>
+        </div>
+      ) : null}
+
+      {tab === 'stripe' ? (
+        <div className="stack">
+          <section className="panel stack">
+            <h2>Stripe billing</h2>
+            <p className="muted">
+              Paste keys from the Stripe Dashboard here. They are stored server-side for Checkout and webhooks —
+              do not put them in chat or commit them.
+            </p>
+            {stripe ? (
+              <div className="stack-sm">
+                <p>
+                  Status:{' '}
+                  <strong>{stripe.mock_mode ? 'Mock billing (no secret key)' : 'Live Stripe'}</strong>
+                  {stripe.source !== 'none' ? ` · source: ${stripe.source}` : ''}
+                </p>
+                <p className="muted">
+                  Secret: {stripe.secret_key_masked || 'not set'}
+                  {' · '}
+                  Webhook: {stripe.webhook_secret_masked || 'not set'}
+                </p>
+                <p className="muted">
+                  Webhook URL: <code>{stripe.webhook_url}</code>
+                </p>
+              </div>
+            ) : busy ? (
+              <p className="muted">Loading…</p>
+            ) : null}
+          </section>
+
+          <form className="panel stack" onSubmit={(e) => void onSaveStripe(e)}>
+            <label className="field">
+              <span>Secret key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={stripe?.secret_key_set ? '•••• leave blank to keep' : 'sk_test_… or sk_live_…'}
+                value={stripeForm.secret_key}
+                onChange={(e) => setStripeForm((f) => ({ ...f, secret_key: e.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span>Webhook signing secret</span>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={stripe?.webhook_secret_set ? '•••• leave blank to keep' : 'whsec_…'}
+                value={stripeForm.webhook_secret}
+                onChange={(e) => setStripeForm((f) => ({ ...f, webhook_secret: e.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span>Monthly price id</span>
+              <input
+                type="text"
+                autoComplete="off"
+                placeholder="price_…"
+                value={stripeForm.price_monthly_id}
+                onChange={(e) => setStripeForm((f) => ({ ...f, price_monthly_id: e.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span>Product name</span>
+              <input
+                type="text"
+                autoComplete="off"
+                value={stripeForm.product_name}
+                onChange={(e) => setStripeForm((f) => ({ ...f, product_name: e.target.value }))}
+              />
+            </label>
+            <div className="actions">
+              <button type="submit" className="btn btn-primary" disabled={busy}>
+                Save Stripe settings
+              </button>
+              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onClearStripe()}>
+                Clear saved keys
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
     </div>

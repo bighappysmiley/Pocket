@@ -62,8 +62,9 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsCloud) {
     canvas_.draw_text(kSideMargin, kTitleY, "Pocket Cloud", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_text_fit(kSideMargin, kListTop, kCanvasW - 32, "Sync Notes to your phone with Pocket Cloud.",
-                          Canvas::TextRole::Secondary, Gray::G1);
+    int sync_y = canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, 6,
+                                           "Sync Notes to your phone with Pocket Cloud.",
+                                           Canvas::TextRole::Secondary, Gray::G1);
     const char* status = "Not subscribed";
     if (cfg_.cloud_status == "trialing")
       status = "Trial";
@@ -71,19 +72,19 @@ void App::render_settings() {
       status = "Subscribed";
     else if (cfg_.cloud_status == "past_due")
       status = "Payment issue";
-    canvas_.draw_text(kSideMargin, kListTop + 48, status, Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin, sync_y + 16, status, Canvas::TextRole::Body, Gray::G0);
     if (cfg_.companion_linked) {
-      canvas_.draw_text(kSideMargin, kListTop + 84, "Companion: Linked", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, sync_y + 52, "Companion: Linked", Canvas::TextRole::Secondary, Gray::G1);
     } else {
-      canvas_.draw_text(kSideMargin, kListTop + 84, "Companion: Not linked", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, sync_y + 52, "Companion: Not linked", Canvas::TextRole::Secondary, Gray::G1);
     }
     const char* acts[] = {"Start free trial", "Subscribe $3.99/mo", "Link companion app"};
-    draw_focus_rows(canvas_, focus_, acts, 3, kListTop + 140);
-    canvas_.draw_text(kSideMargin, kListTop + 140 + 3 * kRowPitch + 16, "Link opens a QR for the Pocket app.",
-                      Canvas::TextRole::Secondary, Gray::G1);
+    draw_focus_rows(canvas_, focus_, acts, 3, sync_y + 100);
+    canvas_.draw_text_wrapped(kSideMargin, sync_y + 100 + 3 * kRowPitch + 16, kContentW, 6,
+                              "Link opens a QR for the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
     if (now_ms_ < error_until_ms_) {
-      canvas_.draw_text_fit(kSideMargin, kListTop + 140 + 3 * kRowPitch + 52, kCanvasW - 32, error_msg_,
-                            Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_wrapped(kSideMargin, sync_y + 100 + 3 * kRowPitch + 52, kContentW, 6, error_msg_,
+                                Canvas::TextRole::Body, Gray::G0);
     }
     return;
   }
@@ -96,15 +97,16 @@ void App::render_settings() {
                           cfg_.show_batt_pct ? "Show battery %: On" : "Show battery %: Off", "Full refresh: Now",
                           "Ghosting control", "Back"};
     draw_focus_rows(canvas_, focus_, rows, 5, kListTop);
-    canvas_.draw_text(kSideMargin, kListTop + 5 * kRowPitch + 16,
-                      "Pocket refreshes the screen to keep it clear.", Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + 5 * kRowPitch + 16, kContentW, 6,
+                              "Pocket refreshes the screen to keep it clear.", Canvas::TextRole::Secondary,
+                              Gray::G1);
     return;
   }
 
   if (s == ScreenId::SettingsSound) {
     canvas_.draw_text(kSideMargin, kTitleY, "Sound & mic", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(kSideMargin, kListTop, "Speech recognition: Cloud", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + 40, "Hold BOOT in Notes.", Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text(kSideMargin, kListTop + 40, "Hold the side button in Notes.", Canvas::TextRole::Secondary, Gray::G1);
     const char* rows[] = {"Mic test", "Back"};
     draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 100);
     return;
@@ -130,9 +132,9 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kTitleY, "Home apps", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(kSideMargin, kListTop - 8, "Choose what to show on Home.", Canvas::TextRole::Secondary,
                       Gray::G1);
-    const char* names[] = {"Notes", "Ledger", "Clock", "Pass", "Weather", "Settings (required)"};
-    focus_.count = 6;
-    for (int i = 0; i < 6; ++i) {
+    const char* names[] = {"Notes", "Ledger", "Clock", "Pass", "Weather", "Music", "Settings (required)"};
+    focus_.count = 7;
+    for (int i = 0; i < 7; ++i) {
       const int y = kListTop + 36 + i * kRowPitch;
       bool on = home_app_visible(cfg_, static_cast<HomeApp>(i));
       std::string label = std::string(names[i]) + (on ? ": On" : ": Off");
@@ -195,10 +197,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 9;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       ScreenId dest[] = {ScreenId::SettingsSecurity, ScreenId::SettingsWifi,     ScreenId::SettingsDisplay,
                          ScreenId::SettingsSound,    ScreenId::SettingsHomeApps, ScreenId::SettingsUnits,
@@ -213,28 +215,28 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 2;
     if (e == InputEvent::Up || e == InputEvent::Down) {
       focus_.move(e == InputEvent::Down ? 1 : -1);
-      dirty_ = true;
+      mark_content_dirty();
     } else {
       cfg_.weather_units = static_cast<uint8_t>(focus_.index);
       store_.save(cfg_);
-      dirty_ = true;
+      mark_content_dirty();
     }
     return;
   }
 
   if (s == ScreenId::SettingsHomeApps) {
-    focus_.count = 6;
+    focus_.count = 7;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
-      if (focus_.index != 5) {
-        cfg_.home_visible ^= static_cast<uint8_t>(1u << focus_.index);
+      if (focus_.index != 6) {  // Settings always on
+        cfg_.home_visible ^= static_cast<uint16_t>(1u << focus_.index);
         store_.save(cfg_);
-        dirty_ = true;
+        mark_content_dirty();
       }
     }
     return;
@@ -244,10 +246,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 3;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 1) go_lock();
       else if (focus_.index == 2) {
@@ -262,10 +264,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 2;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         wifi_networks_ = wifi_.scan();
@@ -285,10 +287,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 5;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         const uint16_t opts[] = {30, 60, 120, 300};
@@ -297,11 +299,11 @@ void App::handle_settings(InputEvent e) {
           if (opts[i] == cfg_.idle_lock_s) cur = i;
         cfg_.idle_lock_s = opts[(cur + 1) % 4];
         store_.save(cfg_);
-        dirty_ = true;
+        mark_content_dirty();
       } else if (focus_.index == 1) {
         cfg_.show_batt_pct = !cfg_.show_batt_pct;
         store_.save(cfg_);
-        dirty_ = true;
+        mark_content_dirty();
       } else if (focus_.index == 2) {
         redraw(true);
       } else if (focus_.index == 4) {
@@ -316,10 +318,10 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 2;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         // Reset confirm — immediate wipe for v1 sim
@@ -341,22 +343,22 @@ void App::handle_settings(InputEvent e) {
     focus_.count = 3;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 2) {
         // Link companion app — mint pair session + show QR
         if (!wifi_.connected()) {
           error_msg_ = "Connect to Wi-Fi first.";
           error_until_ms_ = now_ms_ + 2500;
-          dirty_ = true;
+          mark_content_dirty();
         } else {
           if (!mint_pair_session()) {
             error_msg_ = "Couldn't create pairing code.";
             error_until_ms_ = now_ms_ + 2500;
-            dirty_ = true;
+            mark_content_dirty();
             return;
           }
           focus_.index = 0;
@@ -365,7 +367,7 @@ void App::handle_settings(InputEvent e) {
         }
       } else {
         // Trial / subscribe — open companion billing via same pair path if unlinked
-        dirty_ = true;
+        mark_content_dirty();
       }
     }
     return;
@@ -374,10 +376,10 @@ void App::handle_settings(InputEvent e) {
   // Generic: Up/Down focus, Select/Back
   if (e == InputEvent::Up) {
     focus_.move(-1);
-    dirty_ = true;
+    mark_content_dirty();
   } else if (e == InputEvent::Down) {
     focus_.move(1);
-    dirty_ = true;
+    mark_content_dirty();
   } else if (e == InputEvent::Select) {
     nav_.replace(ScreenId::SettingsRoot);
     after_nav();

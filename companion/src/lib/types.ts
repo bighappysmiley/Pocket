@@ -72,6 +72,16 @@ export interface PairClaimResult {
   linked_at: string
 }
 
+export interface MusicTrack {
+  id: string
+  title: string
+  filename: string
+  mime?: string
+  size?: number
+  size_bytes?: number
+  created_at?: string
+}
+
 export type ConnectorProvider = 'drive' | 'dropbox' | 'onedrive'
 
 export interface Connector {

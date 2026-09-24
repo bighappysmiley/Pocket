@@ -10,10 +10,10 @@ enum class InputEvent : uint8_t {
   Down,      // Button_Down
   Select,    // Button_Function short < 800 ms
   Home,      // Button_Function long >= 800 ms
-  Back,      // BOOT short (< PTT arm)
-  PttStart,  // BOOT hold >= 200 ms
-  PttStop,   // BOOT release after PTT armed
-  Power,     // PWR short
+  Back,      // Side button short (< PTT arm)
+  PttStart,  // Side button hold >= 200 ms
+  PttStop,   // Side button release after PTT armed
+  Power,     // Power button short
 };
 
 struct InputThresholds {

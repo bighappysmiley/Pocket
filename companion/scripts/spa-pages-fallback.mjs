@@ -19,7 +19,7 @@ if (!existsSync(index)) {
 copyFileSync(index, join(dist, '404.html'))
 
 /** Routes that must open with HTTP 200 on a hard refresh / deep link. */
-const spaDirs = ['admin', 'login', 'account', 'pair', 'devices', 'wifi-setup']
+const spaDirs = ['admin', 'login', 'account', 'pair', 'devices', 'wifi-setup', 'music', 'notes', 'lists']
 
 for (const dir of spaDirs) {
   const targetDir = join(dist, dir)

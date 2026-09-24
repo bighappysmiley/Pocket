@@ -6,7 +6,8 @@ idf_component_register(
     "i2c_bus.cpp"
     "sdcard.cpp"
     "audio.cpp"
+    "littlefs.cpp"
     "vendor/waveshare_epd.c"
   INCLUDE_DIRS "include" "vendor"
-  REQUIRES pocket_ui driver freertos esp_timer fatfs sdmmc
+  REQUIRES pocket_ui driver freertos esp_timer fatfs sdmmc joltwallet__littlefs
 )

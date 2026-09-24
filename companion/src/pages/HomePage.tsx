@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import type { Device, Note } from '../lib/types'
+import { ApiError } from '../lib/types'
 import { daysLeft, relativeTime } from '../lib/utils'
 import { ErrorState } from '../components/ErrorState'
 import { useDocumentTitle } from '../components/useDocumentTitle'
@@ -25,9 +26,22 @@ export function HomePage() {
         if (cancelled) return
         setDevices(devicesRes.devices)
         if (isEntitled) {
-          const notesRes = await api.listNotes()
-          if (cancelled) return
-          setNotes(notesRes.notes.filter((n) => !n.deleted_at).slice(0, 3))
+          try {
+            const notesRes = await api.listNotes()
+            if (cancelled) return
+            setNotes(notesRes.notes.filter((n) => !n.deleted_at).slice(0, 3))
+          } catch (notesErr) {
+            if (cancelled) return
+            // Devices still useful; surface notes failure without blanking the home shell.
+            if (isNetworkError(notesErr) || offline) {
+              setError("You're offline or the server is unreachable.")
+            } else if (notesErr instanceof ApiError) {
+              setError(notesErr.message || 'Could not load notes.')
+            } else {
+              setError('Could not load notes.')
+            }
+            setNotes([])
+          }
         } else {
           setNotes([])
         }
@@ -35,6 +49,8 @@ export function HomePage() {
         if (cancelled) return
         if (isNetworkError(err) || offline) {
           setError("You're offline or the server is unreachable.")
+        } else if (err instanceof ApiError) {
+          setError(err.message || 'Something went wrong.')
         } else {
           setError('Something went wrong.')
         }

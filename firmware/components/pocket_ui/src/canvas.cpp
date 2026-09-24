@@ -199,6 +199,73 @@ void Canvas::draw_text_fit(int x, int y, int max_w, std::string_view text, TextR
   draw_text(x, y, s + ell, role, g);
 }
 
+int Canvas::draw_text_wrapped(int x, int y, int max_w, int line_gap, std::string_view text, TextRole role,
+                              Gray g) {
+  if (text.empty()) return y;
+  if (max_w < 8) max_w = 8;
+  const int line_h = text_height(role) + line_gap;
+  int cy = y;
+  size_t i = 0;
+  const size_t n = text.size();
+  while (i < n) {
+    while (i < n && (text[i] == ' ' || text[i] == '\t')) ++i;
+    if (i >= n) break;
+    if (text[i] == '\n') {
+      ++i;
+      cy += line_h;
+      continue;
+    }
+    size_t line_start = i;
+    size_t last_break = i;
+    size_t j = i;
+    while (j < n && text[j] != '\n') {
+      size_t word_end = j;
+      while (word_end < n && text[word_end] != ' ' && text[word_end] != '\t' && text[word_end] != '\n') {
+        ++word_end;
+      }
+      const std::string_view candidate = text.substr(line_start, word_end - line_start);
+      if (text_width(candidate, role) <= max_w) {
+        last_break = word_end;
+        j = word_end;
+        while (j < n && (text[j] == ' ' || text[j] == '\t')) ++j;
+      } else {
+        if (last_break == line_start) {
+          // Single word longer than max_w — hard-split by characters.
+          size_t cut = line_start + 1;
+          while (cut < word_end && text_width(text.substr(line_start, cut - line_start), role) <= max_w) {
+            ++cut;
+          }
+          if (cut > line_start + 1) --cut;
+          draw_text(x, cy, text.substr(line_start, cut - line_start), role, g);
+          cy += line_h;
+          line_start = cut;
+          last_break = cut;
+          j = cut;
+        } else {
+          break;
+        }
+      }
+    }
+    if (last_break > line_start) {
+      // Trim trailing spaces on the emitted line.
+      size_t end = last_break;
+      while (end > line_start && (text[end - 1] == ' ' || text[end - 1] == '\t')) --end;
+      if (end > line_start) {
+        draw_text(x, cy, text.substr(line_start, end - line_start), role, g);
+      }
+      cy += line_h;
+      i = last_break;
+      while (i < n && (text[i] == ' ' || text[i] == '\t')) ++i;
+    } else if (j < n && text[j] == '\n') {
+      i = j + 1;
+      cy += line_h;
+    } else {
+      break;
+    }
+  }
+  return cy;
+}
+
 void Canvas::draw_focus_tile(int x, int y, int w, int h, std::string_view label, TextRole role) {
   fill_rect(x, y, w, h, Gray::G0);
   const int pad = 10;

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <ctime>
 #include <string>
+#include <vector>
 
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
@@ -29,12 +30,14 @@ esp_err_t http_event(esp_http_client_event_t* evt) {
 }
 
 bool http_request(const char* method, const std::string& url, const char* auth_bearer,
-                  const std::string& body, int& status_out, std::string& response_out) {
+                  const std::string& body, int& status_out, std::string& response_out,
+                  int timeout_ms = 12000, const char* accept = "application/json",
+                  const char* extra_header_name = nullptr, const char* extra_header_value = nullptr) {
   HttpBuf buf;
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
   cfg.method = (std::strcmp(method, "POST") == 0) ? HTTP_METHOD_POST : HTTP_METHOD_GET;
-  cfg.timeout_ms = 12000;
+  cfg.timeout_ms = timeout_ms;
   cfg.event_handler = http_event;
   cfg.user_data = &buf;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
@@ -46,7 +49,12 @@ bool http_request(const char* method, const std::string& url, const char* auth_b
     // Neon Functions intercepts Authorization: Bearer (platform auth). Use x-device-key only.
     esp_http_client_set_header(client, "x-device-key", auth_bearer);
   }
-  esp_http_client_set_header(client, "Accept", "application/json");
+  if (accept && accept[0]) {
+    esp_http_client_set_header(client, "Accept", accept);
+  }
+  if (extra_header_name && extra_header_value) {
+    esp_http_client_set_header(client, extra_header_name, extra_header_value);
+  }
   if (!body.empty()) {
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, body.c_str(), body.size());
@@ -124,4 +132,36 @@ std::string EspCloud::pair_status(const std::string& code) {
   const std::string st = json_string_field(resp, "status");
   if (st == "claimed" || st == "expired" || st == "pending") return st;
   return "pending";
+}
+
+std::string EspCloud::music_list_json(const std::string& device_id) {
+  if (device_id.empty()) return "[]";
+  const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/device/music?device_id=" + device_id;
+  int status = 0;
+  std::string resp;
+  if (!http_request("GET", url, POCKET_DEVICE_API_KEY, {}, status, resp, 20000) || status != 200) {
+    ESP_LOGW(TAG, "music list HTTP %d", status);
+    return {};
+  }
+  // Prefer the tracks array payload for the device parser.
+  const size_t arr = resp.find('[');
+  if (arr == std::string::npos) return "[]";
+  return resp.substr(arr);
+}
+
+std::vector<uint8_t> EspCloud::music_download(const std::string& device_id, const std::string& track_id) {
+  std::vector<uint8_t> out;
+  if (device_id.empty() || track_id.empty()) return out;
+  const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/music/" + track_id +
+                          "/audio?device_id=" + device_id;
+  int status = 0;
+  std::string resp;
+  if (!http_request("GET", url, POCKET_DEVICE_API_KEY, {}, status, resp, 60000, "audio/wav,application/octet-stream,*/*",
+                    "x-device-id", device_id.c_str()) ||
+      status != 200) {
+    ESP_LOGW(TAG, "music download HTTP %d id=%s", status, track_id.c_str());
+    return out;
+  }
+  out.assign(resp.begin(), resp.end());
+  return out;
 }

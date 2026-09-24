@@ -24,6 +24,8 @@ inline constexpr const char* kPairCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ234567
 std::string companion_pair_url(std::string_view code);
 /** Unified Link flow in the app (Wi‑Fi setup + pairing). */
 std::string companion_link_url();
+/** SoftAP captive portal — use while phone is joined to Pocket-XXXX. */
+std::string softap_portal_url();
 std::string companion_wifi_setup_url();
 std::string companion_download_url();
 std::string companion_display_origin();

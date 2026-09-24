@@ -37,8 +37,8 @@ Pushing to **`main`** runs CI and auto-deploy workflows. Agents merge to `main`;
 ## Product constraints (short)
 
 - Canvas **480×800** portrait, 4-level grayscale; not a touchscreen
-- Controls: rotary Up/Down/Function + BOOT + PWR only — **no volume keys**
-- PTT = BOOT hold ≥200 ms; Function long ≥800 ms → Home
+- Controls: rotary wheel + **side button** + **power button** only — **no volume keys**
+- PTT = side button hold ≥200 ms; Function long ≥800 ms → Home
 - First-boot: **no** e-ink device naming (Part B); default name `"Pocket"`
 - Subscription product name: **Pocket Cloud** only (never "Connect")
 - No marketing landing page in this repo (deferred Spec)

@@ -50,13 +50,55 @@ void App::play_sound(SoundId id) {
 }
 
 void App::mark_content_dirty() {
+  // Only refuse to downgrade when a full refresh is already pending.
+  if (dirty_ && dirty_kind_ == DirtyKind::FullCanvas) return;
   dirty_ = true;
   dirty_kind_ = DirtyKind::ContentBand;
 }
 
 void App::mark_status_dirty() {
+  if (dirty_ && (dirty_kind_ == DirtyKind::FullCanvas || dirty_kind_ == DirtyKind::ContentBand ||
+                 dirty_kind_ == DirtyKind::Region))
+    return;
   dirty_ = true;
-  if (dirty_kind_ != DirtyKind::FullCanvas) dirty_kind_ = DirtyKind::StatusBar;
+  dirty_kind_ = DirtyKind::StatusBar;
+}
+
+void App::mark_region_dirty(int x, int y, int w, int h) {
+  if (w <= 0 || h <= 0) return;
+  // Don't shrink an already-pending full or content-band update.
+  if (dirty_ && (dirty_kind_ == DirtyKind::FullCanvas || dirty_kind_ == DirtyKind::ContentBand)) return;
+  if (dirty_ && dirty_kind_ == DirtyKind::Region) {
+    const int x1 = std::min(dirty_rx_, x);
+    const int y1 = std::min(dirty_ry_, y);
+    const int x2 = std::max(dirty_rx_ + dirty_rw_, x + w);
+    const int y2 = std::max(dirty_ry_ + dirty_rh_, y + h);
+    dirty_rx_ = x1;
+    dirty_ry_ = y1;
+    dirty_rw_ = x2 - x1;
+    dirty_rh_ = y2 - y1;
+    return;
+  }
+  dirty_ = true;
+  dirty_kind_ = DirtyKind::Region;
+  dirty_rx_ = x;
+  dirty_ry_ = y;
+  dirty_rw_ = w;
+  dirty_rh_ = h;
+}
+
+void App::pin_band_geometry(int& x, int& y, int& w, int& h) const {
+  // Covers progress label, digit slots, hint, and error strip for unlock + setup.
+  x = 0;
+  y = 140;
+  w = kCanvasW;
+  h = 320;
+}
+
+void App::mark_pin_dirty() {
+  int x = 0, y = 0, w = 0, h = 0;
+  pin_band_geometry(x, y, w, h);
+  mark_region_dirty(x, y, w, h);
 }
 
 void App::begin_softap_link() {
@@ -109,6 +151,7 @@ bool App::mint_pair_session() {
 
 void App::after_nav(bool full_refresh) {
   focus_.index = 0;
+  pin_digit_working_ = '0';
   dirty_ = true;
   dirty_kind_ = DirtyKind::FullCanvas;
   if (full_refresh) refresh_.on_screen_enter_full();
@@ -194,7 +237,7 @@ void App::tick(uint32_t now_ms) {
     if (now_ms > pair_expires_ms_) {
       if (pair_status_ != "expired") {
         pair_status_ = "expired";
-        dirty_ = true;
+        mark_content_dirty();
       }
     } else if (now_ms - last_pair_poll_ms_ >= 2500) {
       last_pair_poll_ms_ = now_ms;
@@ -250,6 +293,9 @@ void App::present_canvas(bool full) {
   }
   if (dirty_kind_ == DirtyKind::StatusBar) {
     display_.present_region(canvas_, 0, 0, kCanvasW, kStatusBarH);
+    refresh_.on_applied(RefreshMode::Partial);
+  } else if (dirty_kind_ == DirtyKind::Region) {
+    display_.present_region(canvas_, dirty_rx_, dirty_ry_, dirty_rw_, dirty_rh_);
     refresh_.on_applied(RefreshMode::Partial);
   } else {
     // Content below status bar — true region partial when one UI piece changes.
@@ -338,6 +384,10 @@ void App::handle(InputEvent e) {
     case ScreenId::WeatherCitySetup:
       handle_weather(e);
       break;
+    case ScreenId::MusicList:
+    case ScreenId::MusicNowPlaying:
+      handle_music(e);
+      break;
     default:
       handle_settings(e);
       break;
@@ -395,6 +445,10 @@ void App::render() {
     case ScreenId::WeatherCitySetup:
       render_weather();
       break;
+    case ScreenId::MusicList:
+    case ScreenId::MusicNowPlaying:
+      render_music();
+      break;
     default:
       render_settings();
       break;
@@ -445,33 +499,66 @@ void App::handle_lock(InputEvent e) {
   // Up/Down/Back/Home ignored per Spec
 }
 
-void App::render_pin() {
-  draw_status_bar();
-  canvas_.draw_text_centered(kCanvasW / 2, 48, "Enter PIN", Canvas::TextRole::ScreenTitle, Gray::G0);
+void App::draw_pin_entry(bool mask_completed, int band_top) {
   const int n = cfg_.pin_length;
-  const int slot_w = 48;
-  const int total = n * slot_w + (n - 1) * 12;
-  int x0 = (kCanvasW - total) / 2;
+  constexpr int kSlotW = 52;
+  constexpr int kSlotH = 72;
+  constexpr int kGap = 14;
+  const int total = n * kSlotW + (n - 1) * kGap;
+  const int x0 = (kCanvasW - total) / 2;
+  const int slot_y = band_top;
+
+  // Progress — which digit we're on.
+  char prog[32];
+  const int at = std::min(static_cast<int>(pin_entry_.size()) + 1, n);
+  std::snprintf(prog, sizeof(prog), "Digit %d of %d", at, n);
+  canvas_.draw_text_centered(kCanvasW / 2, slot_y - 36, prog, Canvas::TextRole::Secondary, Gray::G1);
+
   for (int i = 0; i < n; ++i) {
-    int x = x0 + i * (slot_w + 12);
-    bool focused = static_cast<int>(pin_entry_.size()) == i;
-    char dig = (i < static_cast<int>(pin_entry_.size())) ? pin_entry_[i] : '0';
-    char s[2] = {dig, 0};
+    const int x = x0 + i * (kSlotW + kGap);
+    const bool focused = static_cast<int>(pin_entry_.size()) == i;
+    const bool filled = i < static_cast<int>(pin_entry_.size());
+
+    canvas_.stroke_rect(x, slot_y, kSlotW, kSlotH, focused ? Gray::G0 : Gray::G2);
     if (focused) {
-      canvas_.draw_focus_tile(x, 200, slot_w, 64, s, Canvas::TextRole::PinDigit);
-    } else if (i < static_cast<int>(pin_entry_.size())) {
-      canvas_.draw_text(x + 8, 212, s, Canvas::TextRole::PinDigit, Gray::G0);
+      canvas_.stroke_rect(x + 2, slot_y + 2, kSlotW - 4, kSlotH - 4, Gray::G0);
+      char dig = pin_digit_working_;
+      if (filled) dig = pin_entry_[i];
+      char s[2] = {dig, 0};
+      const int tw = canvas_.text_width(s, Canvas::TextRole::PinDigit);
+      canvas_.draw_text(x + (kSlotW - tw) / 2, slot_y + 16, s, Canvas::TextRole::PinDigit, Gray::G0);
+    } else if (filled) {
+      if (mask_completed) {
+        // Dot for a locked-in digit.
+        const int cx = x + kSlotW / 2;
+        const int cy = slot_y + kSlotH / 2;
+        canvas_.fill_rect(cx - 6, cy - 6, 12, 12, Gray::G0);
+      } else {
+        char s[2] = {pin_entry_[i], 0};
+        const int tw = canvas_.text_width(s, Canvas::TextRole::PinDigit);
+        canvas_.draw_text(x + (kSlotW - tw) / 2, slot_y + 16, s, Canvas::TextRole::PinDigit, Gray::G0);
+      }
     } else {
-      canvas_.hline(x, 250, slot_w, Gray::G2);
+      canvas_.hline(x + 10, slot_y + kSlotH / 2, kSlotW - 20, Gray::G2);
     }
   }
-  canvas_.draw_text_centered(kCanvasW / 2, 320, "Spin to change · Press to confirm digit",
+
+  canvas_.draw_text_centered(kCanvasW / 2, slot_y + kSlotH + 28, "Turn to choose · Press to set",
                              Canvas::TextRole::Secondary, Gray::G1);
+  canvas_.draw_text_centered(kCanvasW / 2, slot_y + kSlotH + 56, "Back erases a digit",
+                             Canvas::TextRole::Secondary, Gray::G1);
+}
+
+void App::render_pin() {
+  draw_status_bar();
+  canvas_.draw_text_centered(kCanvasW / 2, kContentTop + 8, "Enter PIN", Canvas::TextRole::ScreenTitle,
+                             Gray::G0);
+  draw_pin_entry(/*mask_completed=*/true, 200);
   if (now_ms_ < error_until_ms_) {
-    canvas_.draw_text_centered(kCanvasW / 2, 360, error_msg_.c_str(), Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_centered(kCanvasW / 2, 420, error_msg_.c_str(), Canvas::TextRole::Body, Gray::G0);
   }
   if (now_ms_ < pin_lockout_until_ms_) {
-    canvas_.draw_text_centered(kCanvasW / 2, 400, "Try again in 30 seconds", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_centered(kCanvasW / 2, 460, "Try again in 30 seconds", Canvas::TextRole::Body, Gray::G0);
   }
 }
 
@@ -483,41 +570,41 @@ void App::handle_pin(InputEvent e) {
       after_nav();
     } else {
       pin_entry_.pop_back();
-      dirty_ = true;
+      pin_digit_working_ = '0';
+      focus_.index = static_cast<int>(pin_entry_.size());
+      mark_pin_dirty();
     }
     return;
   }
 
-  static char working = '0';
-
   if (e == InputEvent::Up) {
-    working = static_cast<char>('0' + ((working - '0' + 9) % 10));
+    pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 9) % 10));
     if (pin_entry_.size() == static_cast<size_t>(focus_.index)) {
-      pin_entry_.push_back(working);
+      pin_entry_.push_back(pin_digit_working_);
     } else if (focus_.index < static_cast<int>(pin_entry_.size())) {
-      pin_entry_[focus_.index] = working;
+      pin_entry_[focus_.index] = pin_digit_working_;
     }
-    dirty_ = true;
+    mark_pin_dirty();
     return;
   }
   if (e == InputEvent::Down) {
-    working = static_cast<char>('0' + ((working - '0' + 1) % 10));
+    pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 1) % 10));
     if (pin_entry_.size() == static_cast<size_t>(focus_.index)) {
-      pin_entry_.push_back(working);
+      pin_entry_.push_back(pin_digit_working_);
     } else if (focus_.index < static_cast<int>(pin_entry_.size())) {
-      pin_entry_[focus_.index] = working;
+      pin_entry_[focus_.index] = pin_digit_working_;
     }
-    dirty_ = true;
+    mark_pin_dirty();
     return;
   }
   if (e == InputEvent::Select) {
     if (pin_entry_.size() == static_cast<size_t>(focus_.index)) {
-      pin_entry_.push_back(working);
+      pin_entry_.push_back(pin_digit_working_);
     }
     if (static_cast<int>(pin_entry_.size()) >= cfg_.pin_length) {
       if (verify_pin(cfg_, pin_entry_)) {
         pin_fail_count_ = 0;
-        working = '0';
+        pin_digit_working_ = '0';
         go_home();
       } else {
         error_msg_ = "Incorrect PIN";
@@ -525,17 +612,17 @@ void App::handle_pin(InputEvent e) {
         ++pin_fail_count_;
         pin_entry_.clear();
         focus_.index = 0;
-        working = '0';
+        pin_digit_working_ = '0';
         if (pin_fail_count_ >= 5) {
           pin_lockout_until_ms_ = now_ms_ + 30000;
           pin_fail_count_ = 0;
         }
-        dirty_ = true;
+        mark_pin_dirty();
       }
     } else {
       focus_.index = static_cast<int>(pin_entry_.size());
-      working = '0';
-      dirty_ = true;
+      pin_digit_working_ = '0';
+      mark_pin_dirty();
     }
   }
 }
@@ -571,13 +658,8 @@ void App::present_home_clock_partial() {
 }
 
 void App::maybe_tick_home_clock() {
-  if (!cfg_.onboarding_complete) return;
-  if (nav_.current() != ScreenId::Home) return;
-  int h = 0, m = 0, wd = 0, mo = 0, d = 0;
-  clock_.local_hm(h, m, wd, mo, d);
-  const int key = h * 60 + m;
-  if (key == last_home_clock_minute_) return;
-  present_home_clock_partial();
+  // Home no longer hosts a large clock — time updates live in the status bar only.
+  (void)0;
 }
 
 }  // namespace pocket

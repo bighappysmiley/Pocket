@@ -1,4 +1,4 @@
-import { ApiError, type BackupMeta, type Connector, type ConnectorProvider, type Device, type MeResponse, type Note, type PairClaimResult, type PairSession, type PocketList } from './types'
+import { ApiError, type BackupMeta, type Connector, type ConnectorProvider, type Device, type MeResponse, type MusicTrack, type Note, type PairClaimResult, type PairSession, type PocketList } from './types'
 
 const BUILD_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
 const PROD_DEFAULT = 'https://br-super-hill-b40yvyrj-api.compute.c-6.us-east-2.aws.neon.tech'
@@ -235,6 +235,17 @@ export const api = {
     return request<{ ok: true }>(`/v1/backups/${id}/restore`, { method: 'POST' })
   },
 
+  // Music
+  listMusic() {
+    return request<{ tracks: MusicTrack[] }>('/v1/music')
+  },
+  uploadMusic(payload: { title: string; filename: string; mime?: string; audio_b64: string }) {
+    return request<{ track: MusicTrack }>('/v1/music', { method: 'POST', body: payload })
+  },
+  deleteMusic(id: string) {
+    return request<void>(`/v1/music/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
   // Admin (role=admin or ADMIN_EMAILS)
   adminOverview() {
     return request<{
@@ -364,6 +375,40 @@ export const api = {
         detail: string | null
       }>
     }>('/v1/admin/activity')
+  },
+  adminStripeStatus() {
+    return request<{
+      configured: boolean
+      mock_mode: boolean
+      source: string
+      secret_key_set: boolean
+      secret_key_masked: string | null
+      webhook_secret_set: boolean
+      webhook_secret_masked: string | null
+      price_monthly_id: string | null
+      product_name: string
+      webhook_url: string
+      updated: Array<{ key: string; updated_at: string; updated_by: string | null }>
+    }>('/v1/admin/stripe')
+  },
+  adminStripeConfigure(body: {
+    secret_key?: string
+    webhook_secret?: string
+    price_monthly_id?: string
+    product_name?: string
+    clear?: boolean
+  }) {
+    return request<{
+      ok: true
+      updates: string[]
+      configured: boolean
+      mock_mode: boolean
+      source: string
+      secret_key_masked: string | null
+      webhook_secret_masked: string | null
+      price_monthly_id: string | null
+      product_name: string
+    }>('/v1/admin/stripe', { method: 'PUT', body })
   },
 }
 

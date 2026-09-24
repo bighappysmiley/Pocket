@@ -11,6 +11,9 @@ constexpr int kStatusBarH = 56;
 constexpr int kSideMargin = 16;
 /** First content baseline below the status bar. */
 constexpr int kContentTop = kStatusBarH + 14;
+/** Onboarding “Step N of 9” band. Titles start below this when a step is shown. */
+constexpr int kOnboardingStepBand = 40;
+constexpr int kOnboardingTitleY = kContentTop + kOnboardingStepBand;
 /** Comfortable focus-row pitch for Body (33px) type. */
 constexpr int kRowPitch = 64;
 constexpr int kFocusRowH = 56;
@@ -20,3 +23,5 @@ constexpr int kBodyLinePitch = 44;
 constexpr int kTitleToBody = 64;
 /** Bottom CTA row. */
 constexpr int kBottomCtaY = kCanvasH - kFocusRowH - 32;
+/** Usable text width with side margins. */
+constexpr int kContentW = kCanvasW - 2 * kSideMargin;

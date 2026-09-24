@@ -18,7 +18,7 @@ constexpr int kPinButtonDown = 6;      // Schematic net: Button_Down
 constexpr int kPinButtonFunction = 5;  // Schematic net: Button_Function
 
 // --- Side buttons ---
-constexpr int kPinBoot = 0;  // ESP32-S3 BOOT / download mode
+constexpr int kPinBoot = 0;  // Side button (GPIO0); also ESP BOOT for download mode
 constexpr int kPinPwr = 1;   // PWR — active-low when pressed
 
 // --- 3.97" e-Paper SPI (800×480 native) ---

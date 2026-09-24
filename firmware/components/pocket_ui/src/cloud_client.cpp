@@ -20,6 +20,10 @@ std::string companion_link_url() {
   return url;
 }
 
+std::string softap_portal_url() {
+  return "http://192.168.4.1/";
+}
+
 std::string companion_wifi_setup_url() {
   // Legacy alias — Wi‑Fi is part of Link now.
   return companion_link_url();

@@ -40,7 +40,7 @@ function cors(req) {
     h["access-control-allow-origin"] = o;
     h["access-control-allow-credentials"] = "true";
     h["access-control-allow-headers"] = "content-type,authorization,x-device-key";
-    h["access-control-allow-methods"] = "GET,POST,PATCH,DELETE,OPTIONS";
+    h["access-control-allow-methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
   }
   return h;
 }
@@ -268,12 +268,89 @@ function isAdminUser(user) {
   return ADMIN_EMAILS.has(String(user.email || "").toLowerCase());
 }
 
-async function requireAdmin(req) {
+async function requireSessionUser(req) {
   const user = await userFromSession(req);
   if (!user) return { error: json(req, { message: "Sign in to continue." }, 401) };
   if (user.disabled_at) return { error: json(req, { message: "This account is disabled." }, 403) };
-  if (!isAdminUser(user)) return { error: json(req, { message: "Admin access required." }, 403) };
   return { user };
+}
+
+async function requireEntitledUser(req) {
+  const gate = await requireSessionUser(req);
+  if (gate.error) return gate;
+  const subs = await query(
+    `SELECT status FROM subscription_mirrors WHERE user_id='${esc(gate.user.id)}'`,
+  );
+  const st = subs[0]?.status;
+  if (st !== "active" && st !== "trialing") {
+    return { error: json(req, { message: "Pocket Cloud is required for this.", code: "not_entitled" }, 403) };
+  }
+  return gate;
+}
+
+async function requireAdmin(req) {
+  const gate = await requireSessionUser(req);
+  if (gate.error) return gate;
+  if (!isAdminUser(gate.user)) return { error: json(req, { message: "Admin access required." }, 403) };
+  return gate;
+}
+
+function serializeNote(row) {
+  return {
+    id: row.id,
+    title: row.title || "",
+    body: row.body || "",
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    updated_by_device_id: row.updated_by_device_id,
+    deleted_at: row.deleted_at || null,
+    version: Number(row.version || 1),
+  };
+}
+
+function serializeList(row) {
+  let items = [];
+  try {
+    items = JSON.parse(row.items_json || "[]");
+    if (!Array.isArray(items)) items = [];
+  } catch {
+    items = [];
+  }
+  return {
+    id: row.id,
+    title: row.title || "",
+    items,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    updated_by_device_id: row.updated_by_device_id,
+    deleted_at: row.deleted_at || null,
+    version: Number(row.version || 1),
+  };
+}
+
+function serializeMusicMeta(row) {
+  return {
+    id: row.id,
+    title: row.title || "",
+    filename: row.filename || "",
+    mime: row.mime || "audio/wav",
+    size: Number(row.size_bytes || 0),
+    size_bytes: Number(row.size_bytes || 0),
+    created_at: row.created_at,
+  };
+}
+
+const MUSIC_MAX_BYTES = 2 * 1024 * 1024; // 2 MiB decoded (fits LittleFS; SD can hold more per free space)
+
+async function userIdForDeviceKey(req, deviceId) {
+  const key = (req.headers.get("x-device-key") || "").trim();
+  if (!safeEqual(key, DEVICE_API_KEY)) return null;
+  const id = String(deviceId || "").trim();
+  if (!id) return null;
+  const rows = await query(
+    `SELECT user_id FROM device_links WHERE device_id='${esc(id)}' ORDER BY linked_at DESC LIMIT 1`,
+  );
+  return rows[0]?.user_id || null;
 }
 
 async function audit(actorId, action, targetType, targetId, detail) {
@@ -316,6 +393,308 @@ async function ensureAdminSchema() {
     detail TEXT,
     created_at TIMESTAMPTZ NOT NULL
   )`);
+  await query(`CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL,
+    updated_by TEXT
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS stripe_events (
+    id TEXT PRIMARY KEY,
+    received_at TIMESTAMPTZ NOT NULL
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS mock_checkouts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    with_trial INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS cloud_notes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    updated_by_device_id TEXT NOT NULL,
+    deleted_at TIMESTAMPTZ,
+    version INTEGER NOT NULL DEFAULT 1
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS cloud_lists (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    items_json TEXT NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    updated_by_device_id TEXT NOT NULL,
+    deleted_at TIMESTAMPTZ,
+    version INTEGER NOT NULL DEFAULT 1
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS backups (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL,
+    blob_json TEXT NOT NULL,
+    note_count INTEGER NOT NULL,
+    list_count INTEGER NOT NULL,
+    size_bytes INTEGER NOT NULL
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS connector_accounts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    refresh_token_enc TEXT,
+    connected_at TIMESTAMPTZ NOT NULL,
+    status TEXT NOT NULL DEFAULT 'connected',
+    UNIQUE(user_id, provider)
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS music_tracks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    filename TEXT NOT NULL DEFAULT '',
+    mime TEXT NOT NULL DEFAULT 'audio/wav',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    audio_b64 TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    deleted_at TIMESTAMPTZ
+  )`);
+}
+
+const STRIPE_SETTING_KEYS = [
+  "stripe_secret_key",
+  "stripe_webhook_secret",
+  "stripe_price_monthly_id",
+  "stripe_product_name",
+];
+
+function maskSecret(value) {
+  const s = String(value || "");
+  if (!s) return null;
+  if (s.length <= 8) return "••••••••";
+  return s.slice(0, 7) + "…" + s.slice(-4);
+}
+
+async function getAppSetting(key) {
+  const rows = await query(`SELECT value FROM app_settings WHERE key='${esc(key)}'`);
+  return rows[0]?.value ?? "";
+}
+
+async function setAppSetting(key, value, actorId) {
+  const now = new Date().toISOString();
+  const existing = await query(`SELECT key FROM app_settings WHERE key='${esc(key)}'`);
+  if (existing.length) {
+    await query(
+      `UPDATE app_settings SET value=${sqlStr(value)}, updated_at='${now}', updated_by=${sqlNullable(actorId)} WHERE key='${esc(key)}'`,
+    );
+  } else {
+    await query(
+      `INSERT INTO app_settings (key,value,updated_at,updated_by) VALUES ('${esc(key)}',${sqlStr(value)},'${now}',${sqlNullable(actorId)})`,
+    );
+  }
+}
+
+async function loadStripeConfig() {
+  const fromDb = {};
+  for (const k of STRIPE_SETTING_KEYS) {
+    fromDb[k] = await getAppSetting(k);
+  }
+  const secret =
+    fromDb.stripe_secret_key ||
+    (process.env.STRIPE_SECRET_KEY || "").trim();
+  const webhook =
+    fromDb.stripe_webhook_secret ||
+    (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+  const priceId =
+    fromDb.stripe_price_monthly_id ||
+    (process.env.STRIPE_PRICE_MONTHLY_ID || "").trim();
+  const productName =
+    fromDb.stripe_product_name ||
+    (process.env.STRIPE_PRODUCT_NAME || "Pocket Cloud").trim() ||
+    "Pocket Cloud";
+  return {
+    secretKey: secret,
+    webhookSecret: webhook,
+    priceMonthlyId: priceId,
+    productName,
+    source: fromDb.stripe_secret_key ? "admin" : secret ? "env" : "none",
+    mockMode: !secret,
+  };
+}
+
+function formBody(params) {
+  return Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+}
+
+async function stripeFetch(secretKey, method, path, params) {
+  const res = await fetch(`https://api.stripe.com/v1${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: method === "GET" ? undefined : formBody(params || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || `Stripe error (${res.status})`;
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+async function upsertSubscriptionMirror(userId, fields) {
+  const now = new Date().toISOString();
+  const existing = await query(`SELECT user_id FROM subscription_mirrors WHERE user_id='${esc(userId)}'`);
+  const status = fields.status || "free";
+  const subId = fields.stripe_subscription_id;
+  const trialEnds = fields.trial_ends_at;
+  const periodEnd = fields.current_period_end;
+  const cancel = fields.cancel_at_period_end ? 1 : 0;
+  if (existing.length) {
+    const sets = [`status='${esc(status)}'`, `updated_at='${now}'`, `cancel_at_period_end=${cancel}`];
+    if (subId !== undefined) sets.push(`stripe_subscription_id=${sqlNullable(subId)}`);
+    if (trialEnds !== undefined) sets.push(`trial_ends_at=${sqlNullable(trialEnds)}`);
+    if (periodEnd !== undefined) sets.push(`current_period_end=${sqlNullable(periodEnd)}`);
+    await query(`UPDATE subscription_mirrors SET ${sets.join(",")} WHERE user_id='${esc(userId)}'`);
+  } else {
+    await query(
+      `INSERT INTO subscription_mirrors (user_id,stripe_subscription_id,status,trial_ends_at,current_period_end,cancel_at_period_end,updated_at) VALUES ('${esc(userId)}',${sqlNullable(subId)},'${esc(status)}',${sqlNullable(trialEnds)},${sqlNullable(periodEnd)},${cancel},'${now}')`,
+    );
+  }
+}
+
+async function completeMockCheckout(checkoutId) {
+  const rows = await query(`SELECT * FROM mock_checkouts WHERE id='${esc(checkoutId)}'`);
+  const row = rows[0];
+  if (!row || row.completed_at) return;
+  const now = new Date();
+  const trialEnds = new Date(now.getTime() + 7 * 86400000);
+  const withTrial = Number(row.with_trial) === 1;
+  const periodEnd = withTrial ? trialEnds : new Date(now.getTime() + 30 * 86400000);
+  const mockCustomer = `cus_mock_${String(row.user_id).replace(/-/g, "").slice(0, 14)}`;
+  const mockSub = `sub_mock_${newId().replace(/-/g, "").slice(0, 14)}`;
+  await query(`UPDATE users SET stripe_customer_id='${esc(mockCustomer)}'${withTrial ? ", trial_consumed=1" : ""} WHERE id='${esc(row.user_id)}'`);
+  await upsertSubscriptionMirror(row.user_id, {
+    stripe_subscription_id: mockSub,
+    status: withTrial ? "trialing" : "active",
+    trial_ends_at: withTrial ? trialEnds.toISOString() : null,
+    current_period_end: periodEnd.toISOString(),
+    cancel_at_period_end: false,
+  });
+  await query(`UPDATE mock_checkouts SET completed_at='${now.toISOString()}' WHERE id='${esc(checkoutId)}'`);
+}
+
+async function resolveUserIdFromCustomer(customerId) {
+  if (!customerId) return null;
+  const rows = await query(`SELECT id FROM users WHERE stripe_customer_id='${esc(customerId)}'`);
+  return rows[0]?.id || null;
+}
+
+async function handleStripeWebhookEvent(event) {
+  const existing = await query(`SELECT id FROM stripe_events WHERE id='${esc(event.id)}'`);
+  if (existing.length) return;
+  const type = event.type;
+  const obj = event.data?.object || {};
+  if (type === "checkout.session.completed") {
+    const userId = obj.client_reference_id;
+    if (userId) {
+      if (typeof obj.customer === "string") {
+        await query(`UPDATE users SET stripe_customer_id='${esc(obj.customer)}' WHERE id='${esc(userId)}'`);
+      }
+      if (obj.mode === "subscription") {
+        await upsertSubscriptionMirror(userId, {
+          stripe_subscription_id: typeof obj.subscription === "string" ? obj.subscription : null,
+          status: "trialing",
+          trial_ends_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+          current_period_end: new Date(Date.now() + 7 * 86400000).toISOString(),
+        });
+        await query(`UPDATE users SET trial_consumed=1 WHERE id='${esc(userId)}'`);
+      }
+    }
+  } else if (type === "customer.subscription.created" || type === "customer.subscription.updated") {
+    const customerId = typeof obj.customer === "string" ? obj.customer : null;
+    const userId = await resolveUserIdFromCustomer(customerId);
+    if (userId) {
+      await upsertSubscriptionMirror(userId, {
+        stripe_subscription_id: obj.id,
+        status: obj.status,
+        trial_ends_at: obj.trial_end ? new Date(obj.trial_end * 1000).toISOString() : null,
+        current_period_end: obj.current_period_end
+          ? new Date(obj.current_period_end * 1000).toISOString()
+          : null,
+        cancel_at_period_end: Boolean(obj.cancel_at_period_end),
+      });
+      if (obj.status === "trialing") {
+        await query(`UPDATE users SET trial_consumed=1 WHERE id='${esc(userId)}'`);
+      }
+    }
+  } else if (type === "customer.subscription.deleted") {
+    const customerId = typeof obj.customer === "string" ? obj.customer : null;
+    const userId = await resolveUserIdFromCustomer(customerId);
+    if (userId) {
+      await upsertSubscriptionMirror(userId, {
+        stripe_subscription_id: obj.id,
+        status: "canceled",
+        trial_ends_at: null,
+        current_period_end: obj.current_period_end
+          ? new Date(obj.current_period_end * 1000).toISOString()
+          : null,
+        cancel_at_period_end: false,
+      });
+    }
+  } else if (type === "invoice.paid" || type === "invoice.payment_succeeded") {
+    const customerId = typeof obj.customer === "string" ? obj.customer : null;
+    const userId = await resolveUserIdFromCustomer(customerId);
+    const subId = typeof obj.subscription === "string" ? obj.subscription : null;
+    if (userId && subId) {
+      const periodEnd = obj.lines?.data?.[0]?.period?.end;
+      await upsertSubscriptionMirror(userId, {
+        stripe_subscription_id: subId,
+        status: "active",
+        current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : undefined,
+      });
+    }
+  } else if (type === "invoice.payment_failed" || type === "invoice.payment_action_required") {
+    const customerId = typeof obj.customer === "string" ? obj.customer : null;
+    const userId = await resolveUserIdFromCustomer(customerId);
+    if (userId) {
+      await upsertSubscriptionMirror(userId, {
+        stripe_subscription_id: typeof obj.subscription === "string" ? obj.subscription : null,
+        status: "past_due",
+      });
+    }
+  }
+  const now = new Date().toISOString();
+  await query(`INSERT INTO stripe_events (id, received_at) VALUES ('${esc(event.id)}','${now}')`);
+}
+
+function verifyStripeWebhookSignature(payload, header, secret) {
+  if (!secret || !header) return false;
+  const parts = Object.fromEntries(
+    String(header)
+      .split(",")
+      .map((p) => p.trim().split("="))
+      .filter((p) => p.length === 2),
+  );
+  const ts = parts.t;
+  const v1 = parts.v1;
+  if (!ts || !v1) return false;
+  const age = Math.abs(Date.now() / 1000 - Number(ts));
+  if (!Number.isFinite(age) || age > 300) return false;
+  const signed = createHmac("sha256", secret).update(`${ts}.${payload}`, "utf8").digest("hex");
+  try {
+    return timingSafeEqual(Buffer.from(signed, "hex"), Buffer.from(v1, "hex"));
+  } catch {
+    return false;
+  }
 }
 
 let schemaReady = null;
@@ -332,7 +711,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v5-admin" });
+        return json(req, { ok: true, build: "scram-api-v8-music" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
@@ -493,8 +872,499 @@ export default {
         return json(req, { devices });
       }
 
+      // ---- Music (Companion manage + device pull) ----
+      if (req.method === "GET" && path === "/v1/music") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const rows = await query(
+          `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE user_id='${esc(gate.user.id)}' AND deleted_at IS NULL ORDER BY created_at DESC`,
+        );
+        return json(req, { tracks: rows.map(serializeMusicMeta) });
+      }
+
+      if (req.method === "POST" && path === "/v1/music") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
+        let filename = typeof body.filename === "string" ? body.filename.trim().slice(0, 180) : "";
+        const mime = typeof body.mime === "string" ? body.mime.trim().slice(0, 80) : "audio/wav";
+        const audioB64 = typeof body.audio_b64 === "string" ? body.audio_b64.replace(/\s+/g, "") : "";
+        if (!audioB64) return json(req, { message: "Choose a WAV file to upload." }, 400);
+        let decoded;
+        try {
+          decoded = Buffer.from(audioB64, "base64");
+        } catch {
+          return json(req, { message: "Upload data was invalid." }, 400);
+        }
+        if (!decoded.length || decoded.length > MUSIC_MAX_BYTES) {
+          return json(req, { message: `Track must be a WAV under ${MUSIC_MAX_BYTES} bytes.` }, 400);
+        }
+        if (decoded.length < 12 || decoded.toString("ascii", 0, 4) !== "RIFF" || decoded.toString("ascii", 8, 12) !== "WAVE") {
+          return json(req, { message: "Only WAV audio is supported on Pocket." }, 400);
+        }
+        if (!filename) filename = "track.wav";
+        if (!/\.wav$/i.test(filename)) filename = `${filename.replace(/\.[^.]+$/, "") || "track"}.wav`;
+        filename = filename.replace(/[/\\]/g, "_");
+        const id = newId();
+        const now = new Date().toISOString();
+        const safeTitle = title || filename.replace(/\.wav$/i, "");
+        await query(
+          `INSERT INTO music_tracks (id,user_id,title,filename,mime,size_bytes,audio_b64,created_at,deleted_at) VALUES ('${esc(id)}','${esc(gate.user.id)}',${sqlStr(safeTitle)},${sqlStr(filename)},${sqlStr(mime || "audio/wav")},${decoded.length},${sqlStr(audioB64)},'${now}',NULL)`,
+        );
+        const rows = await query(
+          `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE id='${esc(id)}'`,
+        );
+        return json(req, { track: serializeMusicMeta(rows[0]) }, 201);
+      }
+
+      const musicAudioMatch = path.match(/^\/v1\/music\/([^/]+)\/audio$/);
+      if (req.method === "GET" && musicAudioMatch) {
+        const id = decodeURIComponent(musicAudioMatch[1]);
+        // Companion session OR device key + device_id
+        let userId = null;
+        const gate = await requireEntitledUser(req);
+        if (!gate.error) {
+          userId = gate.user.id;
+        } else {
+          const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
+          userId = await userIdForDeviceKey(req, deviceId);
+          if (!userId) return gate.error;
+        }
+        const rows = await query(
+          `SELECT mime, audio_b64, filename FROM music_tracks WHERE id='${esc(id)}' AND user_id='${esc(userId)}' AND deleted_at IS NULL`,
+        );
+        if (!rows[0]) return json(req, { message: "Track not found." }, 404);
+        const bytes = Buffer.from(String(rows[0].audio_b64 || ""), "base64");
+        return new Response(bytes, {
+          status: 200,
+          headers: {
+            ...cors(req),
+            "content-type": rows[0].mime || "audio/wav",
+            "content-length": String(bytes.length),
+            "content-disposition": `attachment; filename="${String(rows[0].filename || "track.wav").replace(/"/g, "")}"`,
+          },
+        });
+      }
+
+      const musicIdMatch = path.match(/^\/v1\/music\/([^/]+)$/);
+      if (musicIdMatch) {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(musicIdMatch[1]);
+        if (req.method === "DELETE") {
+          const existing = await query(
+            `SELECT id FROM music_tracks WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}' AND deleted_at IS NULL`,
+          );
+          if (!existing[0]) return json(req, { message: "Track not found." }, 404);
+          const now = new Date().toISOString();
+          await query(`UPDATE music_tracks SET deleted_at='${now}' WHERE id='${esc(id)}'`);
+          return new Response(null, { status: 204, headers: cors(req) });
+        }
+        if (req.method === "GET") {
+          const rows = await query(
+            `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}' AND deleted_at IS NULL`,
+          );
+          if (!rows[0]) return json(req, { message: "Track not found." }, 404);
+          return json(req, serializeMusicMeta(rows[0]));
+        }
+      }
+
+      // Device library pull (x-device-key + device_id)
+      if (req.method === "GET" && path === "/v1/device/music") {
+        const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
+        const userId = await userIdForDeviceKey(req, deviceId);
+        if (!userId) return json(req, { message: "Sign in to continue." }, 401);
+        await query(`UPDATE device_links SET last_seen_at='${new Date().toISOString()}' WHERE device_id='${esc(deviceId)}'`);
+        const rows = await query(
+          `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE user_id='${esc(userId)}' AND deleted_at IS NULL ORDER BY created_at DESC`,
+        );
+        return json(req, { tracks: rows.map(serializeMusicMeta) });
+      }
+
+      // ---- Notes ----
+      if (req.method === "GET" && path === "/v1/notes") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const includeDeleted = u.searchParams.get("include_deleted") === "1";
+        const rows = await query(
+          includeDeleted
+            ? `SELECT * FROM cloud_notes WHERE user_id='${esc(gate.user.id)}' ORDER BY updated_at DESC`
+            : `SELECT * FROM cloud_notes WHERE user_id='${esc(gate.user.id)}' AND deleted_at IS NULL ORDER BY updated_at DESC`,
+        );
+        return json(req, { notes: rows.map(serializeNote) });
+      }
+
+      if (req.method === "POST" && path === "/v1/notes") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const now = new Date().toISOString();
+        const id = typeof body.id === "string" && body.id ? body.id : newId();
+        const title = typeof body.title === "string" ? body.title : "";
+        const noteBody = typeof body.body === "string" ? body.body : "";
+        const updated_at = typeof body.updated_at === "string" ? body.updated_at : now;
+        const updated_by =
+          typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+            ? body.updated_by_device_id
+            : "pwa";
+        const created_at = typeof body.created_at === "string" ? body.created_at : now;
+        const deleted_at =
+          body.deleted_at === null
+            ? null
+            : typeof body.deleted_at === "string"
+              ? body.deleted_at
+              : null;
+        const existing = await query(`SELECT * FROM cloud_notes WHERE id='${esc(id)}'`);
+        if (existing[0]) {
+          if (existing[0].user_id !== gate.user.id) return json(req, { message: "Forbidden." }, 403);
+          await query(
+            `UPDATE cloud_notes SET title=${sqlStr(title)}, body=${sqlStr(noteBody)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, deleted_at=${sqlNullable(deleted_at)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+        } else {
+          await query(
+            `INSERT INTO cloud_notes (id,user_id,title,body,created_at,updated_at,updated_by_device_id,deleted_at,version) VALUES ('${esc(id)}','${esc(gate.user.id)}',${sqlStr(title)},${sqlStr(noteBody)},${sqlStr(created_at)},${sqlStr(updated_at)},${sqlStr(updated_by)},${sqlNullable(deleted_at)},1)`,
+          );
+        }
+        const rows = await query(`SELECT * FROM cloud_notes WHERE id='${esc(id)}'`);
+        return json(req, { note: serializeNote(rows[0]) }, existing[0] ? 200 : 201);
+      }
+
+      const noteMatch = path.match(/^\/v1\/notes\/([^/]+)$/);
+      if (noteMatch) {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(noteMatch[1]);
+        if (req.method === "GET") {
+          const rows = await query(
+            `SELECT * FROM cloud_notes WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!rows[0]) return json(req, { message: "Note not found." }, 404);
+          return json(req, serializeNote(rows[0]));
+        }
+        if (req.method === "PATCH") {
+          const body = await req.json().catch(() => ({}));
+          const existing = await query(
+            `SELECT * FROM cloud_notes WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!existing[0]) return json(req, { message: "Note not found." }, 404);
+          const title = typeof body.title === "string" ? body.title : existing[0].title;
+          const noteBody = typeof body.body === "string" ? body.body : existing[0].body;
+          const updated_at = typeof body.updated_at === "string" ? body.updated_at : new Date().toISOString();
+          const updated_by =
+            typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+              ? body.updated_by_device_id
+              : "pwa";
+          await query(
+            `UPDATE cloud_notes SET title=${sqlStr(title)}, body=${sqlStr(noteBody)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+          const rows = await query(`SELECT * FROM cloud_notes WHERE id='${esc(id)}'`);
+          return json(req, serializeNote(rows[0]));
+        }
+        if (req.method === "DELETE") {
+          const body = await req.json().catch(() => ({}));
+          const existing = await query(
+            `SELECT * FROM cloud_notes WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!existing[0]) return json(req, { message: "Note not found." }, 404);
+          const updated_at = typeof body.updated_at === "string" ? body.updated_at : new Date().toISOString();
+          const updated_by =
+            typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+              ? body.updated_by_device_id
+              : "pwa";
+          await query(
+            `UPDATE cloud_notes SET deleted_at=${sqlStr(updated_at)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+          return new Response(null, { status: 204, headers: cors(req) });
+        }
+      }
+
+      // ---- Lists ----
+      if (req.method === "GET" && path === "/v1/lists") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const includeDeleted = u.searchParams.get("include_deleted") === "1";
+        const rows = await query(
+          includeDeleted
+            ? `SELECT * FROM cloud_lists WHERE user_id='${esc(gate.user.id)}' ORDER BY updated_at DESC`
+            : `SELECT * FROM cloud_lists WHERE user_id='${esc(gate.user.id)}' AND deleted_at IS NULL ORDER BY updated_at DESC`,
+        );
+        return json(req, { lists: rows.map(serializeList) });
+      }
+
+      if (req.method === "POST" && path === "/v1/lists") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const now = new Date().toISOString();
+        const id = typeof body.id === "string" && body.id ? body.id : newId();
+        const title = typeof body.title === "string" ? body.title : "";
+        const itemsJson = JSON.stringify(Array.isArray(body.items) ? body.items : []);
+        const updated_at = typeof body.updated_at === "string" ? body.updated_at : now;
+        const updated_by =
+          typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+            ? body.updated_by_device_id
+            : "pwa";
+        const created_at = typeof body.created_at === "string" ? body.created_at : now;
+        const existing = await query(`SELECT * FROM cloud_lists WHERE id='${esc(id)}'`);
+        if (existing[0]) {
+          if (existing[0].user_id !== gate.user.id) return json(req, { message: "Forbidden." }, 403);
+          await query(
+            `UPDATE cloud_lists SET title=${sqlStr(title)}, items_json=${sqlStr(itemsJson)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+        } else {
+          await query(
+            `INSERT INTO cloud_lists (id,user_id,title,items_json,created_at,updated_at,updated_by_device_id,deleted_at,version) VALUES ('${esc(id)}','${esc(gate.user.id)}',${sqlStr(title)},${sqlStr(itemsJson)},${sqlStr(created_at)},${sqlStr(updated_at)},${sqlStr(updated_by)},NULL,1)`,
+          );
+        }
+        const rows = await query(`SELECT * FROM cloud_lists WHERE id='${esc(id)}'`);
+        return json(req, { list: serializeList(rows[0]) }, existing[0] ? 200 : 201);
+      }
+
+      const listMatch = path.match(/^\/v1\/lists\/([^/]+)$/);
+      if (listMatch) {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(listMatch[1]);
+        if (req.method === "GET") {
+          const rows = await query(
+            `SELECT * FROM cloud_lists WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!rows[0]) return json(req, { message: "List not found." }, 404);
+          return json(req, serializeList(rows[0]));
+        }
+        if (req.method === "PATCH") {
+          const body = await req.json().catch(() => ({}));
+          const existing = await query(
+            `SELECT * FROM cloud_lists WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!existing[0]) return json(req, { message: "List not found." }, 404);
+          const title = typeof body.title === "string" ? body.title : existing[0].title;
+          const itemsJson = Array.isArray(body.items)
+            ? JSON.stringify(body.items)
+            : existing[0].items_json;
+          const updated_at = typeof body.updated_at === "string" ? body.updated_at : new Date().toISOString();
+          const updated_by =
+            typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+              ? body.updated_by_device_id
+              : "pwa";
+          await query(
+            `UPDATE cloud_lists SET title=${sqlStr(title)}, items_json=${sqlStr(itemsJson)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+          const rows = await query(`SELECT * FROM cloud_lists WHERE id='${esc(id)}'`);
+          return json(req, serializeList(rows[0]));
+        }
+        if (req.method === "DELETE") {
+          const body = await req.json().catch(() => ({}));
+          const existing = await query(
+            `SELECT * FROM cloud_lists WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!existing[0]) return json(req, { message: "List not found." }, 404);
+          const updated_at = typeof body.updated_at === "string" ? body.updated_at : new Date().toISOString();
+          const updated_by =
+            typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+              ? body.updated_by_device_id
+              : "pwa";
+          await query(
+            `UPDATE cloud_lists SET deleted_at=${sqlStr(updated_at)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+          return new Response(null, { status: 204, headers: cors(req) });
+        }
+      }
+
+      // ---- Connectors / backups (empty until wired) ----
+      if (req.method === "GET" && path === "/v1/connectors") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const rows = await query(
+          `SELECT provider, status, connected_at FROM connector_accounts WHERE user_id='${esc(gate.user.id)}'`,
+        );
+        const byProv = Object.fromEntries(rows.map((r) => [r.provider, r]));
+        const connectors = ["drive", "dropbox", "onedrive"].map((provider) => ({
+          provider,
+          status: byProv[provider]?.status === "connected" ? "connected" : "disconnected",
+          connected_at: byProv[provider]?.connected_at || null,
+        }));
+        return json(req, { connectors });
+      }
+
+      if (req.method === "GET" && path === "/v1/backups") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const rows = await query(
+          `SELECT id, created_at, note_count, list_count, size_bytes FROM backups WHERE user_id='${esc(gate.user.id)}' ORDER BY created_at DESC`,
+        );
+        return json(req, { backups: rows });
+      }
+
+      // ---- Billing (Stripe via Admin-configured keys or env) ----
+      if (req.method === "POST" && path === "/v1/billing/checkout") {
+        const user = await userFromSession(req);
+        if (!user) return json(req, { message: "Sign in to continue." }, 401);
+        if (user.disabled_at) return json(req, { message: "This account is disabled." }, 403);
+        const cfg = await loadStripeConfig();
+        const withTrial = !Number(user.trial_consumed);
+        if (cfg.mockMode) {
+          const id = `mock_cs_${newId().replace(/-/g, "").slice(0, 24)}`;
+          const now = new Date().toISOString();
+          await query(
+            `INSERT INTO mock_checkouts (id,user_id,with_trial,created_at,completed_at) VALUES ('${esc(id)}','${esc(user.id)}',${withTrial ? 1 : 0},'${now}',NULL)`,
+          );
+          await completeMockCheckout(id);
+          return json(req, { url: `${PWA_ORIGIN}/billing/success?session_id=${id}` });
+        }
+        if (!cfg.priceMonthlyId) {
+          return json(req, { message: "Billing isn't configured yet. Try again later." }, 400);
+        }
+        let customerId = user.stripe_customer_id;
+        if (!customerId) {
+          const customer = await stripeFetch(cfg.secretKey, "POST", "/customers", {
+            email: user.email,
+            "metadata[pocket_user_id]": user.id,
+          });
+          customerId = customer.id;
+          await query(`UPDATE users SET stripe_customer_id='${esc(customerId)}' WHERE id='${esc(user.id)}'`);
+        }
+        const params = {
+          mode: "subscription",
+          customer: customerId,
+          client_reference_id: user.id,
+          success_url: `${PWA_ORIGIN}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${PWA_ORIGIN}/billing/cancel`,
+          "line_items[0][price]": cfg.priceMonthlyId,
+          "line_items[0][quantity]": "1",
+          allow_promotion_codes: "false",
+        };
+        if (withTrial) params["subscription_data[trial_period_days]"] = "7";
+        const session = await stripeFetch(cfg.secretKey, "POST", "/checkout/sessions", params);
+        if (!session.url) return json(req, { message: "Couldn't start checkout. Try again." }, 400);
+        return json(req, { url: session.url });
+      }
+
+      if (req.method === "POST" && path === "/v1/billing/portal") {
+        const user = await userFromSession(req);
+        if (!user) return json(req, { message: "Sign in to continue." }, 401);
+        const cfg = await loadStripeConfig();
+        if (cfg.mockMode) {
+          if (!user.stripe_customer_id && !Number(user.had_subscription) && !Number(user.trial_consumed)) {
+            return json(req, { message: "No billing account yet. Start a subscription first." }, 400);
+          }
+          return json(req, { url: `${PWA_ORIGIN}/billing?portal=mock` });
+        }
+        if (!user.stripe_customer_id) {
+          return json(req, { message: "No billing account yet. Start a subscription first." }, 400);
+        }
+        const session = await stripeFetch(cfg.secretKey, "POST", "/billing_portal/sessions", {
+          customer: user.stripe_customer_id,
+          return_url: `${PWA_ORIGIN}/billing`,
+        });
+        return json(req, { url: session.url });
+      }
+
+      if (req.method === "POST" && path === "/v1/billing/webhook") {
+        const cfg = await loadStripeConfig();
+        const raw = await req.text();
+        if (cfg.mockMode) {
+          return json(req, { received: true, mock: true });
+        }
+        const sig = req.headers.get("stripe-signature") || "";
+        if (!verifyStripeWebhookSignature(raw, sig, cfg.webhookSecret)) {
+          return json(req, { message: "Invalid webhook signature." }, 400);
+        }
+        let event;
+        try {
+          event = JSON.parse(raw);
+        } catch {
+          return json(req, { message: "Invalid payload." }, 400);
+        }
+        await handleStripeWebhookEvent(event);
+        return json(req, { received: true });
+      }
 
       // ---- Admin ----
+      if (req.method === "GET" && path === "/v1/admin/stripe") {
+        const gate = await requireAdmin(req);
+        if (gate.error) return gate.error;
+        const cfg = await loadStripeConfig();
+        const updated = await query(
+          `SELECT key, updated_at, updated_by FROM app_settings WHERE key LIKE 'stripe_%' ORDER BY key`,
+        );
+        return json(req, {
+          configured: !cfg.mockMode,
+          mock_mode: cfg.mockMode,
+          source: cfg.source,
+          secret_key_set: Boolean(cfg.secretKey),
+          secret_key_masked: maskSecret(cfg.secretKey),
+          webhook_secret_set: Boolean(cfg.webhookSecret),
+          webhook_secret_masked: maskSecret(cfg.webhookSecret),
+          price_monthly_id: cfg.priceMonthlyId || null,
+          product_name: cfg.productName,
+          webhook_url: `${PUBLIC_BASE_URL || u.origin}/v1/billing/webhook`,
+          updated,
+        });
+      }
+
+      if (req.method === "PUT" && path === "/v1/admin/stripe") {
+        const gate = await requireAdmin(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const updates = [];
+        if (typeof body.secret_key === "string" && body.secret_key.trim()) {
+          const sk = body.secret_key.trim();
+          if (!sk.startsWith("sk_")) {
+            return json(req, { message: "Secret key should start with sk_test_ or sk_live_." }, 400);
+          }
+          await setAppSetting("stripe_secret_key", sk, gate.user.id);
+          updates.push("secret_key");
+        }
+        if (typeof body.webhook_secret === "string" && body.webhook_secret.trim()) {
+          const wh = body.webhook_secret.trim();
+          if (!wh.startsWith("whsec_")) {
+            return json(req, { message: "Webhook secret should start with whsec_." }, 400);
+          }
+          await setAppSetting("stripe_webhook_secret", wh, gate.user.id);
+          updates.push("webhook_secret");
+        }
+        if (typeof body.price_monthly_id === "string") {
+          const price = body.price_monthly_id.trim();
+          if (price && !price.startsWith("price_")) {
+            return json(req, { message: "Price id should start with price_." }, 400);
+          }
+          await setAppSetting("stripe_price_monthly_id", price, gate.user.id);
+          updates.push("price_monthly_id");
+        }
+        if (typeof body.product_name === "string") {
+          const name = body.product_name.trim() || "Pocket Cloud";
+          if (/connect/i.test(name)) {
+            return json(req, { message: 'Product name must not contain "Connect".' }, 400);
+          }
+          await setAppSetting("stripe_product_name", name, gate.user.id);
+          updates.push("product_name");
+        }
+        if (body.clear === true) {
+          for (const k of STRIPE_SETTING_KEYS) {
+            await query(`DELETE FROM app_settings WHERE key='${esc(k)}'`);
+          }
+          updates.push("cleared");
+        }
+        if (!updates.length) {
+          return json(req, { message: "Nothing to update. Paste a key, price id, or clear." }, 400);
+        }
+        await audit(gate.user.id, "stripe.configure", "stripe", null, { updates });
+        const cfg = await loadStripeConfig();
+        return json(req, {
+          ok: true,
+          updates,
+          configured: !cfg.mockMode,
+          mock_mode: cfg.mockMode,
+          source: cfg.source,
+          secret_key_masked: maskSecret(cfg.secretKey),
+          webhook_secret_masked: maskSecret(cfg.webhookSecret),
+          price_monthly_id: cfg.priceMonthlyId || null,
+          product_name: cfg.productName,
+        });
+      }
+
       if (req.method === "GET" && path === "/v1/admin/overview") {
         const gate = await requireAdmin(req);
         if (gate.error) return gate.error;
