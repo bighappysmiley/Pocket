@@ -7,6 +7,7 @@ static const char* kAppLabels[] = {"Notes", "Ledger", "Clock", "Pass", "Weather"
 void App::render_home() {
   draw_status_bar();
   canvas_.draw_text(kSideMargin, 40, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
+  draw_home_clock();
 
   // Visible apps in locked order, collapsed empty slots
   HomeApp order[] = {HomeApp::Notes, HomeApp::Ledger, HomeApp::Clock,
@@ -19,12 +20,13 @@ void App::render_home() {
   focus_.count = n;
 
   const int tile_w = (kCanvasW - 48) / 2;
-  const int tile_h = 120;
+  const int tile_h = 100;
+  constexpr int kGridTop = 240;
   for (int i = 0; i < n; ++i) {
     int col = i % 2;
     int row = i / 2;
     int x = 16 + col * (tile_w + 16);
-    int y = 100 + row * (tile_h + 16);
+    int y = kGridTop + row * (tile_h + 14);
     const char* label = kAppLabels[static_cast<int>(visible[i])];
     if (i == focus_.index) {
       canvas_.draw_focus_tile(x, y, tile_w, tile_h, label, Canvas::TextRole::Body);

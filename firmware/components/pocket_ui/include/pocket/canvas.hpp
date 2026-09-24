@@ -17,6 +17,8 @@ class Canvas {
   void stroke_rect(int x, int y, int w, int h, Gray g);
   void hline(int x, int y, int w, Gray g);
   void vline(int x, int y, int h, Gray g);
+  /** Bresenham line for abstract lock motifs. */
+  void line(int x0, int y0, int x1, int y1, Gray g);
 
   /** Bitmap text — sizes map to Spec type scale roles (e-ink readable). */
   enum class TextRole : uint8_t {

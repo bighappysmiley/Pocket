@@ -24,6 +24,14 @@ std::string companion_download_url() {
   return POCKET_PWA_ORIGIN;
 }
 
+/** Human-readable site line for e-ink (no scheme). */
+std::string companion_display_origin() {
+  std::string_view o = POCKET_PWA_ORIGIN;
+  if (o.size() > 8 && o.substr(0, 8) == "https://") o.remove_prefix(8);
+  else if (o.size() > 7 && o.substr(0, 7) == "http://") o.remove_prefix(7);
+  return std::string(o);
+}
+
 std::string generate_pair_code() {
   static std::mt19937 rng{static_cast<unsigned>(std::time(nullptr))};
   std::uniform_int_distribution<int> dist(0, 31);  // alphabet length 32
