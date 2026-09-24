@@ -3,12 +3,13 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "waveshare_epd.h"
 
+// Provided by pocket_board/axp.cpp — Waveshare EPD_Power_ON equivalent.
+void pocket_axp_epd_power_on(void);
 
 static spi_device_handle_t spi;
 static const char *TAG = "EPD_DRIVER";
@@ -24,8 +25,8 @@ static void epaper_gpio_Init(void)
   gpio_conf.pull_up_en = GPIO_PULLUP_DISABLE;
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&gpio_conf));
 
-  // BUSY is driven by the panel (HIGH = busy). Do NOT pull-up: a floating/idle
-  // high looks "forever busy" and stacks 15s waits into a WDT reboot loop.
+  // BUSY is driven by the panel (HIGH = busy). No pull-up: floating high
+  // looks forever-busy. Soft timeout below keeps boot moving.
   gpio_conf.intr_type = GPIO_INTR_DISABLE;
   gpio_conf.mode = GPIO_MODE_INPUT;
   gpio_conf.pin_bit_mask = ((uint64_t)0x01<<EPD_BUSY_PIN);
@@ -34,7 +35,8 @@ static void epaper_gpio_Init(void)
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&gpio_conf));
 
   epaper_rst_1;
-  epaper_cs_1;  // idle high; soft-CS per transaction
+  // Waveshare demo: CS held low for the whole SPI session (single device).
+  epaper_cs_0;
 }
 
 void epaper_port_init(void)
@@ -71,7 +73,6 @@ esp_err_t spi_send_data(uint8_t *data, size_t data_size) {
     memset(&t, 0, sizeof(t));
 
     const size_t chunk_size = 1024;
-    epaper_cs_0;
     for (size_t i = 0; i < data_size; i += chunk_size) {
         size_t chunk_len = (i + chunk_size > data_size) ? (data_size - i) : chunk_size;
         t.length = chunk_len * 8;
@@ -79,16 +80,13 @@ esp_err_t spi_send_data(uint8_t *data, size_t data_size) {
 
         ret = spi_device_polling_transmit(spi, &t);
         if (ret != ESP_OK) {
-            epaper_cs_1;
             ESP_LOGE(TAG, "SPI transmission failed: %s", esp_err_to_name(ret));
             return ret;
         }
         if ((i & 0xFFF) == 0) {
-            esp_task_wdt_reset();
             taskYIELD();
         }
     }
-    epaper_cs_1;
     return ESP_OK;
 }
 
@@ -103,9 +101,7 @@ static void spi_send_byte(uint8_t cmd)
     t.rx_buffer = NULL;
     t.rxlength = 0;
 
-    epaper_cs_0;
     ret = spi_device_polling_transmit(spi, &t);
-    epaper_cs_1;
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "SPI byte failed: %s", esp_err_to_name(ret));
     }
@@ -154,9 +150,7 @@ static void EPD_SendDataBuffer(const UBYTE* buffer, UDOUBLE length)
     esp_err_t ret;
     const size_t chunk_size = 4096;
 
-    epaper_cs_0;
     for (size_t i = 0; i < length; i += chunk_size) {
-        esp_task_wdt_reset();
         size_t current_chunk = (i + chunk_size > length) ? (length - i) : chunk_size;
 
         spi_transaction_t t;
@@ -167,14 +161,11 @@ static void EPD_SendDataBuffer(const UBYTE* buffer, UDOUBLE length)
 
         ret = spi_device_polling_transmit(spi, &t);
         if (ret != ESP_OK) {
-            epaper_cs_1;
             ESP_LOGE(TAG, "SPI transmission failed: %s", esp_err_to_name(ret));
             return;
         }
-        // Let idle tasks run so TWDT idle checks cannot fire during long fills.
         taskYIELD();
     }
-    epaper_cs_1;
 
     ESP_LOGD(TAG, "All %lu bytes transmitted successfully", (unsigned long)length);
 }
@@ -185,12 +176,11 @@ parameter:
 ******************************************************************************/
 static void EPD_ReadBusy(void)
 {
-    // HIGH = busy (Waveshare). Never hang forever — kick WDT and time out.
+    // HIGH = busy (Waveshare). Soft-timeout so a dead panel cannot stall forever.
     TickType_t start = xTaskGetTickCount();
-    vTaskDelay(pdMS_TO_TICKS(20));
+    vTaskDelay(pdMS_TO_TICKS(100));
     while (ReadBusy) {
-        esp_task_wdt_reset();
-        if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(5000)) {
+        if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(8000)) {
             ESP_LOGW(TAG, "BUSY timeout (pin=%d) — continuing", ReadBusy);
             break;
         }
@@ -243,8 +233,15 @@ static void EPD_TurnOnDisplay_Part(void)
 function :	Initialize the e-Paper register
 parameter:
 ******************************************************************************/
+static void EPD_Power_ON(void)
+{
+    // Waveshare: enapwrstate(ALDO3) before every EPD_Init.
+    pocket_axp_epd_power_on();
+}
+
 void EPD_Init(void)
 {
+    EPD_Power_ON();
     vTaskDelay(pdMS_TO_TICKS(10));
     EPD_Reset();
 
@@ -412,24 +409,19 @@ parameter:
 ******************************************************************************/
 void EPD_Clear(void)
 {
-    // Bulk white fill — original per-byte + 1ms/row loop (~96k SPI txs) trips TWDT.
+    // Bulk white fill — original per-byte + 1ms/row loop was extremely slow.
     UBYTE chunk[4096];
     memset(chunk, 0xFF, sizeof(chunk));
-    esp_task_wdt_reset();
     EPD_SendCommand(0x24);
     for (UDOUBLE off = 0; off < EPD_SIZE_MONO; off += sizeof(chunk)) {
-        esp_task_wdt_reset();
         UDOUBLE n = (off + sizeof(chunk) > EPD_SIZE_MONO) ? (EPD_SIZE_MONO - off) : sizeof(chunk);
         EPD_SendDataBuffer(chunk, n);
     }
-    esp_task_wdt_reset();
     EPD_SendCommand(0x26);
     for (UDOUBLE off = 0; off < EPD_SIZE_MONO; off += sizeof(chunk)) {
-        esp_task_wdt_reset();
         UDOUBLE n = (off + sizeof(chunk) > EPD_SIZE_MONO) ? (EPD_SIZE_MONO - off) : sizeof(chunk);
         EPD_SendDataBuffer(chunk, n);
     }
-    esp_task_wdt_reset();
     EPD_TurnOnDisplay();
 }
 
@@ -437,21 +429,16 @@ void EPD_Clear_Black(void)
 {
     UBYTE chunk[4096];
     memset(chunk, 0x00, sizeof(chunk));
-    esp_task_wdt_reset();
     EPD_SendCommand(0x24);
     for (UDOUBLE off = 0; off < EPD_SIZE_MONO; off += sizeof(chunk)) {
-        esp_task_wdt_reset();
         UDOUBLE n = (off + sizeof(chunk) > EPD_SIZE_MONO) ? (EPD_SIZE_MONO - off) : sizeof(chunk);
         EPD_SendDataBuffer(chunk, n);
     }
-    esp_task_wdt_reset();
     EPD_SendCommand(0x26);
     for (UDOUBLE off = 0; off < EPD_SIZE_MONO; off += sizeof(chunk)) {
-        esp_task_wdt_reset();
         UDOUBLE n = (off + sizeof(chunk) > EPD_SIZE_MONO) ? (EPD_SIZE_MONO - off) : sizeof(chunk);
         EPD_SendDataBuffer(chunk, n);
     }
-    esp_task_wdt_reset();
     EPD_TurnOnDisplay();
 }
 

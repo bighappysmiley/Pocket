@@ -14,10 +14,13 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
+#include "esp_rom_sys.h"
 #include "esp_system.h"
-#include "esp_task_wdt.h"
 
 static const char* TAG = "pocket";
+
+// Unique marker so serial proves this exact build is running.
+static const char* kBuildId = "POCKET-LIVE-v10-console-uart";
 
 namespace {
 
@@ -74,10 +77,13 @@ struct EspDisplay : pocket::PlatformDisplay {
 }  // namespace
 
 extern "C" void app_main(void) {
-  // Breadcrumb ASAP — prove we passed cpu_start before any e-ink I/O.
+  // ROM printf bypasses ESP_LOG console routing — proves we reached app_main
+  // even if USB console init is flaky.
+  esp_rom_printf("\n*** %s ***\n", kBuildId);
+
   const esp_reset_reason_t rr = esp_reset_reason();
-  ESP_LOGI(TAG, "app_main start reset=%s (%d)", reset_reason_str(rr), static_cast<int>(rr));
-  vTaskDelay(pdMS_TO_TICKS(50));  // let USB-Serial/JTAG flush
+  ESP_LOGI(TAG, "%s reset=%s (%d)", kBuildId, reset_reason_str(rr), static_cast<int>(rr));
+  vTaskDelay(pdMS_TO_TICKS(100));
 
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -91,11 +97,9 @@ extern "C" void app_main(void) {
            pocket::board::kPinButtonFunction, pocket::board::kPinButtonDown, pocket::board::kPinBoot,
            pocket::board::kPinPwr);
 
-  // Buttons first so we always reach the input loop after present returns.
   static pocket::board::ButtonPoller buttons;
   buttons.init();
 
-  // EPD_VCC is supplied by AXP2101 ALDOs on this Waveshare board.
   ESP_LOGI(TAG, "enabling AXP EPD rails…");
   pocket::board::axp_enable_epd_rails();
 
@@ -113,12 +117,12 @@ extern "C" void app_main(void) {
   static pocket::InputMapper mapper;
 
   pocket::App app(store, clock, wifi, cloud, display);
-  ESP_LOGI(TAG, "painting first frame (clears factory demo if panel responds)…");
+  ESP_LOGI(TAG, "painting first frame…");
   app.boot();
-  ESP_LOGI(TAG, "UI boot complete, screen=%d — entering input loop", static_cast<int>(app.screen()));
+  ESP_LOGI(TAG, "UI boot complete, screen=%d — input loop", static_cast<int>(app.screen()));
+  esp_rom_printf("*** %s READY ***\n", kBuildId);
 
   while (true) {
-    esp_task_wdt_reset();
     const uint32_t now = clock.now_ms();
     buttons.poll(mapper, now);
     for (;;) {

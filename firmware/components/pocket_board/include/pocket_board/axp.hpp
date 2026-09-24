@@ -14,3 +14,12 @@ namespace pocket::board {
 bool axp_enable_epd_rails();
 
 }  // namespace pocket::board
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+/** Called from Waveshare EPD_Init (EPD_Power_ON) — enables ALDO3 @ 3.3V. */
+void pocket_axp_epd_power_on(void);
+#ifdef __cplusplus
+}
+#endif
