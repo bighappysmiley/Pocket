@@ -12,6 +12,7 @@ idf_component_register(
     "src/screens_onboarding.cpp"
     "src/screens_home.cpp"
     "src/screens_apps.cpp"
+    "src/screens_music.cpp"
     "src/screens_settings.cpp"
     "src/cloud_client.cpp"
     "vendor/qrcodegen/qrcodegen.c"

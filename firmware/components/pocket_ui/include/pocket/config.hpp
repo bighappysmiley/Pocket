@@ -22,7 +22,7 @@ struct DeviceConfig {
   std::string weather_city;
   float weather_lat = 0;
   float weather_lon = 0;
-  uint8_t home_visible = 0x3F;  // all six apps; bit5 Settings always on
+  uint16_t home_visible = 0x007F;  // bits 0..6 Notes..Settings (+Music); Settings always on
   uint16_t idle_lock_s = 60;
   bool show_batt_pct = true;
   bool cloud_entitled = false;
@@ -40,11 +40,29 @@ enum class HomeApp : uint8_t {
   Clock = 2,
   Pass = 3,
   Weather = 4,
-  Settings = 5,
+  Music = 5,
+  Settings = 6,
+  /** Reserved Home grid slots 7..15 (empty until assigned). */
+  Slot7 = 7,
+  Slot8 = 8,
+  Slot9 = 9,
+  Slot10 = 10,
+  Slot11 = 11,
+  Slot12 = 12,
+  Slot13 = 13,
+  Slot14 = 14,
+  Slot15 = 15,
 };
+
+inline constexpr int kHomeGridSlots = 16;
+
+inline bool home_app_is_real(HomeApp a) {
+  return static_cast<uint8_t>(a) <= static_cast<uint8_t>(HomeApp::Settings);
+}
 
 inline bool home_app_visible(const DeviceConfig& c, HomeApp a) {
   if (a == HomeApp::Settings) return true;
+  if (!home_app_is_real(a)) return false;
   return (c.home_visible & (1u << static_cast<uint8_t>(a))) != 0;
 }
 

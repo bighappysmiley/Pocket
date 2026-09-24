@@ -384,6 +384,10 @@ void App::handle(InputEvent e) {
     case ScreenId::WeatherCitySetup:
       handle_weather(e);
       break;
+    case ScreenId::MusicList:
+    case ScreenId::MusicNowPlaying:
+      handle_music(e);
+      break;
     default:
       handle_settings(e);
       break;
@@ -440,6 +444,10 @@ void App::render() {
     case ScreenId::WeatherMain:
     case ScreenId::WeatherCitySetup:
       render_weather();
+      break;
+    case ScreenId::MusicList:
+    case ScreenId::MusicNowPlaying:
+      render_music();
       break;
     default:
       render_settings();
@@ -650,13 +658,8 @@ void App::present_home_clock_partial() {
 }
 
 void App::maybe_tick_home_clock() {
-  if (!cfg_.onboarding_complete) return;
-  if (nav_.current() != ScreenId::Home) return;
-  int h = 0, m = 0, wd = 0, mo = 0, d = 0;
-  clock_.local_hm(h, m, wd, mo, d);
-  const int key = h * 60 + m;
-  if (key == last_home_clock_minute_) return;
-  present_home_clock_partial();
+  // Home no longer hosts a large clock — time updates live in the status bar only.
+  (void)0;
 }
 
 }  // namespace pocket

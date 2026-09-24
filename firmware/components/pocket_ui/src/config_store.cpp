@@ -7,7 +7,7 @@ namespace pocket {
 namespace {
 
 constexpr uint32_t kMagic = 0x314B4350u;  // 'PCK1' LE
-constexpr uint16_t kVersion = 1;
+constexpr uint16_t kVersion = 2;
 constexpr size_t kMaxString = 128;
 constexpr size_t kMaxBlob = 4096;
 
@@ -103,7 +103,7 @@ bool pack_device_config(const DeviceConfig& cfg, std::vector<uint8_t>& out) {
   put_u8(out, cfg.time_format);
   put_u8(out, cfg.stt_path);
   put_u8(out, cfg.weather_units);
-  put_u8(out, cfg.home_visible);
+  put_u16(out, cfg.home_visible);
   put_u8(out, cfg.show_batt_pct ? 1 : 0);
   put_u8(out, cfg.cloud_entitled ? 1 : 0);
   put_u8(out, cfg.companion_linked ? 1 : 0);
@@ -143,7 +143,7 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
   if (!get_u8(data, len, off, cfg.time_format)) return false;
   if (!get_u8(data, len, off, cfg.stt_path)) return false;
   if (!get_u8(data, len, off, cfg.weather_units)) return false;
-  if (!get_u8(data, len, off, cfg.home_visible)) return false;
+  if (!get_u16(data, len, off, cfg.home_visible)) return false;
   if (!get_u8(data, len, off, b)) return false;
   cfg.show_batt_pct = b != 0;
   if (!get_u8(data, len, off, b)) return false;

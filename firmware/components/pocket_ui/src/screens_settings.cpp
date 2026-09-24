@@ -132,9 +132,9 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kTitleY, "Home apps", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(kSideMargin, kListTop - 8, "Choose what to show on Home.", Canvas::TextRole::Secondary,
                       Gray::G1);
-    const char* names[] = {"Notes", "Ledger", "Clock", "Pass", "Weather", "Settings (required)"};
-    focus_.count = 6;
-    for (int i = 0; i < 6; ++i) {
+    const char* names[] = {"Notes", "Ledger", "Clock", "Pass", "Weather", "Music", "Settings (required)"};
+    focus_.count = 7;
+    for (int i = 0; i < 7; ++i) {
       const int y = kListTop + 36 + i * kRowPitch;
       bool on = home_app_visible(cfg_, static_cast<HomeApp>(i));
       std::string label = std::string(names[i]) + (on ? ": On" : ": Off");
@@ -225,7 +225,7 @@ void App::handle_settings(InputEvent e) {
   }
 
   if (s == ScreenId::SettingsHomeApps) {
-    focus_.count = 6;
+    focus_.count = 7;
     if (e == InputEvent::Up) {
       focus_.move(-1);
       mark_content_dirty();
@@ -233,8 +233,8 @@ void App::handle_settings(InputEvent e) {
       focus_.move(1);
       mark_content_dirty();
     } else if (e == InputEvent::Select) {
-      if (focus_.index != 5) {
-        cfg_.home_visible ^= static_cast<uint8_t>(1u << focus_.index);
+      if (focus_.index != 6) {  // Settings always on
+        cfg_.home_visible ^= static_cast<uint16_t>(1u << focus_.index);
         store_.save(cfg_);
         mark_content_dirty();
       }

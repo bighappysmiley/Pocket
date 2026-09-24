@@ -1,7 +1,4 @@
-#include <stdio.h>
-#include <ctime>
-#include <cstdlib>
-#include <cstring>
+#include <sys/stat.h>
 #include <string>
 
 #include "pocket/app.hpp"
@@ -12,6 +9,7 @@
 #include "pocket_board/epd.hpp"
 #include "pocket_board/pins.hpp"
 #include "pocket_board/sdcard.hpp"
+#include "pocket_board/littlefs.hpp"
 #include "esp_wifi_platform.hpp"
 #include "esp_cloud_platform.hpp"
 #include "esp_config_store.hpp"
@@ -132,6 +130,28 @@ struct EspStorage : pocket::PlatformStorage {
   }
   bool erase_card() override { return pocket::board::sd_erase(); }
   void unmount() override { pocket::board::sd_unmount(); }
+
+  std::string music_root() override {
+    if (pocket::board::sd_present()) return "/sdcard/pocket/music";
+    if (pocket::board::littlefs_mounted() || pocket::board::littlefs_mount()) return "/littlefs/music";
+    return {};
+  }
+  bool music_ensure_root() override {
+    std::string root = music_root();
+    if (root.empty()) return false;
+    // Create parent dirs
+    if (root.rfind("/sdcard", 0) == 0) {
+      mkdir("/sdcard/pocket", 0755);
+      mkdir("/sdcard/pocket/music", 0755);
+    } else {
+      mkdir("/littlefs/music", 0755);
+    }
+    const uint64_t free = free_bytes(root.rfind("/sdcard", 0) == 0 ? "/sdcard" : "/littlefs");
+    return free > 128 * 1024;
+  }
+  uint64_t free_bytes(const std::string& root) override {
+    return pocket::board::fs_free_bytes(root.c_str());
+  }
 };
 
 struct EspAudio : pocket::PlatformAudio {
@@ -153,6 +173,10 @@ struct EspAudio : pocket::PlatformAudio {
     }
     pocket::board::audio_play(bid);
   }
+  bool play_file(const std::string& path) override {
+    return pocket::board::audio_play_wav_file(path.c_str());
+  }
+  void stop() override { pocket::board::audio_stop(); }
 };
 
 struct EspIdentity : pocket::PlatformIdentity {
@@ -231,6 +255,12 @@ extern "C" void app_main(void) {
     ret = nvs_flash_init();
   }
   ESP_ERROR_CHECK(ret);
+
+  // Prefer SD for media; mount internal LittleFS as music fallback (~2 MiB).
+  (void)pocket::board::sd_probe();
+  if (!pocket::board::littlefs_mount()) {
+    ESP_LOGW(TAG, "LittleFS mount failed — music needs SD if internal unavailable");
+  }
 
   ESP_LOGI(TAG, "Pocket boot — canvas %dx%d Up=%d Fn=%d Down=%d", pocket::board::kLogicalW,
            pocket::board::kLogicalH, pocket::board::kPinButtonUp, pocket::board::kPinButtonFunction,

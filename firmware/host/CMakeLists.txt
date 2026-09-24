@@ -18,6 +18,7 @@ set(POCKET_UI_SRCS
   ${POCKET_UI}/src/screens_onboarding.cpp
   ${POCKET_UI}/src/screens_home.cpp
   ${POCKET_UI}/src/screens_apps.cpp
+  ${POCKET_UI}/src/screens_music.cpp
   ${POCKET_UI}/src/screens_settings.cpp
   ${POCKET_UI}/src/cloud_client.cpp
   ${POCKET_UI}/vendor/qrcodegen/qrcodegen.c
@@ -45,3 +46,8 @@ add_executable(test_config_persist ../tests/test_config_persist.cpp ${POCKET_UI}
 target_include_directories(test_config_persist PRIVATE ${POCKET_UI}/include)
 target_compile_definitions(test_config_persist PRIVATE POCKET_HOST=1)
 add_test(NAME test_config_persist COMMAND test_config_persist)
+
+add_executable(test_home_music ../tests/test_home_music.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_home_music PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_home_music PRIVATE POCKET_HOST=1)
+add_test(NAME test_home_music COMMAND test_home_music)

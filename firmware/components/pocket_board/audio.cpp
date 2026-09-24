@@ -3,6 +3,7 @@
 #include "pocket_board/pins.hpp"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -230,5 +231,59 @@ void audio_play(SoundId id) {
       break;
   }
 }
+
+bool audio_play_wav_file(const char* path) {
+  if (!path || !*path) return false;
+  if (!ready_ && !audio_init()) return false;
+  FILE* f = std::fopen(path, "rb");
+  if (!f) {
+    ESP_LOGW(TAG, "open failed: %s", path);
+    return false;
+  }
+  uint8_t hdr[44] = {};
+  if (std::fread(hdr, 1, 44, f) < 44) {
+    std::fclose(f);
+    return false;
+  }
+  if (std::memcmp(hdr, "RIFF", 4) != 0 || std::memcmp(hdr + 8, "WAVE", 4) != 0) {
+    ESP_LOGW(TAG, "not WAV: %s", path);
+    std::fclose(f);
+    return false;
+  }
+  const uint16_t channels = static_cast<uint16_t>(hdr[22] | (hdr[23] << 8));
+  const uint16_t bits = static_cast<uint16_t>(hdr[34] | (hdr[35] << 8));
+  if (bits != 16 || (channels != 1 && channels != 2)) {
+    ESP_LOGW(TAG, "need 16-bit mono/stereo WAV");
+    std::fclose(f);
+    return false;
+  }
+  constexpr size_t kChunk = 1024;
+  std::vector<int16_t> in(kChunk);
+  std::vector<int16_t> out(kChunk * 2);
+  while (true) {
+    const size_t nread = std::fread(in.data(), sizeof(int16_t), kChunk, f);
+    if (nread == 0) break;
+    size_t frames = nread;
+    if (channels == 2) frames = nread / 2;
+    for (size_t i = 0; i < frames; ++i) {
+      int16_t l = 0, r = 0;
+      if (channels == 1) {
+        l = r = in[i];
+      } else {
+        l = in[i * 2];
+        r = in[i * 2 + 1];
+      }
+      out[i * 2] = l;
+      out[i * 2 + 1] = r;
+    }
+    size_t written = 0;
+    i2s_channel_write(tx_, out.data(), frames * 2 * sizeof(int16_t), &written, pdMS_TO_TICKS(500));
+  }
+  std::fclose(f);
+  vTaskDelay(pdMS_TO_TICKS(20));
+  return true;
+}
+
+void audio_stop() {}
 
 }  // namespace pocket::board

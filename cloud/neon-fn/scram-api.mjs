@@ -328,6 +328,31 @@ function serializeList(row) {
   };
 }
 
+function serializeMusicMeta(row) {
+  return {
+    id: row.id,
+    title: row.title || "",
+    filename: row.filename || "",
+    mime: row.mime || "audio/wav",
+    size: Number(row.size_bytes || 0),
+    size_bytes: Number(row.size_bytes || 0),
+    created_at: row.created_at,
+  };
+}
+
+const MUSIC_MAX_BYTES = 2 * 1024 * 1024; // 2 MiB decoded (fits LittleFS; SD can hold more per free space)
+
+async function userIdForDeviceKey(req, deviceId) {
+  const key = (req.headers.get("x-device-key") || "").trim();
+  if (!safeEqual(key, DEVICE_API_KEY)) return null;
+  const id = String(deviceId || "").trim();
+  if (!id) return null;
+  const rows = await query(
+    `SELECT user_id FROM device_links WHERE device_id='${esc(id)}' ORDER BY linked_at DESC LIMIT 1`,
+  );
+  return rows[0]?.user_id || null;
+}
+
 async function audit(actorId, action, targetType, targetId, detail) {
   const now = new Date().toISOString();
   const detailText =
@@ -424,6 +449,17 @@ async function ensureAdminSchema() {
     connected_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL DEFAULT 'connected',
     UNIQUE(user_id, provider)
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS music_tracks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    filename TEXT NOT NULL DEFAULT '',
+    mime TEXT NOT NULL DEFAULT 'audio/wav',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    audio_b64 TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    deleted_at TIMESTAMPTZ
   )`);
 }
 
@@ -675,7 +711,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v7-notes" });
+        return json(req, { ok: true, build: "scram-api-v8-music" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
@@ -834,6 +870,116 @@ export default {
         if (!user) return json(req, { message: "Sign in to continue." }, 401);
         const devices = await query(`SELECT id, device_id, device_name, linked_at, last_seen_at FROM device_links WHERE user_id='${esc(user.id)}' ORDER BY linked_at DESC`);
         return json(req, { devices });
+      }
+
+      // ---- Music (Companion manage + device pull) ----
+      if (req.method === "GET" && path === "/v1/music") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const rows = await query(
+          `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE user_id='${esc(gate.user.id)}' AND deleted_at IS NULL ORDER BY created_at DESC`,
+        );
+        return json(req, { tracks: rows.map(serializeMusicMeta) });
+      }
+
+      if (req.method === "POST" && path === "/v1/music") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
+        let filename = typeof body.filename === "string" ? body.filename.trim().slice(0, 180) : "";
+        const mime = typeof body.mime === "string" ? body.mime.trim().slice(0, 80) : "audio/wav";
+        const audioB64 = typeof body.audio_b64 === "string" ? body.audio_b64.replace(/\s+/g, "") : "";
+        if (!audioB64) return json(req, { message: "Choose a WAV file to upload." }, 400);
+        let decoded;
+        try {
+          decoded = Buffer.from(audioB64, "base64");
+        } catch {
+          return json(req, { message: "Upload data was invalid." }, 400);
+        }
+        if (!decoded.length || decoded.length > MUSIC_MAX_BYTES) {
+          return json(req, { message: `Track must be a WAV under ${MUSIC_MAX_BYTES} bytes.` }, 400);
+        }
+        if (decoded.length < 12 || decoded.toString("ascii", 0, 4) !== "RIFF" || decoded.toString("ascii", 8, 12) !== "WAVE") {
+          return json(req, { message: "Only WAV audio is supported on Pocket." }, 400);
+        }
+        if (!filename) filename = "track.wav";
+        if (!/\.wav$/i.test(filename)) filename = `${filename.replace(/\.[^.]+$/, "") || "track"}.wav`;
+        filename = filename.replace(/[/\\]/g, "_");
+        const id = newId();
+        const now = new Date().toISOString();
+        const safeTitle = title || filename.replace(/\.wav$/i, "");
+        await query(
+          `INSERT INTO music_tracks (id,user_id,title,filename,mime,size_bytes,audio_b64,created_at,deleted_at) VALUES ('${esc(id)}','${esc(gate.user.id)}',${sqlStr(safeTitle)},${sqlStr(filename)},${sqlStr(mime || "audio/wav")},${decoded.length},${sqlStr(audioB64)},'${now}',NULL)`,
+        );
+        const rows = await query(
+          `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE id='${esc(id)}'`,
+        );
+        return json(req, { track: serializeMusicMeta(rows[0]) }, 201);
+      }
+
+      const musicAudioMatch = path.match(/^\/v1\/music\/([^/]+)\/audio$/);
+      if (req.method === "GET" && musicAudioMatch) {
+        const id = decodeURIComponent(musicAudioMatch[1]);
+        // Companion session OR device key + device_id
+        let userId = null;
+        const gate = await requireEntitledUser(req);
+        if (!gate.error) {
+          userId = gate.user.id;
+        } else {
+          const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
+          userId = await userIdForDeviceKey(req, deviceId);
+          if (!userId) return gate.error;
+        }
+        const rows = await query(
+          `SELECT mime, audio_b64, filename FROM music_tracks WHERE id='${esc(id)}' AND user_id='${esc(userId)}' AND deleted_at IS NULL`,
+        );
+        if (!rows[0]) return json(req, { message: "Track not found." }, 404);
+        const bytes = Buffer.from(String(rows[0].audio_b64 || ""), "base64");
+        return new Response(bytes, {
+          status: 200,
+          headers: {
+            ...cors(req),
+            "content-type": rows[0].mime || "audio/wav",
+            "content-length": String(bytes.length),
+            "content-disposition": `attachment; filename="${String(rows[0].filename || "track.wav").replace(/"/g, "")}"`,
+          },
+        });
+      }
+
+      const musicIdMatch = path.match(/^\/v1\/music\/([^/]+)$/);
+      if (musicIdMatch) {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(musicIdMatch[1]);
+        if (req.method === "DELETE") {
+          const existing = await query(
+            `SELECT id FROM music_tracks WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}' AND deleted_at IS NULL`,
+          );
+          if (!existing[0]) return json(req, { message: "Track not found." }, 404);
+          const now = new Date().toISOString();
+          await query(`UPDATE music_tracks SET deleted_at='${now}' WHERE id='${esc(id)}'`);
+          return new Response(null, { status: 204, headers: cors(req) });
+        }
+        if (req.method === "GET") {
+          const rows = await query(
+            `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}' AND deleted_at IS NULL`,
+          );
+          if (!rows[0]) return json(req, { message: "Track not found." }, 404);
+          return json(req, serializeMusicMeta(rows[0]));
+        }
+      }
+
+      // Device library pull (x-device-key + device_id)
+      if (req.method === "GET" && path === "/v1/device/music") {
+        const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
+        const userId = await userIdForDeviceKey(req, deviceId);
+        if (!userId) return json(req, { message: "Sign in to continue." }, 401);
+        await query(`UPDATE device_links SET last_seen_at='${new Date().toISOString()}' WHERE device_id='${esc(deviceId)}'`);
+        const rows = await query(
+          `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE user_id='${esc(userId)}' AND deleted_at IS NULL ORDER BY created_at DESC`,
+        );
+        return json(req, { tracks: rows.map(serializeMusicMeta) });
       }
 
       // ---- Notes ----

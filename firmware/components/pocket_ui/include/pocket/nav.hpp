@@ -38,6 +38,8 @@ enum class ScreenId : uint16_t {
   PassDetail,
   WeatherMain,
   WeatherCitySetup,
+  MusicList,
+  MusicNowPlaying,
   SettingsRoot,
   SettingsSecurity,
   SettingsWifi,

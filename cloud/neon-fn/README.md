@@ -24,7 +24,7 @@ Env (carried across deploys; set on change):
 - `ADMIN_EMAILS` — comma-separated (default includes owner)
 - `DATABASE_URL` injected by Neon
 
-Health: `{ "ok": true, "build": "scram-api-v7-notes" }`
+Health: `{ "ok": true, "build": "scram-api-v8-music" }`
 
 ## Stripe (Admin UI)
 
@@ -37,6 +37,6 @@ Admins configure billing at Companion **Admin → Stripe** (`PUT /v1/admin/strip
 
 Falls back to `STRIPE_*` env vars when Admin has not saved keys; unset secret → mock billing.
 
-Also on this build: `/v1/notes`, `/v1/lists`, `/v1/connectors`, `/v1/backups` (empty until used).
+Also on this build: `/v1/notes`, `/v1/lists`, `/v1/music`, `/v1/device/music`, `/v1/connectors`, `/v1/backups`.
 
 `index.ts` / `slim-entry.mjs` are older Hono/`pg` sketches — **do not deploy those** while live runs the SCRAM zip.
