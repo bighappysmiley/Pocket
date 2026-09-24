@@ -268,12 +268,64 @@ function isAdminUser(user) {
   return ADMIN_EMAILS.has(String(user.email || "").toLowerCase());
 }
 
-async function requireAdmin(req) {
+async function requireSessionUser(req) {
   const user = await userFromSession(req);
   if (!user) return { error: json(req, { message: "Sign in to continue." }, 401) };
   if (user.disabled_at) return { error: json(req, { message: "This account is disabled." }, 403) };
-  if (!isAdminUser(user)) return { error: json(req, { message: "Admin access required." }, 403) };
   return { user };
+}
+
+async function requireEntitledUser(req) {
+  const gate = await requireSessionUser(req);
+  if (gate.error) return gate;
+  const subs = await query(
+    `SELECT status FROM subscription_mirrors WHERE user_id='${esc(gate.user.id)}'`,
+  );
+  const st = subs[0]?.status;
+  if (st !== "active" && st !== "trialing") {
+    return { error: json(req, { message: "Pocket Cloud is required for this.", code: "not_entitled" }, 403) };
+  }
+  return gate;
+}
+
+async function requireAdmin(req) {
+  const gate = await requireSessionUser(req);
+  if (gate.error) return gate;
+  if (!isAdminUser(gate.user)) return { error: json(req, { message: "Admin access required." }, 403) };
+  return gate;
+}
+
+function serializeNote(row) {
+  return {
+    id: row.id,
+    title: row.title || "",
+    body: row.body || "",
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    updated_by_device_id: row.updated_by_device_id,
+    deleted_at: row.deleted_at || null,
+    version: Number(row.version || 1),
+  };
+}
+
+function serializeList(row) {
+  let items = [];
+  try {
+    items = JSON.parse(row.items_json || "[]");
+    if (!Array.isArray(items)) items = [];
+  } catch {
+    items = [];
+  }
+  return {
+    id: row.id,
+    title: row.title || "",
+    items,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    updated_by_device_id: row.updated_by_device_id,
+    deleted_at: row.deleted_at || null,
+    version: Number(row.version || 1),
+  };
 }
 
 async function audit(actorId, action, targetType, targetId, detail) {
@@ -332,6 +384,46 @@ async function ensureAdminSchema() {
     with_trial INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL,
     completed_at TIMESTAMPTZ
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS cloud_notes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    updated_by_device_id TEXT NOT NULL,
+    deleted_at TIMESTAMPTZ,
+    version INTEGER NOT NULL DEFAULT 1
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS cloud_lists (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    items_json TEXT NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    updated_by_device_id TEXT NOT NULL,
+    deleted_at TIMESTAMPTZ,
+    version INTEGER NOT NULL DEFAULT 1
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS backups (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL,
+    blob_json TEXT NOT NULL,
+    note_count INTEGER NOT NULL,
+    list_count INTEGER NOT NULL,
+    size_bytes INTEGER NOT NULL
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS connector_accounts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    refresh_token_enc TEXT,
+    connected_at TIMESTAMPTZ NOT NULL,
+    status TEXT NOT NULL DEFAULT 'connected',
+    UNIQUE(user_id, provider)
   )`);
 }
 
@@ -583,7 +675,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v6-stripe" });
+        return json(req, { ok: true, build: "scram-api-v7-notes" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
@@ -742,6 +834,221 @@ export default {
         if (!user) return json(req, { message: "Sign in to continue." }, 401);
         const devices = await query(`SELECT id, device_id, device_name, linked_at, last_seen_at FROM device_links WHERE user_id='${esc(user.id)}' ORDER BY linked_at DESC`);
         return json(req, { devices });
+      }
+
+      // ---- Notes ----
+      if (req.method === "GET" && path === "/v1/notes") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const includeDeleted = u.searchParams.get("include_deleted") === "1";
+        const rows = await query(
+          includeDeleted
+            ? `SELECT * FROM cloud_notes WHERE user_id='${esc(gate.user.id)}' ORDER BY updated_at DESC`
+            : `SELECT * FROM cloud_notes WHERE user_id='${esc(gate.user.id)}' AND deleted_at IS NULL ORDER BY updated_at DESC`,
+        );
+        return json(req, { notes: rows.map(serializeNote) });
+      }
+
+      if (req.method === "POST" && path === "/v1/notes") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const now = new Date().toISOString();
+        const id = typeof body.id === "string" && body.id ? body.id : newId();
+        const title = typeof body.title === "string" ? body.title : "";
+        const noteBody = typeof body.body === "string" ? body.body : "";
+        const updated_at = typeof body.updated_at === "string" ? body.updated_at : now;
+        const updated_by =
+          typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+            ? body.updated_by_device_id
+            : "pwa";
+        const created_at = typeof body.created_at === "string" ? body.created_at : now;
+        const deleted_at =
+          body.deleted_at === null
+            ? null
+            : typeof body.deleted_at === "string"
+              ? body.deleted_at
+              : null;
+        const existing = await query(`SELECT * FROM cloud_notes WHERE id='${esc(id)}'`);
+        if (existing[0]) {
+          if (existing[0].user_id !== gate.user.id) return json(req, { message: "Forbidden." }, 403);
+          await query(
+            `UPDATE cloud_notes SET title=${sqlStr(title)}, body=${sqlStr(noteBody)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, deleted_at=${sqlNullable(deleted_at)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+        } else {
+          await query(
+            `INSERT INTO cloud_notes (id,user_id,title,body,created_at,updated_at,updated_by_device_id,deleted_at,version) VALUES ('${esc(id)}','${esc(gate.user.id)}',${sqlStr(title)},${sqlStr(noteBody)},${sqlStr(created_at)},${sqlStr(updated_at)},${sqlStr(updated_by)},${sqlNullable(deleted_at)},1)`,
+          );
+        }
+        const rows = await query(`SELECT * FROM cloud_notes WHERE id='${esc(id)}'`);
+        return json(req, { note: serializeNote(rows[0]) }, existing[0] ? 200 : 201);
+      }
+
+      const noteMatch = path.match(/^\/v1\/notes\/([^/]+)$/);
+      if (noteMatch) {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(noteMatch[1]);
+        if (req.method === "GET") {
+          const rows = await query(
+            `SELECT * FROM cloud_notes WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!rows[0]) return json(req, { message: "Note not found." }, 404);
+          return json(req, serializeNote(rows[0]));
+        }
+        if (req.method === "PATCH") {
+          const body = await req.json().catch(() => ({}));
+          const existing = await query(
+            `SELECT * FROM cloud_notes WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!existing[0]) return json(req, { message: "Note not found." }, 404);
+          const title = typeof body.title === "string" ? body.title : existing[0].title;
+          const noteBody = typeof body.body === "string" ? body.body : existing[0].body;
+          const updated_at = typeof body.updated_at === "string" ? body.updated_at : new Date().toISOString();
+          const updated_by =
+            typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+              ? body.updated_by_device_id
+              : "pwa";
+          await query(
+            `UPDATE cloud_notes SET title=${sqlStr(title)}, body=${sqlStr(noteBody)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+          const rows = await query(`SELECT * FROM cloud_notes WHERE id='${esc(id)}'`);
+          return json(req, serializeNote(rows[0]));
+        }
+        if (req.method === "DELETE") {
+          const body = await req.json().catch(() => ({}));
+          const existing = await query(
+            `SELECT * FROM cloud_notes WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!existing[0]) return json(req, { message: "Note not found." }, 404);
+          const updated_at = typeof body.updated_at === "string" ? body.updated_at : new Date().toISOString();
+          const updated_by =
+            typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+              ? body.updated_by_device_id
+              : "pwa";
+          await query(
+            `UPDATE cloud_notes SET deleted_at=${sqlStr(updated_at)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+          return new Response(null, { status: 204, headers: cors(req) });
+        }
+      }
+
+      // ---- Lists ----
+      if (req.method === "GET" && path === "/v1/lists") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const includeDeleted = u.searchParams.get("include_deleted") === "1";
+        const rows = await query(
+          includeDeleted
+            ? `SELECT * FROM cloud_lists WHERE user_id='${esc(gate.user.id)}' ORDER BY updated_at DESC`
+            : `SELECT * FROM cloud_lists WHERE user_id='${esc(gate.user.id)}' AND deleted_at IS NULL ORDER BY updated_at DESC`,
+        );
+        return json(req, { lists: rows.map(serializeList) });
+      }
+
+      if (req.method === "POST" && path === "/v1/lists") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const now = new Date().toISOString();
+        const id = typeof body.id === "string" && body.id ? body.id : newId();
+        const title = typeof body.title === "string" ? body.title : "";
+        const itemsJson = JSON.stringify(Array.isArray(body.items) ? body.items : []);
+        const updated_at = typeof body.updated_at === "string" ? body.updated_at : now;
+        const updated_by =
+          typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+            ? body.updated_by_device_id
+            : "pwa";
+        const created_at = typeof body.created_at === "string" ? body.created_at : now;
+        const existing = await query(`SELECT * FROM cloud_lists WHERE id='${esc(id)}'`);
+        if (existing[0]) {
+          if (existing[0].user_id !== gate.user.id) return json(req, { message: "Forbidden." }, 403);
+          await query(
+            `UPDATE cloud_lists SET title=${sqlStr(title)}, items_json=${sqlStr(itemsJson)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+        } else {
+          await query(
+            `INSERT INTO cloud_lists (id,user_id,title,items_json,created_at,updated_at,updated_by_device_id,deleted_at,version) VALUES ('${esc(id)}','${esc(gate.user.id)}',${sqlStr(title)},${sqlStr(itemsJson)},${sqlStr(created_at)},${sqlStr(updated_at)},${sqlStr(updated_by)},NULL,1)`,
+          );
+        }
+        const rows = await query(`SELECT * FROM cloud_lists WHERE id='${esc(id)}'`);
+        return json(req, { list: serializeList(rows[0]) }, existing[0] ? 200 : 201);
+      }
+
+      const listMatch = path.match(/^\/v1\/lists\/([^/]+)$/);
+      if (listMatch) {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(listMatch[1]);
+        if (req.method === "GET") {
+          const rows = await query(
+            `SELECT * FROM cloud_lists WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!rows[0]) return json(req, { message: "List not found." }, 404);
+          return json(req, serializeList(rows[0]));
+        }
+        if (req.method === "PATCH") {
+          const body = await req.json().catch(() => ({}));
+          const existing = await query(
+            `SELECT * FROM cloud_lists WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!existing[0]) return json(req, { message: "List not found." }, 404);
+          const title = typeof body.title === "string" ? body.title : existing[0].title;
+          const itemsJson = Array.isArray(body.items)
+            ? JSON.stringify(body.items)
+            : existing[0].items_json;
+          const updated_at = typeof body.updated_at === "string" ? body.updated_at : new Date().toISOString();
+          const updated_by =
+            typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+              ? body.updated_by_device_id
+              : "pwa";
+          await query(
+            `UPDATE cloud_lists SET title=${sqlStr(title)}, items_json=${sqlStr(itemsJson)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+          const rows = await query(`SELECT * FROM cloud_lists WHERE id='${esc(id)}'`);
+          return json(req, serializeList(rows[0]));
+        }
+        if (req.method === "DELETE") {
+          const body = await req.json().catch(() => ({}));
+          const existing = await query(
+            `SELECT * FROM cloud_lists WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}'`,
+          );
+          if (!existing[0]) return json(req, { message: "List not found." }, 404);
+          const updated_at = typeof body.updated_at === "string" ? body.updated_at : new Date().toISOString();
+          const updated_by =
+            typeof body.updated_by_device_id === "string" && body.updated_by_device_id
+              ? body.updated_by_device_id
+              : "pwa";
+          await query(
+            `UPDATE cloud_lists SET deleted_at=${sqlStr(updated_at)}, updated_at=${sqlStr(updated_at)}, updated_by_device_id=${sqlStr(updated_by)}, version=version+1 WHERE id='${esc(id)}'`,
+          );
+          return new Response(null, { status: 204, headers: cors(req) });
+        }
+      }
+
+      // ---- Connectors / backups (empty until wired) ----
+      if (req.method === "GET" && path === "/v1/connectors") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const rows = await query(
+          `SELECT provider, status, connected_at FROM connector_accounts WHERE user_id='${esc(gate.user.id)}'`,
+        );
+        const byProv = Object.fromEntries(rows.map((r) => [r.provider, r]));
+        const connectors = ["drive", "dropbox", "onedrive"].map((provider) => ({
+          provider,
+          status: byProv[provider]?.status === "connected" ? "connected" : "disconnected",
+          connected_at: byProv[provider]?.connected_at || null,
+        }));
+        return json(req, { connectors });
+      }
+
+      if (req.method === "GET" && path === "/v1/backups") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const rows = await query(
+          `SELECT id, created_at, note_count, list_count, size_bytes FROM backups WHERE user_id='${esc(gate.user.id)}' ORDER BY created_at DESC`,
+        );
+        return json(req, { backups: rows });
       }
 
       // ---- Billing (Stripe via Admin-configured keys or env) ----
