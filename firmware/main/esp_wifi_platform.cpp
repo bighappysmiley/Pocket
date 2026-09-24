@@ -355,22 +355,30 @@ void build_ap_ssid(char* out, size_t out_len) {
   std::snprintf(out, out_len, "Pocket-%02X%02X", mac[4], mac[5]);
 }
 
-/** Short WPA2 password (8 chars) — easy to type from the e-ink display. */
+/** Short WPA2 password (8 chars) — easy to type from the e-ink display. Always filled. */
 void build_ap_password(char* out, size_t out_len) {
   // Unambiguous alphabet (no 0/O, 1/I/L). WPA2 requires ≥8 characters.
   static constexpr char kAlphabet[] = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+  static constexpr size_t kAlphaN = sizeof(kAlphabet) - 1;
   static constexpr size_t kLen = 8;
-  if (out_len <= kLen) {
-    if (out_len) out[0] = 0;
+  if (!out || out_len <= kLen) {
+    if (out && out_len) out[0] = 0;
     return;
   }
+  uint8_t mac[6] = {};
+  esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
   for (size_t i = 0; i < kLen; ++i) {
-    out[i] = kAlphabet[esp_random() % (sizeof(kAlphabet) - 1)];
+    const uint32_t r = esp_random();
+    const uint32_t mix = r ^ (static_cast<uint32_t>(mac[i % 6]) << (i * 3)) ^ static_cast<uint32_t>(i * 17u);
+    out[i] = kAlphabet[mix % kAlphaN];
   }
   out[kLen] = 0;
 }
 
 }  // namespace
+
+// Defined in app_main.cpp — starts SNTP after STA joins.
+extern "C" void pocket_on_wifi_connected(void);
 
 std::vector<std::string> EspWifi::scan() {
   if (!wifi_ensure()) return {};
@@ -405,6 +413,7 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
       xEventGroupWaitBits(s_wifi_events, kBitConnected | kBitFail, pdTRUE, pdFALSE, pdMS_TO_TICKS(20000));
   if (bits & kBitConnected) {
     ESP_LOGI(TAG, "connected to %s", ssid.c_str());
+    pocket_on_wifi_connected();
     return true;
   }
   ESP_LOGW(TAG, "connect failed / timeout for %s", ssid.c_str());
@@ -458,7 +467,8 @@ bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap
   s_provision_active = true;
   if (ap_ssid_out) *ap_ssid_out = s_ap_ssid;
   if (ap_pass_out) *ap_pass_out = s_ap_pass;
-  ESP_LOGI(TAG, "SoftAP provision active: %s (password on device)", s_ap_ssid);
+  ESP_LOGI(TAG, "SoftAP provision active: %s pass_len=%u", s_ap_ssid,
+           static_cast<unsigned>(std::strlen(s_ap_pass)));
   return true;
 }
 
@@ -488,3 +498,5 @@ bool EspWifi::take_provision_credentials(std::string* ssid, std::string* passwor
 std::string EspWifi::provision_ap_ssid() const { return s_ap_ssid; }
 
 std::string EspWifi::provision_ap_password() const { return s_ap_pass; }
+
+bool EspWifi::provisioning() const { return s_provision_active; }

@@ -103,9 +103,37 @@ bool axp_enable_epd_rails() {
     wr(kRegLdoOnOff0, 0x07);
   }
 
+  // Enable fuel gauge (REG 0x18 bit3) so battery % at 0xA4 is valid.
+  uint8_t fg = 0;
+  if (rd(0x18, &fg)) {
+    wr(0x18, static_cast<uint8_t>(fg | 0x08));
+  }
+
   vTaskDelay(pdMS_TO_TICKS(50));
   ESP_LOGI(TAG, "EPD power rails enabled (DC1 + ALDO1/2/3 @ 3.3V)");
   return true;
+}
+
+int axp_battery_percent() {
+  if (!ensure_bus()) return 100;  // host/USB fallback when PMIC missing
+
+  // Status1 @ 0x00: bit3=battery present, bit5=VBUS good
+  uint8_t st = 0;
+  const bool have_st = rd(0x00, &st);
+  const bool bat_present = have_st && (st & 0x08);
+  const bool vbus_good = have_st && (st & 0x20);
+
+  if (!bat_present) {
+    // USB-powered bring-up without a cell — show full.
+    return vbus_good ? 100 : 0;
+  }
+
+  uint8_t pct = 0;
+  if (!rd(0xA4, &pct)) {
+    return vbus_good ? 100 : 50;
+  }
+  if (pct > 100) pct = 100;
+  return static_cast<int>(pct);
 }
 
 }  // namespace pocket::board

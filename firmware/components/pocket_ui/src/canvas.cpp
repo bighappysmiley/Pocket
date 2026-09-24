@@ -60,17 +60,32 @@ bool ink_at(const uint8_t* cols, int c, int r) {
   return (cols[c] & (1u << r)) != 0;
 }
 
+/** Bilinear sample of the 5×7 bitmap → soft edges under AA. */
+float ink_sample(const uint8_t* cols, float fx, float fy) {
+  const int x0 = static_cast<int>(fx >= 0.f ? fx : fx - 1.f);
+  const int y0 = static_cast<int>(fy >= 0.f ? fy : fy - 1.f);
+  const float tx = fx - static_cast<float>(x0);
+  const float ty = fy - static_cast<float>(y0);
+  const float v00 = ink_at(cols, x0, y0) ? 1.f : 0.f;
+  const float v10 = ink_at(cols, x0 + 1, y0) ? 1.f : 0.f;
+  const float v01 = ink_at(cols, x0, y0 + 1) ? 1.f : 0.f;
+  const float v11 = ink_at(cols, x0 + 1, y0 + 1) ? 1.f : 0.f;
+  const float a = v00 * (1.f - tx) + v10 * tx;
+  const float b = v01 * (1.f - tx) + v11 * tx;
+  return a * (1.f - ty) + b * ty;
+}
+
 Gray coverage_to_gray(int cover /*0..16*/, Gray fg) {
   if (cover <= 0) return Gray::G3;  // unused
   if (fg == Gray::G0) {
     // Black ink on light background — soft edges via mid grays (4×4 AA).
     if (cover >= 12) return Gray::G0;
-    if (cover >= 7) return Gray::G1;
+    if (cover >= 6) return Gray::G1;
     return Gray::G2;
   }
   // Light ink on dark (focus tiles).
   if (cover >= 12) return fg;
-  if (cover >= 7) return Gray::G2;
+  if (cover >= 6) return Gray::G2;
   return Gray::G1;
 }
 
@@ -97,14 +112,14 @@ int Canvas::role_px(TextRole r) {
 }
 
 int Canvas::role_scale(TextRole r) {
-  // Prefer denser scales so 5×7 glyphs read smoother on e-ink (less chunky).
+  // Compact scales for 480×800 e-ink. StatusBar stays denser (scale 2).
   switch (r) {
     case TextRole::StatusBar:
       return 2;
     case TextRole::Secondary:
       return 2;
     case TextRole::Body:
-      return 3;
+      return 2;
     case TextRole::ScreenTitle:
       return 4;
     case TextRole::WordMark:
@@ -114,7 +129,7 @@ int Canvas::role_scale(TextRole r) {
     case TextRole::HugeClock:
       return 8;
   }
-  return 3;
+  return 2;
 }
 
 void Canvas::clear(Gray g) {
@@ -201,11 +216,11 @@ void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray 
         }
       }
     } else {
-      // 4×4 supersampled edges → 2-bit gray so type isn't chunky/pixelated.
+      // 4×4 supersampled + bilinear glyph sample → softer e-ink type.
       constexpr int kAA = 4;
       for (int oy = 0; oy < 7 * scale; ++oy) {
         for (int ox = 0; ox < 5 * scale; ++ox) {
-          int cover = 0;
+          float sum = 0.f;
           for (int sy = 0; sy < kAA; ++sy) {
             for (int sx = 0; sx < kAA; ++sx) {
               const float fx =
@@ -214,9 +229,10 @@ void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray 
               const float fy =
                   (static_cast<float>(oy) + (static_cast<float>(sy) + 0.5f) / static_cast<float>(kAA)) /
                   static_cast<float>(scale);
-              if (ink_at(cols, static_cast<int>(fx), static_cast<int>(fy))) ++cover;
+              sum += ink_sample(cols, fx, fy);
             }
           }
+          const int cover = static_cast<int>(sum + 0.5f);
           if (cover == 0) continue;
           set_pixel(cx + ox, y + oy, coverage_to_gray(cover, g));
         }

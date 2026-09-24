@@ -12,4 +12,5 @@ struct EspWifi : pocket::PlatformWifi {
   bool take_provision_credentials(std::string* ssid, std::string* password) override;
   std::string provision_ap_ssid() const override;
   std::string provision_ap_password() const override;
+  bool provisioning() const override;
 };

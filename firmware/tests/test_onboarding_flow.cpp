@@ -55,6 +55,7 @@ struct TWifi : PlatformWifi {
   }
   std::string provision_ap_ssid() const override { return ap; }
   std::string provision_ap_password() const override { return ap_pass; }
+  bool provisioning() const override { return provisioned; }
 };
 struct TCloud : PlatformCloud {
   std::string st = "pending";
@@ -90,6 +91,8 @@ int main() {
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::OnboardingWifiPassword);
   CHECK(wifi.provisioned);
+  CHECK(!wifi.ap_pass.empty());
+  CHECK(wifi.ap_pass.size() >= 8);
 
   // Phone posts credentials via SoftAP (polled in tick)
   clock.t += 500;

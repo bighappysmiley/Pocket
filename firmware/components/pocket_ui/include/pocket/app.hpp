@@ -14,6 +14,10 @@ struct PlatformClock {
   virtual ~PlatformClock() = default;
   virtual uint32_t now_ms() = 0;
   virtual void local_hm(int& hour, int& minute, int& weekday, int& month, int& day) = 0;
+  /** True once wall clock is valid (e.g. after SNTP). */
+  virtual bool time_valid() const { return true; }
+  /** Battery 0–100 from PMIC; USB-only boards may report 100. */
+  virtual int battery_percent() { return 100; }
 };
 
 struct PlatformWifi {
@@ -28,6 +32,8 @@ struct PlatformWifi {
   virtual bool take_provision_credentials(std::string* ssid, std::string* password) = 0;
   virtual std::string provision_ap_ssid() const = 0;
   virtual std::string provision_ap_password() const = 0;
+  /** SoftAP portal currently advertising (phone can join). */
+  virtual bool provisioning() const { return false; }
 };
 
 struct PlatformCloud {
