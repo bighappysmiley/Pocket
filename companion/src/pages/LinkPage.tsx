@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/types'
