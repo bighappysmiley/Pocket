@@ -53,6 +53,8 @@ Add under **Repo → Settings → Secrets and variables → Actions**.
 | `STRIPE_WEBHOOK_SECRET` | Cloud runtime (optional) | Live webhooks |
 | `STRIPE_PRICE_MONTHLY_ID` | Cloud runtime (optional) | Monthly $3.99 Price |
 
+Full Stripe Dashboard setup (product, webhook, portal, redirects): see [`docs/stripe-setup.md`](./stripe-setup.md).
+
 ### Optional Actions variables
 
 | Name | Default | Purpose |

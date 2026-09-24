@@ -262,7 +262,7 @@ button{background:#111;color:#fff;border:none;margin-top:1rem;font-weight:600}
 .msg{margin-top:1rem;padding:.75rem;border-radius:8px;background:#eee}
 </style></head><body>
 <h1>Set up Pocket Wi-Fi</h1>
-<p>Pick your home network and type the password here on your phone. Pocket cannot type passwords with the dial.</p>
+<p>Enter your <strong>home Wi‑Fi password</strong> here. When Pocket connects, your phone will show a pairing code next.</p>
 <label for="ssid">Network</label>
 <select id="ssid"></select>
 <label for="password">Password</label>
@@ -294,7 +294,7 @@ document.getElementById('go').onclick=async()=>{
     const res=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await res.json();
     if(!res.ok){msg.textContent=j.message||'Could not send.';return;}
-    msg.textContent='Sent. Pocket is connecting. Rejoin your home Wi‑Fi, then open the Pocket app to finish.';
+    msg.textContent='Sent. Rejoin your home Wi‑Fi, open the Pocket app, then enter the pairing code shown on Pocket.';
   }catch(e){msg.textContent='Send failed. Stay on the Pocket Wi‑Fi and try again.';}
 };
 load();

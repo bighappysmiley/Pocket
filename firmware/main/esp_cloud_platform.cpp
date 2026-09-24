@@ -92,19 +92,13 @@ std::string EspCloud::create_pair_session(const std::string& device_id) {
   const std::string code = mint_pair_code();
   if (device_id.empty()) {
     ESP_LOGW(TAG, "create_pair_session: empty device_id");
-    return code;
+    return {};
   }
 
-  const time_t expires = time(nullptr) + 10 * 60;
-  struct tm tm_utc {};
-  gmtime_r(&expires, &tm_utc);
-  char expires_iso[40];
-  std::strftime(expires_iso, sizeof(expires_iso), "%Y-%m-%dT%H:%M:%SZ", &tm_utc);
-
-  char body[320];
-  std::snprintf(body, sizeof(body),
-                "{\"device_id\":\"%s\",\"code_public\":\"%s\",\"expires_at\":\"%s\"}", device_id.c_str(),
-                code.c_str(), expires_iso);
+  // Let Cloud set TTL — device RTC may be unsynced before SNTP (1970 expires_at breaks Node API).
+  char body[280];
+  std::snprintf(body, sizeof(body), "{\"device_id\":\"%s\",\"code_public\":\"%s\"}", device_id.c_str(),
+                code.c_str());
 
   const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/pair/sessions";
   int status = 0;
@@ -112,9 +106,9 @@ std::string EspCloud::create_pair_session(const std::string& device_id) {
   if (!http_request("POST", url, POCKET_DEVICE_API_KEY, body, status, resp) ||
       (status != 200 && status != 201)) {
     ESP_LOGW(TAG, "pair create HTTP %d resp=%s", status, resp.c_str());
-  } else {
-    ESP_LOGI(TAG, "pair session created code=%s", code.c_str());
+    return {};
   }
+  ESP_LOGI(TAG, "pair session created code=%s", code.c_str());
   return code;
 }
 

@@ -23,7 +23,7 @@ struct DeviceConfig {
   float weather_lon = 0;
   uint8_t home_visible = 0x3F;  // all six apps; bit5 Settings always on
   uint16_t idle_lock_s = 60;
-  bool show_batt_pct = false;
+  bool show_batt_pct = true;
   bool cloud_entitled = false;
   bool companion_linked = false;
   std::string fw_channel = "stable";

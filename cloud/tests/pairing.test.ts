@@ -55,15 +55,15 @@ describe("pairing codes & TTL (Spec Part D §4)", () => {
     expect(isPairSessionActive(new Date(Date.now() + PAIR_TTL_MS).toISOString(), expiredMs)).toBe(
       false,
     );
-    // Directly mark via creating with expires in the past should fail
+    // Past client expires_at (unsynced device RTC) is ignored — server TTL used instead
     const code2 = generatePairCode();
-    expect(() =>
-      createPairSession({
-        device_id: "device-3",
-        code_public: code2,
-        expires_at: past,
-      }),
-    ).toThrow(AppError);
+    const created = createPairSession({
+      device_id: "device-3",
+      code_public: code2,
+      expires_at: past,
+    });
+    expect(isPairSessionActive(created.expires_at)).toBe(true);
+    expect(getPairSessionPublic(code2).status).toBe("pending");
   });
 
   it("claim is single-use and returns device link", () => {

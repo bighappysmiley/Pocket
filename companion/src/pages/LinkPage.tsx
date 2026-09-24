@@ -4,6 +4,7 @@ import { api, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/types'
 import {
+  DEVICE_PROVISION_BASE,
   getDeviceStatus,
   scanDeviceNetworks,
   sendDeviceWifi,
@@ -33,6 +34,7 @@ export function LinkPage() {
   const [wifiPassword, setWifiPassword] = useState('')
   const [wifiBusy, setWifiBusy] = useState(false)
   const [wifiError, setWifiError] = useState<string | null>(null)
+  const [homeWifiReady, setHomeWifiReady] = useState(Boolean(codeFromQuery))
 
   const [code, setCode] = useState(codeFromQuery)
   const [pairBusy, setPairBusy] = useState(false)
@@ -84,6 +86,7 @@ export function LinkPage() {
     try {
       await sendDeviceWifi(ssid.trim(), wifiPassword)
       setWifiPhase('sent')
+      setHomeWifiReady(false)
     } catch (err) {
       setWifiPhase('error')
       setWifiError(err instanceof Error ? err.message : 'Could not send Wi‑Fi to Pocket.')
@@ -121,12 +124,14 @@ export function LinkPage() {
         }
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
-          setPairError("We couldn't find that code.")
+          setPairError(
+            "We couldn't find that code. Wait until Pocket shows the pairing screen, then try again.",
+          )
           setPairBusy(false)
           return
         }
         if (isNetworkError(err)) {
-          setPairError("You're offline or the server is unreachable.")
+          setPairError("You're offline or the server is unreachable. Rejoin your home Wi‑Fi first.")
           setPairBusy(false)
           return
         }
@@ -163,7 +168,7 @@ export function LinkPage() {
       <div className="stack-sm">
         <h1>Link your Pocket</h1>
         <p className="muted">
-          One flow: connect Pocket to your home Wi‑Fi, then link it to this account.
+          First send your home Wi‑Fi password to Pocket, then enter the pairing code it shows.
         </p>
       </div>
 
@@ -174,28 +179,41 @@ export function LinkPage() {
               <ol className="stack-sm" style={{ paddingLeft: '1.2rem', margin: 0 }}>
                 <li>
                   On this phone, join <strong>{status?.ap_ssid || 'Pocket-XXXX'}</strong> using the
-                  password shown on Pocket.
+                  password on Pocket.
                 </li>
-                <li>Come back here — this page continues automatically.</li>
+                <li>
+                  Open{' '}
+                  <a href={`${DEVICE_PROVISION_BASE}/`}>
+                    {DEVICE_PROVISION_BASE}
+                  </a>{' '}
+                  (best on SoftAP — avoids browser blocks) and enter your <strong>home Wi‑Fi password</strong>.
+                </li>
+                <li>Or stay here and tap continue once joined.</li>
               </ol>
               {wifiError ? (
                 <p role="alert" className="muted">
                   {wifiError}
                 </p>
               ) : null}
+              <a className="btn btn-primary btn-block" href={`${DEVICE_PROVISION_BASE}/`}>
+                Open Pocket Wi‑Fi setup
+              </a>
               <button
                 type="button"
-                className="btn btn-primary btn-block"
+                className="btn btn-block"
                 onClick={() => void tryReachDevice()}
               >
-                I’ve joined Pocket Wi‑Fi — continue
+                I’ve joined — continue in this app
               </button>
             </div>
           ) : null}
 
           {wifiPhase === 'connected' ? (
             <form className="panel stack" onSubmit={(e) => void onSendWifi(e)}>
-              <p className="muted">Connected to Pocket. Choose your home network and enter its password.</p>
+              <p className="muted">
+                Connected to Pocket. Choose your home network and enter its password — this is step 1.
+                Pairing code comes next on Pocket.
+              </p>
               <div className="field">
                 <label htmlFor="ssid">Home network</label>
                 {networks.length > 0 ? (
@@ -217,7 +235,7 @@ export function LinkPage() {
                 )}
               </div>
               <div className="field">
-                <label htmlFor="password">Password</label>
+                <label htmlFor="password">Home Wi‑Fi password</label>
                 <input
                   id="password"
                   type="password"
@@ -232,7 +250,7 @@ export function LinkPage() {
                 </p>
               ) : null}
               <button type="submit" className="btn btn-primary btn-block" disabled={wifiBusy}>
-                {wifiBusy ? 'Sending…' : 'Connect Pocket & continue'}
+                {wifiBusy ? 'Sending…' : 'Send password & continue'}
               </button>
             </form>
           ) : null}
@@ -240,10 +258,14 @@ export function LinkPage() {
       ) : (
         <div className="panel stack">
           <p>
-            Pocket is connecting to Wi‑Fi. Rejoin your home network on this phone, then link with the
-            code on Pocket.
+            Pocket is joining Wi‑Fi. Rejoin your <strong>home network</strong> on this phone, wait for the
+            pairing code on Pocket, then link below.
           </p>
-          {!isAuthenticated ? (
+          {!homeWifiReady ? (
+            <button type="button" className="btn btn-primary btn-block" onClick={() => setHomeWifiReady(true)}>
+              I’m back on home Wi‑Fi — enter pairing code
+            </button>
+          ) : !isAuthenticated ? (
             <Link
               className="btn btn-primary btn-block"
               to={`/login?return_to=${encodeURIComponent(`/link${code ? `?code=${encodeURIComponent(code)}` : ''}`)}`}
@@ -254,7 +276,7 @@ export function LinkPage() {
             <form className="stack" onSubmit={(e) => void onClaim(e)}>
               {!codeFromQuery ? (
                 <div className="field">
-                  <label htmlFor="code">Pairing code</label>
+                  <label htmlFor="code">Pairing code from Pocket</label>
                   <input
                     id="code"
                     name="code"
@@ -265,6 +287,7 @@ export function LinkPage() {
                     autoCorrect="off"
                     spellCheck={false}
                     placeholder="XXXXXXXX"
+                    autoFocus
                   />
                 </div>
               ) : (
