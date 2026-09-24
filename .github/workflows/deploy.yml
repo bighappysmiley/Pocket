@@ -107,8 +107,7 @@ jobs:
           echo "VITE_BASE=$VITE_BASE VITE_API_BASE=${VITE_API_BASE:-<empty>}"
           npm ci
           npm run build
-          # SPA deep links on project Pages
-          cp dist/index.html dist/404.html
+          # spa-pages-fallback.mjs (via npm run build) writes 404.html + admin/index.html etc.
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

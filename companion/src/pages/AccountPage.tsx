@@ -43,7 +43,7 @@ export function AccountPage() {
           Backup
         </Link>
         {user?.is_admin || user?.role === 'admin' ? (
-          <Link className="btn btn-secondary" to="/admin">
+          <Link className="btn btn-secondary" to="/admin/">
             Pocket Cloud Admin
           </Link>
         ) : null}
