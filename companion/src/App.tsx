@@ -52,6 +52,7 @@ export default function App() {
               <Route path="/upgrade" element={<UpgradePage />} />
               <Route path="/account" element={<AccountPage />} />
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="/admin/" element={<AdminPage />} />
 
               <Route element={<RequireEntitlement />}>
                 <Route path="/notes" element={<NotesListPage />} />
