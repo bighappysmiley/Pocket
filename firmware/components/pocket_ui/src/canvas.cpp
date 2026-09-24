@@ -58,8 +58,14 @@ int Canvas::text_width(std::string_view text, TextRole role) const {
   for (unsigned char uc : text) {
     if (uc >= 0x80) continue;
     const char c = static_cast<char>(uc);
-    if (disp) w += kDisp_glyph(c).adv * scale;
-    else w += kBody_glyph(c).adv * scale;
+    // Prefer bitmap width: AA pad made stored adv shorter than ink (smushed glyphs).
+    if (disp) {
+      const auto& g = kDisp_glyph(c);
+      w += std::max<int>(g.w, g.adv) * scale;
+    } else {
+      const auto& g = kBody_glyph(c);
+      w += std::max<int>(g.w, g.adv) * scale;
+    }
   }
   return w;
 }
@@ -139,6 +145,8 @@ void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray 
     const uint8_t gw = disp ? kDisp_glyph(c).w : kBody_glyph(c).w;
     const uint8_t adv = disp ? kDisp_glyph(c).adv : kBody_glyph(c).adv;
     const uint8_t* bits = disp ? kDisp_glyph(c).bits : kBody_glyph(c).bits;
+    // Step at least by ink width so AA-padded glyphs never overlap.
+    const int step = std::max<int>(gw, adv);
 
     if (scale == 1) {
       for (int row = 0; row < native_h; ++row) {
@@ -171,7 +179,7 @@ void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray 
         }
       }
     }
-    cx += adv * scale;
+    cx += step * scale;
   }
 }
 
