@@ -233,7 +233,7 @@ export const api = {
   getDevice(id: string) {
     return request<Device>(`/v1/devices/${id}`)
   },
-  updateDevice(id: string, payload: { device_name: string }) {
+  updateDevice(id: string, payload: { device_name?: string; lock_message?: string }) {
     return request<Device>(`/v1/devices/${id}`, { method: 'PATCH', body: payload })
   },
   unlinkDevice(id: string) {

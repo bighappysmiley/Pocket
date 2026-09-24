@@ -57,6 +57,8 @@ export interface Device {
   device_name: string
   linked_at: string
   last_seen_at?: string | null
+  /** Optional name/message shown at the foot of the lock/sleep face. Empty = none shown. */
+  lock_message?: string
 }
 
 export type PairSessionStatus = 'pending' | 'claimed' | 'expired'

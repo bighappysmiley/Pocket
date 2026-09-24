@@ -42,6 +42,12 @@ export function sanitizeDeviceName(raw: string): string {
   return raw.slice(0, 20)
 }
 
+const LOCK_MESSAGE_MAX = 40
+
+export function sanitizeLockMessage(raw: string): string {
+  return raw.slice(0, LOCK_MESSAGE_MAX)
+}
+
 const A2HS_KEY = 'pocket.a2hs.dismissed_at'
 const A2HS_DAYS = 14
 

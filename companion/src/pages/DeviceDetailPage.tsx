@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import type { Device } from '../lib/types'
-import { relativeTime, sanitizeDeviceName, validateDeviceName } from '../lib/utils'
+import { relativeTime, sanitizeDeviceName, sanitizeLockMessage, validateDeviceName } from '../lib/utils'
 import { ErrorState } from '../components/ErrorState'
 import { useDocumentTitle } from '../components/useDocumentTitle'
 
@@ -27,6 +27,7 @@ export function DeviceDetailPage() {
   const { isEntitled } = useAuth()
   const [device, setDevice] = useState<Device | null>(null)
   const [name, setName] = useState('')
+  const [lockMessage, setLockMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -45,6 +46,7 @@ export function DeviceDetailPage() {
       const d = await api.getDevice(id)
       setDevice(d)
       setName(d.device_name || 'Pocket')
+      setLockMessage(d.lock_message || '')
       try {
         const p = await api.getDeviceParental(id)
         setGated(p.parental?.pin_gated_apps || [])
@@ -77,6 +79,24 @@ export function DeviceDetailPage() {
       const d = await api.updateDevice(id, { device_name: name.trim() })
       setDevice({ ...d, last_seen_at: d.last_seen_at ?? device?.last_seen_at ?? null })
       setMsg('Name saved. Pocket picks up the new name on its next check-in.')
+    } catch (err) {
+      if (isNetworkError(err)) setError("You're offline or the server is unreachable.")
+      else setError('Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onSaveLockMessage(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    setMsg(null)
+    try {
+      const d = await api.updateDevice(id, { lock_message: lockMessage.trim() })
+      setDevice({ ...d, last_seen_at: d.last_seen_at ?? device?.last_seen_at ?? null })
+      setLockMessage(d.lock_message || '')
+      setMsg('Lock message saved. Pocket picks it up on its next check-in.')
     } catch (err) {
       if (isNetworkError(err)) setError("You're offline or the server is unreachable.")
       else setError('Something went wrong.')
@@ -198,6 +218,25 @@ export function DeviceDetailPage() {
             </div>
             <button type="submit" className="btn btn-primary" disabled={busy}>
               Save name
+            </button>
+          </form>
+
+          <form className="panel stack" onSubmit={(e) => void onSaveLockMessage(e)}>
+            <div className="field">
+              <label htmlFor="lock_message">Lock screen message (optional)</label>
+              <input
+                id="lock_message"
+                value={lockMessage}
+                maxLength={40}
+                placeholder="e.g. Emma's Pocket"
+                onChange={(e) => setLockMessage(sanitizeLockMessage(e.target.value))}
+              />
+              <span className="muted" style={{ fontSize: '0.8rem' }}>
+                {lockMessage.length}/40 · Shown at the foot of the lock/sleep screen. Leave blank for none.
+              </span>
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              Save lock message
             </button>
           </form>
 
