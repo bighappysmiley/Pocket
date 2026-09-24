@@ -142,6 +142,7 @@ static void EPD_SendDataBuffer(const UBYTE* buffer, UDOUBLE length)
     const size_t chunk_size = 4096;
     
     for (size_t i = 0; i < length; i += chunk_size) {
+        esp_task_wdt_reset();
         size_t current_chunk = (i + chunk_size > length) ? (length - i) : chunk_size;
         
         spi_transaction_t t;
@@ -393,47 +394,46 @@ parameter:
 ******************************************************************************/
 void EPD_Clear(void)
 {
-    UWORD Width, Height;
-    Width = (EPD_WIDTH % 8 == 0)? (EPD_WIDTH / 8 ): (EPD_WIDTH / 8 + 1);
-    Height = EPD_HEIGHT;
-    
+    // Bulk white fill — original per-byte + 1ms/row loop (~96k SPI txs) trips TWDT.
+    UBYTE chunk[4096];
+    memset(chunk, 0xFF, sizeof(chunk));
+    esp_task_wdt_reset();
     EPD_SendCommand(0x24);
-    for (UWORD j = 0; j < Height; j++) {
-        for (UWORD i = 0; i < Width; i++) {
-            EPD_SendData(0XFF);
-        }
-        vTaskDelay(pdMS_TO_TICKS(1));
+    for (UDOUBLE off = 0; off < EPD_SIZE_MONO; off += sizeof(chunk)) {
+        esp_task_wdt_reset();
+        UDOUBLE n = (off + sizeof(chunk) > EPD_SIZE_MONO) ? (EPD_SIZE_MONO - off) : sizeof(chunk);
+        EPD_SendDataBuffer(chunk, n);
     }
-    
+    esp_task_wdt_reset();
     EPD_SendCommand(0x26);
-    for (UWORD j = 0; j < Height; j++) {
-        for (UWORD i = 0; i < Width; i++) {
-            EPD_SendData(0XFF);
-        }
-        vTaskDelay(pdMS_TO_TICKS(1));
+    for (UDOUBLE off = 0; off < EPD_SIZE_MONO; off += sizeof(chunk)) {
+        esp_task_wdt_reset();
+        UDOUBLE n = (off + sizeof(chunk) > EPD_SIZE_MONO) ? (EPD_SIZE_MONO - off) : sizeof(chunk);
+        EPD_SendDataBuffer(chunk, n);
     }
-    
+    esp_task_wdt_reset();
     EPD_TurnOnDisplay();
 }
 
 void EPD_Clear_Black(void)
 {
-    UWORD Width, Height;
-    Width = (EPD_WIDTH % 8 == 0)? (EPD_WIDTH / 8 ): (EPD_WIDTH / 8 + 1);
-    Height = EPD_HEIGHT;
-
+    UBYTE chunk[4096];
+    memset(chunk, 0x00, sizeof(chunk));
+    esp_task_wdt_reset();
     EPD_SendCommand(0x24);
-    for (UWORD j = 0; j < Height; j++) {
-        for (UWORD i = 0; i < Width; i++) {
-            EPD_SendData(0X00);
-        }
+    for (UDOUBLE off = 0; off < EPD_SIZE_MONO; off += sizeof(chunk)) {
+        esp_task_wdt_reset();
+        UDOUBLE n = (off + sizeof(chunk) > EPD_SIZE_MONO) ? (EPD_SIZE_MONO - off) : sizeof(chunk);
+        EPD_SendDataBuffer(chunk, n);
     }
+    esp_task_wdt_reset();
     EPD_SendCommand(0x26);
-    for (UWORD j = 0; j < Height; j++) {
-        for (UWORD i = 0; i < Width; i++) {
-            EPD_SendData(0X00);
-        }
+    for (UDOUBLE off = 0; off < EPD_SIZE_MONO; off += sizeof(chunk)) {
+        esp_task_wdt_reset();
+        UDOUBLE n = (off + sizeof(chunk) > EPD_SIZE_MONO) ? (EPD_SIZE_MONO - off) : sizeof(chunk);
+        EPD_SendDataBuffer(chunk, n);
     }
+    esp_task_wdt_reset();
     EPD_TurnOnDisplay();
 }
 

@@ -11,5 +11,5 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_USE_MALLOC=y
 # Do not brick boot if PSRAM probe fails on a rare module variant.
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
-# E-ink full refresh can exceed the default 5s task WDT.
-CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+# E-ink refresh + BUSY can be long; avoid WDT reboot loops.
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=60

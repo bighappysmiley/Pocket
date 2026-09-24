@@ -57,7 +57,7 @@ struct EspDisplay : pocket::PlatformDisplay {
 }  // namespace
 
 extern "C" void app_main(void) {
-  // Task WDT timeout is 30s via sdkconfig (e-ink full refresh can exceed 5s).
+  // Task WDT timeout is 60s via sdkconfig; e-ink I/O also pauses TWDT briefly.
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     ESP_ERROR_CHECK(nvs_flash_erase());

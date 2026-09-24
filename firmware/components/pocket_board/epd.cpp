@@ -23,6 +23,17 @@ uint8_t* alloc_fb(size_t n) {
   return p;
 }
 
+struct WdtPause {
+  bool paused = false;
+  WdtPause() {
+    // Unsubscribe current task from TWDT for the duration of e-ink I/O.
+    if (esp_task_wdt_delete(xTaskGetCurrentTaskHandle()) == ESP_OK) paused = true;
+  }
+  ~WdtPause() {
+    if (paused) esp_task_wdt_add(xTaskGetCurrentTaskHandle());
+  }
+};
+
 }  // namespace
 
 bool EpdDisplay::init() {
@@ -34,27 +45,24 @@ bool EpdDisplay::init() {
     return false;
   }
 
-  // Official Waveshare SPI/GPIO bring-up (same pins as pins.hpp).
   epaper_port_init();
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), 0);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdRst), 1);
 
-  // Force a white full refresh immediately — if this works, the Chinese demo vanishes
-  // even before Pocket UI draws. Uses Waveshare EPD_Init + EPD_Clear verbatim.
-  ESP_LOGI(TAG, "forcing Waveshare EPD_Clear (wipe factory image)…");
-  esp_task_wdt_reset();
-  EPD_Init();
-  esp_task_wdt_reset();
-  EPD_Clear();
-  esp_task_wdt_reset();
-  ESP_LOGI(TAG, "EPD_Clear done");
+  ESP_LOGI(TAG, "wiping factory image (bulk white refresh)…");
+  {
+    WdtPause pause;
+    EPD_Init();
+    std::memset(panel_1bpp_, 0xFF, kMonoBytes);
+    EPD_Display_Base(panel_1bpp_);
+  }
+  ESP_LOGI(TAG, "factory wipe done");
 
   ready_ = true;
   return true;
 }
 
 void EpdDisplay::rotate_canvas_to_mono(const pocket::Canvas& src, uint8_t* dst) {
-  // 90° CW: panel(px,py) ← logical x=(W-1)-py, y=px. G0/G1 black, G2/G3 white.
   std::memset(dst, 0xFF, kMonoBytes);
   for (int py = 0; py < kPanelH; ++py) {
     if ((py & 31) == 0) esp_task_wdt_reset();
@@ -76,8 +84,8 @@ void EpdDisplay::present(const pocket::Canvas& canvas, pocket::RefreshMode mode)
   if (!ready_ && !init()) return;
   esp_task_wdt_reset();
   rotate_canvas_to_mono(canvas, panel_1bpp_);
-  esp_task_wdt_reset();
 
+  WdtPause pause;
   if (mode == pocket::RefreshMode::Full) {
     ESP_LOGI(TAG, "Waveshare full refresh");
     EPD_Init();
