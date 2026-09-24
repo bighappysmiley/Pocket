@@ -117,6 +117,12 @@ bool axp_enable_epd_rails() {
 int axp_battery_percent() {
   if (!ensure_bus()) return 100;  // host/USB fallback when PMIC missing
 
+  // Idempotent: fuel gauge must be on for REG 0xA4 (may not have run EPD rails yet).
+  uint8_t fg = 0;
+  if (rd(0x18, &fg) && (fg & 0x08) == 0) {
+    wr(0x18, static_cast<uint8_t>(fg | 0x08));
+  }
+
   // Status1 @ 0x00: bit3=battery present, bit5=VBUS good
   uint8_t st = 0;
   const bool have_st = rd(0x00, &st);

@@ -11,11 +11,11 @@ void App::render_notes() {
   // Tabs
   if (s == ScreenId::NotesList || s == ScreenId::ListsList) {
     if (notes_tab_ == 0) {
-      canvas_.draw_focus_tile(16, 36, 100, 36, "Notes", Canvas::TextRole::Secondary);
-      canvas_.draw_text(130, 44, "Lists", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_focus_tile(kSideMargin, kContentTop, 100, 40, "Notes", Canvas::TextRole::Secondary);
+      canvas_.draw_text(kSideMargin + 114, kContentTop + 8, "Lists", Canvas::TextRole::Secondary, Gray::G1);
     } else {
-      canvas_.draw_text(24, 44, "Notes", Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_focus_tile(120, 36, 100, 36, "Lists", Canvas::TextRole::Secondary);
+      canvas_.draw_text(kSideMargin + 8, kContentTop + 8, "Notes", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_focus_tile(kSideMargin + 104, kContentTop, 100, 40, "Lists", Canvas::TextRole::Secondary);
     }
   }
 
@@ -27,34 +27,35 @@ void App::render_notes() {
     } else {
       focus_.count = static_cast<int>(data_.notes.size()) + 1;
       for (int i = 0; i < static_cast<int>(data_.notes.size()); ++i) {
-        int y = 90 + i * 52;
+        int y = kContentTop + 56 + i * kRowPitch;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(16, y, kCanvasW - 32, 48, data_.notes[i].title, Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, data_.notes[i].title,
+                                  Canvas::TextRole::Body);
         else
-          canvas_.draw_text(24, y + 14, data_.notes[i].title, Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + 8, y + 10, data_.notes[i].title, Canvas::TextRole::Body, Gray::G0);
       }
     }
     int y = 720;
     bool fab = focus_.index == static_cast<int>(data_.notes.size()) || data_.notes.empty();
     if (data_.notes.empty()) focus_.count = 1;
     if (fab || focus_.index == static_cast<int>(data_.notes.size()))
-      canvas_.draw_focus_tile(16, y, kCanvasW - 32, 48, "New note", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, "New note", Canvas::TextRole::Body);
     else
-      canvas_.draw_text(24, y + 14, "New note", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + 8, y + 10, "New note", Canvas::TextRole::Body, Gray::G0);
   } else if (s == ScreenId::NotesDetail) {
     if (note_index_ >= 0 && note_index_ < static_cast<int>(data_.notes.size())) {
       auto& n = data_.notes[note_index_];
-      canvas_.draw_text(16, 40, n.title, Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(16, 90, n.body, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin, kContentTop, n.title, Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, kContentTop + 52, n.body, Canvas::TextRole::Body, Gray::G0);
     }
     focus_.count = 2;
     const char* acts[] = {"Dictate", "Delete"};
     for (int i = 0; i < 2; ++i) {
-      int y = 680 + i * 48;
+      int y = 680 + i * kRowPitch;
       if (i == focus_.index)
-        canvas_.draw_focus_tile(16, y, kCanvasW - 32, 44, acts[i], Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
       else
-        canvas_.draw_text(24, y + 12, acts[i], Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + 8, y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
     }
   } else if (s == ScreenId::ListsList) {
     if (data_.lists.empty()) {
@@ -62,25 +63,26 @@ void App::render_notes() {
     }
     focus_.count = static_cast<int>(data_.lists.size()) + 1;
     for (int i = 0; i < static_cast<int>(data_.lists.size()); ++i) {
-      int y = 90 + i * 52;
+      int y = kContentTop + 56 + i * kRowPitch;
       if (i == focus_.index)
-        canvas_.draw_focus_tile(16, y, kCanvasW - 32, 48, data_.lists[i].title, Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, data_.lists[i].title,
+                                Canvas::TextRole::Body);
       else
-        canvas_.draw_text(24, y + 14, data_.lists[i].title, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + 8, y + 10, data_.lists[i].title, Canvas::TextRole::Body, Gray::G0);
     }
-    canvas_.draw_text(24, 720, "New list", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin + 8, 720, "New list", Canvas::TextRole::Body, Gray::G0);
   } else if (s == ScreenId::ListsDetail) {
     if (note_index_ < static_cast<int>(data_.lists.size())) {
       auto& L = data_.lists[note_index_];
-      canvas_.draw_text(16, 40, L.title, Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, kContentTop, L.title, Canvas::TextRole::ScreenTitle, Gray::G0);
       for (size_t i = 0; i < L.items.size(); ++i) {
-        int y = 90 + static_cast<int>(i) * 40;
+        int y = kContentTop + 56 + static_cast<int>(i) * kRowPitch;
         std::string row = (L.items[i].checked ? "[x] " : "[ ] ") + L.items[i].text;
         Gray g = L.items[i].checked ? Gray::G1 : Gray::G0;
         if (static_cast<int>(i) == focus_.index)
-          canvas_.draw_focus_tile(16, y, kCanvasW - 32, 36, row, Canvas::TextRole::Secondary);
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, row, Canvas::TextRole::Secondary);
         else
-          canvas_.draw_text(24, y + 8, row, Canvas::TextRole::Secondary, g);
+          canvas_.draw_text(kSideMargin + 8, y + 10, row, Canvas::TextRole::Secondary, g);
       }
     }
   }
@@ -188,12 +190,12 @@ void App::handle_notes(InputEvent e) {
 
 void App::render_ledger() {
   draw_status_bar();
-  canvas_.draw_text_centered(kCanvasW / 2, 120, "Ledger", Canvas::TextRole::ScreenTitle, Gray::G0);
-  canvas_.draw_text_centered(kCanvasW / 2, 200, "Coming soon", Canvas::TextRole::Body, Gray::G0);
-  canvas_.draw_text_centered(kCanvasW / 2, 240, "IOU tracking will arrive in a free update.",
+  canvas_.draw_text_centered(kCanvasW / 2, kContentTop + 60, "Ledger", Canvas::TextRole::ScreenTitle, Gray::G0);
+  canvas_.draw_text_centered(kCanvasW / 2, kContentTop + 140, "Coming soon", Canvas::TextRole::Body, Gray::G0);
+  canvas_.draw_text_centered(kCanvasW / 2, kContentTop + 180, "IOU tracking will arrive in a free update.",
                              Canvas::TextRole::Secondary, Gray::G1);
   canvas_.draw_text_centered(kCanvasW / 2, 720, "Press Back for Home", Canvas::TextRole::Secondary, Gray::G1);
-  canvas_.draw_focus_tile(16, 660, kCanvasW - 32, 48, "Back", Canvas::TextRole::Body);
+  canvas_.draw_focus_tile(kSideMargin, 660, kCanvasW - 32, kFocusRowH, "Back", Canvas::TextRole::Body);
 }
 
 void App::handle_ledger(InputEvent e) {
@@ -207,11 +209,11 @@ void App::render_clock() {
   // Tabs
   const char* tabs[] = {"Clock", "Alarms", "Timers"};
   for (int i = 0; i < 3; ++i) {
-    int x = 16 + i * 150;
+    int x = kSideMargin + i * 150;
     if (i == clock_tab_)
-      canvas_.draw_focus_tile(x, 36, 140, 36, tabs[i], Canvas::TextRole::Secondary);
+      canvas_.draw_focus_tile(x, kContentTop, 140, 40, tabs[i], Canvas::TextRole::Secondary);
     else
-      canvas_.draw_text(x + 20, 44, tabs[i], Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(x + 20, kContentTop + 8, tabs[i], Canvas::TextRole::Secondary, Gray::G1);
   }
   ScreenId s = nav_.current();
   if (s == ScreenId::ClockFace || clock_tab_ == 0) {
@@ -261,7 +263,7 @@ void App::render_pass() {
     return;
   }
   draw_status_bar();
-  canvas_.draw_text(16, 40, "Pass", Canvas::TextRole::ScreenTitle, Gray::G0);
+  canvas_.draw_text(kSideMargin, kContentTop, "Pass", Canvas::TextRole::ScreenTitle, Gray::G0);
   if (data_.passes.empty()) {
     canvas_.draw_text_centered(kCanvasW / 2, 280, "No passes yet", Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_centered(kCanvasW / 2, 320, "Add passes from the Pocket companion when available.",
@@ -269,11 +271,12 @@ void App::render_pass() {
   } else {
     focus_.count = static_cast<int>(data_.passes.size());
     for (int i = 0; i < focus_.count; ++i) {
-      int y = 90 + i * 52;
+      int y = kContentTop + 56 + i * kRowPitch;
       if (i == focus_.index)
-        canvas_.draw_focus_tile(16, y, kCanvasW - 32, 48, data_.passes[i].title, Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, data_.passes[i].title,
+                                Canvas::TextRole::Body);
       else
-        canvas_.draw_text(24, y + 14, data_.passes[i].title, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + 8, y + 10, data_.passes[i].title, Canvas::TextRole::Body, Gray::G0);
     }
   }
 }
