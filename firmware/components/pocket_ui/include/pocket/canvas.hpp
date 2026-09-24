@@ -19,15 +19,15 @@ class Canvas {
   void vline(int x, int y, int h, Gray g);
   void line(int x0, int y0, int x1, int y1, Gray g);
 
-  /** Proportional DejaVu UI type (normal font, not 5×7). */
+  /** Proportional DejaVu UI type (normal font, readable size). */
   enum class TextRole : uint8_t {
-    StatusBar,    // 16px body
-    Secondary,    // 16px body
-    Body,         // 16px body
-    ScreenTitle,  // 24px display
-    WordMark,     // 24px display
-    PinDigit,     // 24px display
-    HugeClock,    // 24px display ×2
+    StatusBar,    // 22px body
+    Secondary,    // 22px body
+    Body,         // 22px body
+    ScreenTitle,  // 32px display
+    WordMark,     // 32px display
+    PinDigit,     // 32px display
+    HugeClock,    // 32px display ×2
   };
 
   void draw_text(int x, int y, std::string_view text, TextRole role, Gray g);
