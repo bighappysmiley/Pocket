@@ -178,12 +178,43 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsWifi) {
     canvas_.draw_text(kSideMargin, kTitleY, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop, wifi_.connected() ? cfg_.wifi_ssid : "Not connected",
-                      Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + 40, "Home Wi‑Fi or phone hotspot via this phone.",
+    const bool online = wifi_.connected();
+    char status[96];
+    if (online) {
+      std::snprintf(status, sizeof(status), "Connected · %s", cfg_.wifi_ssid.c_str());
+    } else if (wifi_sta_connecting_) {
+      std::snprintf(status, sizeof(status), "Connecting…");
+    } else {
+      std::snprintf(status, sizeof(status), "Not connected");
+    }
+    canvas_.draw_text_fit(kSideMargin, kListTop, kContentW, status, Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin, kListTop + 36, "Select a known network, or add with phone.",
                       Canvas::TextRole::Secondary, Gray::G1);
-    const char* rows[] = {"Set up with phone…", "Back"};
-    draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 100);
+
+    const int n_known = static_cast<int>(cfg_.wifi_known.size());
+    // known[0..n) · Add with phone · Forget · Back
+    const int n_actions = 3;
+    focus_.count = std::max(1, n_known + n_actions);
+    int y = kListTop + 72;
+    for (int i = 0; i < n_known; ++i) {
+      const auto& net = cfg_.wifi_known[static_cast<size_t>(i)];
+      std::string label = net.ssid;
+      if (online && net.ssid == cfg_.wifi_ssid) label += " · now";
+      if (i == focus_.index)
+        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
+      else
+        canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, label.c_str(), Canvas::TextRole::Body, Gray::G0);
+      y += kRowPitch;
+    }
+    const char* acts[] = {"Add with phone…", "Forget preferred", "Back"};
+    for (int a = 0; a < n_actions; ++a) {
+      const int idx = n_known + a;
+      if (idx == focus_.index)
+        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, acts[a], Canvas::TextRole::Body);
+      else
+        canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, acts[a], Canvas::TextRole::Body, Gray::G0);
+      y += kRowPitch;
+    }
     return;
   }
 
@@ -280,7 +311,8 @@ void App::handle_settings(InputEvent e) {
   }
 
   if (s == ScreenId::SettingsWifi) {
-    focus_.count = 2;
+    const int n_known = static_cast<int>(cfg_.wifi_known.size());
+    focus_.count = std::max(1, n_known + 3);
     if (e == InputEvent::Up) {
       focus_.move(-1);
       mark_content_dirty();
@@ -288,12 +320,38 @@ void App::handle_settings(InputEvent e) {
       focus_.move(1);
       mark_content_dirty();
     } else if (e == InputEvent::Select) {
-      if (focus_.index == 0) {
-        wifi_networks_ = wifi_.scan();
-        cfg_.wifi_ssid.clear();
-        focus_.index = 0;
-        nav_.push(ScreenId::OnboardingWifiList);
-        after_nav();
+      if (focus_.index < n_known) {
+        const auto& net = cfg_.wifi_known[static_cast<size_t>(focus_.index)];
+        play_sound(SoundId::Click);
+        error_msg_ = "Connecting…";
+        error_until_ms_ = now_ms_ + 2000;
+        mark_content_dirty();
+        wifi_sta_connecting_ = true;
+        const bool ok = connect_and_remember(net.ssid, net.password);
+        wifi_sta_connecting_ = false;
+        if (ok) {
+          play_sound(SoundId::Success);
+          error_msg_.clear();
+        } else {
+          play_sound(SoundId::Attention);
+          error_msg_ = "Couldn't join that network.";
+          error_until_ms_ = now_ms_ + 3000;
+        }
+        mark_content_dirty();
+      } else if (focus_.index == n_known) {
+        // Add with phone — SoftAP; do not clear known list.
+        begin_add_wifi_network();
+      } else if (focus_.index == n_known + 1) {
+        if (n_known > 0) {
+          std::string victim = cfg_.wifi_ssid;
+          if (victim.empty() || !wifi_known_find(cfg_, victim)) victim = cfg_.wifi_known.front().ssid;
+          wifi_known_forget(cfg_, victim);
+          store_.save(cfg_);
+          play_sound(SoundId::Click);
+          focus_.count = std::max(1, static_cast<int>(cfg_.wifi_known.size()) + 3);
+          if (focus_.index >= focus_.count) focus_.index = focus_.count - 1;
+          mark_content_dirty();
+        }
       } else {
         nav_.replace(ScreenId::SettingsRoot);
         after_nav();

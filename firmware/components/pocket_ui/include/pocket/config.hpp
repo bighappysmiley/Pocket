@@ -7,6 +7,14 @@
 
 namespace pocket {
 
+/** Saved STA credentials (NVS). Passwords are device-local plaintext — same bar as SoftAP RAM today. */
+struct WifiKnownNetwork {
+  std::string ssid;
+  std::string password;
+};
+
+inline constexpr size_t kMaxKnownWifi = 8;
+
 /** Device config (Spec §11.1 + Part B). Persisted via NVS and optional SD mirror. */
 struct DeviceConfig {
   std::string device_name = "Pocket";
@@ -16,7 +24,8 @@ struct DeviceConfig {
   bool onboarding_complete = false;
   std::string tz_id = "America/New_York";
   uint8_t time_format = 12;  // 12 or 24
-  std::string wifi_ssid;
+  std::string wifi_ssid;  // last preferred / last-connected SSID
+  std::vector<WifiKnownNetwork> wifi_known;  // up to kMaxKnownWifi
   uint8_t stt_path = 0;  // 0=cloud, 1=ondevice
   uint8_t weather_units = 0;  // 0=F, 1=C
   std::string weather_city;
@@ -34,6 +43,12 @@ struct DeviceConfig {
   std::string device_token;
   std::string cloud_status = "free";  // free|trialing|active|lapsed
 };
+
+/** Insert or update SSID; move to front as preferred (`wifi_ssid`). Cap at kMaxKnownWifi. */
+void wifi_known_upsert(DeviceConfig& cfg, const std::string& ssid, const std::string& password);
+/** Remove SSID from known list (preferred cleared if it matched). */
+void wifi_known_forget(DeviceConfig& cfg, const std::string& ssid);
+const WifiKnownNetwork* wifi_known_find(const DeviceConfig& cfg, const std::string& ssid);
 
 enum class HomeApp : uint8_t {
   Notes = 0,

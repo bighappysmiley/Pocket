@@ -67,6 +67,9 @@ void App::boot() {
       storage_->probe();
       sd_was_present_ = storage_->present();
     }
+    // Reconnect to a known network after power-cycle (password now persisted).
+    wifi_boot_reconnect_done_ = false;
+    last_wifi_reconnect_ms_ = 0;
   }
   after_nav();
 }
@@ -86,8 +89,8 @@ ScreenId App::resume_onboarding_screen() const {
   if (cfg_.companion_linked) {
     return ScreenId::OnboardingPinLength;
   }
-  if (!cfg_.wifi_ssid.empty()) {
-    // Password is not persisted — SoftAP Link again (or skip if already online).
+  if (!cfg_.wifi_ssid.empty() || !cfg_.wifi_known.empty()) {
+    // SoftAP / Link again so phone can confirm or send another network.
     return ScreenId::OnboardingWifiPassword;
   }
   return ScreenId::OnboardingWelcome;
@@ -198,6 +201,107 @@ void App::begin_softap_link() {
   after_nav();
 }
 
+bool App::connect_and_remember(const std::string& ssid, const std::string& password) {
+  if (ssid.empty()) return false;
+  wifi_password_ = password;
+  const bool ok = wifi_.connect(ssid, password);
+  if (ok) {
+    wifi_known_upsert(cfg_, ssid, password);
+    store_.save(cfg_);
+    wifi_boot_reconnect_done_ = true;
+    last_wifi_reconnect_ms_ = now_ms_;
+  }
+  return ok;
+}
+
+void App::begin_add_wifi_network() {
+  // SoftAP while optionally staying on current STA (APSTA) so user can add another network.
+  std::string ap;
+  std::string pass;
+  if (!wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
+    error_msg_ = "Couldn't start phone setup.";
+    error_until_ms_ = now_ms_ + 3000;
+    mark_content_dirty();
+    return;
+  }
+  wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
+  wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
+  wifi_sta_connecting_ = false;
+  last_wifi_prov_poll_ms_ = 0;
+  focus_.index = 0;
+  nav_.replace(ScreenId::OnboardingWifiPassword);
+  after_nav();
+}
+
+void App::maybe_wifi_auto_reconnect() {
+  if (!cfg_.onboarding_complete) return;
+  if (wifi_.connected() || wifi_.provisioning() || wifi_sta_connecting_) return;
+  if (cfg_.wifi_known.empty()) return;
+  // SoftAP / pair screens own Wi‑Fi.
+  const ScreenId s = nav_.current();
+  if (s == ScreenId::OnboardingWifiPassword || s == ScreenId::OnboardingWifiList ||
+      s == ScreenId::OnboardingWifiConnecting) {
+    return;
+  }
+
+  const uint32_t interval_ms = wifi_boot_reconnect_done_ ? 45000u : 800u;
+  if (last_wifi_reconnect_ms_ != 0 && now_ms_ - last_wifi_reconnect_ms_ < interval_ms) return;
+  last_wifi_reconnect_ms_ = now_ms_;
+  wifi_sta_connecting_ = true;
+
+  // Prefer last SSID, then other known entries. Try scan match first when possible.
+  std::vector<WifiKnownNetwork> order = cfg_.wifi_known;
+  if (!cfg_.wifi_ssid.empty()) {
+    for (size_t i = 0; i < order.size(); ++i) {
+      if (order[i].ssid == cfg_.wifi_ssid) {
+        if (i != 0) std::swap(order[0], order[i]);
+        break;
+      }
+    }
+  }
+
+  std::vector<std::string> visible;
+  // Boot: try preferred blindly first (faster); later retries may scan.
+  if (wifi_boot_reconnect_done_) {
+    visible = wifi_.scan();
+  }
+
+  bool ok = false;
+  for (const auto& net : order) {
+    if (!visible.empty()) {
+      bool seen = false;
+      for (const auto& v : visible) {
+        if (v == net.ssid) {
+          seen = true;
+          break;
+        }
+      }
+      if (!seen) continue;
+    }
+    if (wifi_.connect(net.ssid, net.password)) {
+      cfg_.wifi_ssid = net.ssid;
+      wifi_password_ = net.password;
+      store_.save(cfg_);
+      ok = true;
+      break;
+    }
+  }
+  // If scan filtered everything out, try preferred blindly once.
+  if (!ok && !order.empty() && !visible.empty()) {
+    const auto& net = order.front();
+    if (wifi_.connect(net.ssid, net.password)) {
+      cfg_.wifi_ssid = net.ssid;
+      wifi_password_ = net.password;
+      store_.save(cfg_);
+      ok = true;
+    }
+  }
+
+  wifi_sta_connecting_ = false;
+  wifi_boot_reconnect_done_ = true;
+  if (ok) mark_status_dirty();
+}
+
 bool App::mint_pair_session() {
   // Retry a few times — Cloud must register the code or claim will fail.
   for (int attempt = 0; attempt < 3; ++attempt) {
@@ -258,16 +362,13 @@ void App::tick(uint32_t now_ms) {
       std::string ssid;
       std::string pass;
       if (wifi_.take_provision_credentials(&ssid, &pass)) {
-        cfg_.wifi_ssid = ssid;
-        wifi_password_ = pass;
         wifi_sta_connecting_ = true;
         error_msg_.clear();
         mark_content_dirty();
         // Stay on SoftAP screen — SoftAP stays up (APSTA) during STA attempt.
-        const bool ok = wifi_.connect(cfg_.wifi_ssid, wifi_password_);
+        const bool ok = connect_and_remember(ssid, pass);
         wifi_sta_connecting_ = false;
         if (ok) {
-          store_.save(cfg_);
           if (cfg_.onboarding_complete) {
             focus_.index = 0;
             nav_.replace(ScreenId::SettingsWifi);
@@ -339,6 +440,7 @@ void App::tick(uint32_t now_ms) {
     }
   }
   maybe_poll_sd_hotplug();
+  maybe_wifi_auto_reconnect();
   if (dirty_) {
     present_canvas(false);
     dirty_ = false;

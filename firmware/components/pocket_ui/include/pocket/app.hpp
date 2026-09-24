@@ -288,6 +288,12 @@ class App {
   void refresh_sd_kind();
   void begin_firmware_update();
   bool parse_firmware_latest(const std::string& json, FirmwareUpdateInfo* out);
+  /** Persist SSID+pass and attempt STA connect (blocking). */
+  bool connect_and_remember(const std::string& ssid, const std::string& password);
+  /** After boot / when idle: try preferred then other known networks. */
+  void maybe_wifi_auto_reconnect();
+  /** Start SoftAP to add another known network (keeps existing list). */
+  void begin_add_wifi_network();
 
   ConfigStore& store_;
   PlatformClock& clock_;
@@ -328,6 +334,8 @@ class App {
   /** SoftAP screen is connecting to home Wi‑Fi (no Connecting screen remount). */
   bool wifi_sta_connecting_ = false;
   uint32_t last_wifi_prov_poll_ms_ = 0;
+  uint32_t last_wifi_reconnect_ms_ = 0;
+  bool wifi_boot_reconnect_done_ = false;
   std::string pair_code_;
   uint32_t pair_expires_ms_ = 0;
   uint32_t last_pair_poll_ms_ = 0;

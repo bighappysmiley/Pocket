@@ -25,6 +25,13 @@ int main() {
   set_pin(cfg, "1234");
   cfg.tz_id = "America/Los_Angeles";
   cfg.wifi_ssid = "HomeNet";
+  wifi_known_upsert(cfg, "HomeNet", "secret1");
+  wifi_known_upsert(cfg, "CafeWifi", "secret2");
+  CHECK(cfg.wifi_known.size() == 2);
+  CHECK(cfg.wifi_ssid == "CafeWifi");  // last upsert preferred
+  CHECK(cfg.wifi_known[0].ssid == "CafeWifi");
+  CHECK(cfg.wifi_known[0].password == "secret2");
+  CHECK(cfg.wifi_known[1].ssid == "HomeNet");
   cfg.device_id = "aabbccdd-eeff-4000-8000-112233445566";
   cfg.device_token = "tok_test";
   cfg.cloud_status = "trialing";
@@ -48,7 +55,12 @@ int main() {
   CHECK(verify_pin(round, "1234"));
   CHECK(!verify_pin(round, "0000"));
   CHECK(round.tz_id == "America/Los_Angeles");
-  CHECK(round.wifi_ssid == "HomeNet");
+  CHECK(round.wifi_ssid == "CafeWifi");
+  CHECK(round.wifi_known.size() == 2);
+  CHECK(round.wifi_known[0].ssid == "CafeWifi");
+  CHECK(round.wifi_known[0].password == "secret2");
+  CHECK(round.wifi_known[1].ssid == "HomeNet");
+  CHECK(round.wifi_known[1].password == "secret1");
   CHECK(round.device_id == cfg.device_id);
   CHECK(round.device_token == "tok_test");
   CHECK(round.cloud_status == "trialing");
@@ -76,7 +88,9 @@ int main() {
     FileConfigStore store(path);
     DeviceConfig loaded = store.load();
     CHECK(loaded.onboarding_complete);
-    CHECK(loaded.wifi_ssid == "HomeNet");
+    CHECK(loaded.wifi_ssid == "CafeWifi");
+    CHECK(loaded.wifi_known.size() == 2);
+    CHECK(loaded.wifi_known[1].password == "secret1");
     CHECK(verify_pin(loaded, "1234"));
     CHECK(loaded.device_id == cfg.device_id);
   }
