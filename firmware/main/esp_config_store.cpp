@@ -1,11 +1,11 @@
 #include "esp_config_store.hpp"
 
+#include "pocket_board/littlefs.hpp"
 #include "pocket_board/sdcard.hpp"
 
 #include <cstdio>
 #include <cstring>
 #include <sys/stat.h>
-#include <sys/statvfs.h>
 #include <vector>
 
 #include "esp_log.h"
@@ -53,9 +53,7 @@ bool nvs_save_blob(const std::vector<uint8_t>& blob) {
 }
 
 bool sd_has_space(uint64_t need) {
-  struct statvfs st {};
-  if (statvfs("/sdcard", &st) != 0) return false;
-  const uint64_t free_bytes = static_cast<uint64_t>(st.f_bavail) * static_cast<uint64_t>(st.f_frsize);
+  const uint64_t free_bytes = pocket::board::fs_free_bytes("/sdcard");
   return free_bytes >= (need + kMinSdFreeBytes);
 }
 
