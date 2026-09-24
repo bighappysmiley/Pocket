@@ -116,6 +116,12 @@ function encodeQuery(sql) {
 function esc(s) {
   return String(s).replace(/'/g, "''");
 }
+function sqlStr(s) {
+  return "'" + esc(s) + "'";
+}
+function sqlNullable(s) {
+  return s == null || s === "" ? "NULL" : sqlStr(s);
+}
 function scramFinal(password, clientFirstBare, serverFirst, clientNonce) {
   const kv = Object.fromEntries(
     serverFirst.split(",").map((p) => {
@@ -272,9 +278,10 @@ async function requireAdmin(req) {
 
 async function audit(actorId, action, targetType, targetId, detail) {
   const now = new Date().toISOString();
-  const d = detail == null ? "NULL" : `'${esc(typeof detail === "string" ? detail : JSON.stringify(detail))}'`;
+  const detailText =
+    detail == null ? null : typeof detail === "string" ? detail : JSON.stringify(detail);
   await query(
-    `INSERT INTO admin_audit_log (id,actor_user_id,action,target_type,target_id,detail,created_at) VALUES ('${esc(newId())}','${esc(actorId || "")}','${esc(action)}','${esc(targetType || "")}','${esc(targetId || "")}',${d},'${now}')`,
+    `INSERT INTO admin_audit_log (id,actor_user_id,action,target_type,target_id,detail,created_at) VALUES ('${esc(newId())}','${esc(actorId || "")}','${esc(action)}','${esc(targetType || "")}','${esc(targetId || "")}',${sqlNullable(detailText)},'${now}')`,
   );
 }
 
@@ -617,9 +624,9 @@ export default {
             const existing = await query(`SELECT user_id FROM subscription_mirrors WHERE user_id='${esc(id)}'`);
             const trialEnd = st === "trialing" ? new Date(Date.now() + 7 * 86400e3).toISOString() : null;
             if (existing[0]) {
-              await query(`UPDATE subscription_mirrors SET status='${esc(st)}', trial_ends_at=${trialEnd ? `'${trialEnd}'` : "NULL"}, updated_at='${now}' WHERE user_id='${esc(id)}'`);
+              await query(`UPDATE subscription_mirrors SET status='${esc(st)}', trial_ends_at=${sqlNullable(trialEnd)}, updated_at='${now}' WHERE user_id='${esc(id)}'`);
             } else {
-              await query(`INSERT INTO subscription_mirrors (user_id,stripe_subscription_id,status,trial_ends_at,current_period_end,cancel_at_period_end,updated_at) VALUES ('${esc(id)}',NULL,'${esc(st)}',${trialEnd ? `'${trialEnd}'` : "NULL"},NULL,0,'${now}')`);
+              await query(`INSERT INTO subscription_mirrors (user_id,stripe_subscription_id,status,trial_ends_at,current_period_end,cancel_at_period_end,updated_at) VALUES ('${esc(id)}',NULL,'${esc(st)}',${sqlNullable(trialEnd)},NULL,0,'${now}')`);
             }
             if (st === "active" || st === "trialing") {
               await query(`UPDATE users SET had_subscription=1${st === "trialing" ? ", trial_consumed=1" : ""} WHERE id='${esc(id)}'`);
@@ -775,7 +782,7 @@ export default {
           if (!drows[0]) return json(req, { message: "Device not found." }, 404);
         }
         const id = newId(), now = new Date().toISOString();
-        await query(`INSERT INTO badge_awards (id,badge_id,user_id,device_link_id,awarded_by,note,awarded_at) VALUES ('${esc(id)}','${esc(badgeId)}',${userId ? `'${esc(userId)}'` : "NULL"},${deviceLinkId ? `'${esc(deviceLinkId)}'` : "NULL"},'${esc(gate.user.id)}',${note ? `'${esc(note)}'` : "NULL"},'${now}')`);
+        await query(`INSERT INTO badge_awards (id,badge_id,user_id,device_link_id,awarded_by,note,awarded_at) VALUES ('${esc(id)}','${esc(badgeId)}',${sqlNullable(userId)},${sqlNullable(deviceLinkId)},'${esc(gate.user.id)}',${sqlNullable(note)},'${now}')`);
         await audit(gate.user.id, "award_badge", "badge_award", id, { badge_id: badgeId, user_id: userId || null, device_link_id: deviceLinkId || null });
         return json(req, { award: { id, badge_id: badgeId, user_id: userId || null, device_link_id: deviceLinkId || null, note: note || null, awarded_at: now } }, 201);
       }
