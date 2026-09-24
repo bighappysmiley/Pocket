@@ -722,7 +722,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v10-firmware-ota" });
+        return json(req, { ok: true, build: "scram-api-v11-v1-polish" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
