@@ -33,8 +33,30 @@ export async function openDatabase(path = config.databasePath): Promise<Db> {
   }
   db.run("PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA_SQL);
+  migrateSchema(db);
   persistNow();
   return db;
+}
+
+/** Additive migrations for existing SQLite files. */
+function migrateSchema(database: Db): void {
+  const cols = new Set(
+    allFrom(database, "PRAGMA table_info(users)").map((r) => String(r.name)),
+  );
+  if (!cols.has("password_hash")) {
+    database.run("ALTER TABLE users ADD COLUMN password_hash TEXT");
+  }
+  if (!cols.has("email_verified_at")) {
+    database.run("ALTER TABLE users ADD COLUMN email_verified_at TEXT");
+  }
+}
+
+function allFrom(database: Db, sql: string): Record<string, unknown>[] {
+  const stmt = database.prepare(sql);
+  const rows: Record<string, unknown>[] = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
 }
 
 export function getDb(): Db {
@@ -118,5 +140,6 @@ export async function openMemoryDatabase(): Promise<Db> {
   dbPath = "";
   db.run("PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA_SQL);
+  migrateSchema(db);
   return db;
 }

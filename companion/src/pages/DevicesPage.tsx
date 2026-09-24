@@ -59,9 +59,14 @@ export function DevicesPage() {
       {loading ? (
         <p className="muted">Loading…</p>
       ) : devices.length === 0 ? (
-        <div className="empty panel">
+        <div className="empty panel stack">
           <h2>No Pocket linked yet</h2>
-          <p className="muted">Scan the QR code on your Pocket to link.</p>
+          <p className="muted">
+            On your Pocket: finish Wi‑Fi, then scan the pairing QR — or enter the 8-character code here.
+          </p>
+          <Link className="btn btn-primary" to="/pair">
+            Enter pairing code
+          </Link>
         </div>
       ) : (
         <ul className="list">

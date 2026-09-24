@@ -63,17 +63,23 @@ void App::tick(uint32_t now_ms) {
       return;
     }
   }
-  // Pairing poll
+  // Pairing poll (throttle HTTP — UI loop is ~50ms)
   if (nav_.current() == ScreenId::OnboardingCompanionQr && !pair_code_.empty()) {
     if (now_ms > pair_expires_ms_) {
-      pair_status_ = "expired";
-      dirty_ = true;
-    } else {
+      if (pair_status_ != "expired") {
+        pair_status_ = "expired";
+        dirty_ = true;
+      }
+    } else if (now_ms - last_pair_poll_ms_ >= 2500) {
+      last_pair_poll_ms_ = now_ms;
       auto st = cloud_.pair_status(pair_code_);
       if (st == "claimed") {
         pair_status_ = "claimed";
         cfg_.companion_linked = true;
         store_.save(cfg_);
+        dirty_ = true;
+      } else if (st == "expired" && pair_status_ != "expired") {
+        pair_status_ = "expired";
         dirty_ = true;
       }
     }

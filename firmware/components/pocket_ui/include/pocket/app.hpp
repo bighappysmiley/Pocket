@@ -185,6 +185,7 @@ class App {
   bool wifi_char_editing_ = true;  // Spec: spin changes char while editing picker
   std::string pair_code_;
   uint32_t pair_expires_ms_ = 0;
+  uint32_t last_pair_poll_ms_ = 0;
   std::string pair_status_ = "pending";
   int charset_index_ = 0;
   int caret_ = 0;

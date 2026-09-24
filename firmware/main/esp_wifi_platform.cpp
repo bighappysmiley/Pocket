@@ -100,7 +100,7 @@ std::vector<std::string> EspWifi::scan() {
     std::string name(ssid);
     if (std::find(out.begin(), out.end(), name) != out.end()) continue;
     out.push_back(std::move(name));
-    if (out.size() >= 12) break;
+    if (out.size() >= 6) break;
   }
   ESP_LOGI(TAG, "scan found %u unique SSIDs", static_cast<unsigned>(out.size()));
   return out;

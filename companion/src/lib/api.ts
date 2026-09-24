@@ -1,18 +1,59 @@
 import { ApiError, type BackupMeta, type Connector, type ConnectorProvider, type Device, type MeResponse, type Note, type PairClaimResult, type PairSession, type PocketList } from './types'
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
+const BUILD_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
+const STORAGE_KEY = 'pocket_cloud_api_base'
 
-/** True when a real (non-localhost) Cloud API origin is configured for this build. */
-export function isApiConfigured(): boolean {
-  if (!API_BASE) return false
-  if (import.meta.env.PROD && /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(API_BASE)) {
-    return false
-  }
-  return true
+function normalizeOrigin(raw: string): string {
+  return raw.trim().replace(/\/$/, '')
 }
 
+function readStoredApiBase(): string {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY)
+    return v ? normalizeOrigin(v) : ''
+  } catch {
+    return ''
+  }
+}
+
+/** Build-time origin, then optional runtime override from localStorage. */
 export function getApiBase(): string {
-  return API_BASE || 'http://localhost:8787'
+  const stored = readStoredApiBase()
+  if (stored) return stored
+  return BUILD_API_BASE || 'http://localhost:8787'
+}
+
+/** Persist a Cloud API origin so Pages builds can connect without a rebuild. */
+export function setApiBase(origin: string): void {
+  const normalized = normalizeOrigin(origin)
+  try {
+    if (!normalized) localStorage.removeItem(STORAGE_KEY)
+    else localStorage.setItem(STORAGE_KEY, normalized)
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function clearApiBaseOverride(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+function isLocalhostOrigin(origin: string): boolean {
+  return /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(origin)
+}
+
+/** True when a usable Cloud API origin is configured (build or runtime). */
+export function isApiConfigured(): boolean {
+  const base = getApiBase()
+  if (!base) return false
+  // Build baked empty + no override → treat as not connected in production.
+  if (!BUILD_API_BASE && !readStoredApiBase() && import.meta.env.PROD) return false
+  if (import.meta.env.PROD && isLocalhostOrigin(base) && !readStoredApiBase()) return false
+  return true
 }
 
 type RequestOptions = {
@@ -73,6 +114,18 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
 export const api = {
   // Auth
+  register(email: string, password: string) {
+    return request<{ ok: true; message: string }>('/v1/auth/register', {
+      method: 'POST',
+      body: { email, password },
+    })
+  },
+  login(email: string, password: string) {
+    return request<{ ok: true; user: { id: string; email: string } }>('/v1/auth/login', {
+      method: 'POST',
+      body: { email, password },
+    })
+  },
   requestMagicLink(email: string) {
     return request<{ ok: true }>('/v1/auth/magic-link', { method: 'POST', body: { email } })
   },

@@ -1,5 +1,5 @@
 import { get, run, all } from "../db/index.js";
-import { newId, sha256Hex, randomToken, safeEqual } from "./crypto.js";
+import { newId, sha256Hex, randomToken, safeEqual, hashPassword, verifyPassword } from "./crypto.js";
 import { config } from "../config.js";
 import { Errors } from "./errors.js";
 import {
@@ -10,6 +10,8 @@ import {
 export type UserRow = {
   id: string;
   email: string;
+  password_hash: string | null;
+  email_verified_at: string | null;
   created_at: string;
   trial_consumed: number;
   stripe_customer_id: string | null;
@@ -41,11 +43,102 @@ export function getOrCreateUser(email: string): UserRow {
   const id = newId();
   const now = new Date().toISOString();
   run(
-    `INSERT INTO users (id, email, created_at, trial_consumed, stripe_customer_id, had_subscription)
-     VALUES (?, ?, ?, 0, NULL, 0)`,
+    `INSERT INTO users (id, email, password_hash, email_verified_at, created_at, trial_consumed, stripe_customer_id, had_subscription)
+     VALUES (?, ?, NULL, NULL, ?, 0, NULL, 0)`,
     [id, normalized, now],
   );
   return findUserById(id)!;
+}
+
+function assertValidEmail(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw Errors.badRequest("Enter a valid email address.");
+  }
+  return normalized;
+}
+
+function assertValidPassword(password: string): void {
+  if (typeof password !== "string" || password.length < 8) {
+    throw Errors.badRequest("Password must be at least 8 characters.");
+  }
+  if (password.length > 128) {
+    throw Errors.badRequest("Password is too long.");
+  }
+}
+
+/** Create account; returns verification token (caller emails the link). */
+export function registerWithPassword(
+  email: string,
+  password: string,
+): { user: UserRow; verifyToken: string; verifyUrl: string } {
+  const normalized = assertValidEmail(email);
+  assertValidPassword(password);
+  if (findUserByEmail(normalized)) {
+    throw Errors.badRequest("An account with that email already exists. Sign in instead.");
+  }
+  const id = newId();
+  const now = new Date();
+  run(
+    `INSERT INTO users (id, email, password_hash, email_verified_at, created_at, trial_consumed, stripe_customer_id, had_subscription)
+     VALUES (?, ?, ?, NULL, ?, 0, NULL, 0)`,
+    [id, normalized, hashPassword(password), now.toISOString()],
+  );
+  const user = findUserById(id)!;
+  const verifyToken = createEmailVerification(user.id);
+  const verifyUrl = `${config.publicBaseUrl}/v1/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
+  return { user, verifyToken, verifyUrl };
+}
+
+export function createEmailVerification(userId: string): string {
+  const token = randomToken(32);
+  const id = newId();
+  const now = new Date();
+  const expires = new Date(now.getTime() + config.magicLinkTtlMinutes * 60_000);
+  run(
+    `INSERT INTO email_verifications (id, user_id, token_hash, created_at, expires_at, consumed_at)
+     VALUES (?, ?, ?, ?, ?, NULL)`,
+    [id, userId, sha256Hex(token), now.toISOString(), expires.toISOString()],
+  );
+  return token;
+}
+
+export function verifyEmailToken(token: string): UserRow {
+  const hash = sha256Hex(token);
+  const row = get<{
+    id: string;
+    user_id: string;
+    expires_at: string;
+    consumed_at: string | null;
+  }>("SELECT * FROM email_verifications WHERE token_hash = ?", [hash]);
+  if (!row) throw Errors.badRequest("This verification link is invalid.");
+  if (row.consumed_at) throw Errors.badRequest("This verification link was already used.");
+  if (Date.parse(row.expires_at) < Date.now()) {
+    throw Errors.badRequest("This verification link has expired.");
+  }
+  const now = new Date().toISOString();
+  run("UPDATE email_verifications SET consumed_at = ? WHERE id = ?", [now, row.id]);
+  run("UPDATE users SET email_verified_at = ? WHERE id = ? AND email_verified_at IS NULL", [
+    now,
+    row.user_id,
+  ]);
+  return findUserById(row.user_id)!;
+}
+
+export function loginWithPassword(email: string, password: string): UserRow {
+  const normalized = assertValidEmail(email);
+  assertValidPassword(password);
+  const user = findUserByEmail(normalized);
+  if (!user?.password_hash) {
+    throw Errors.unauthorized("Wrong email or password.");
+  }
+  if (!verifyPassword(password, user.password_hash)) {
+    throw Errors.unauthorized("Wrong email or password.");
+  }
+  if (!user.email_verified_at) {
+    throw Errors.badRequest("Verify your email before signing in. Check your inbox for the link.");
+  }
+  return user;
 }
 
 export function createMagicLink(email: string): { token: string; expiresAt: string } {

@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
         setEntitlement(null)
         setOffline(true)
-        setError('Pocket Cloud is not connected yet.')
+        setError('Pocket Cloud is temporarily unavailable.')
         return
       }
 
@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setOffline(true)
         setError(
           err instanceof ApiError && err.code === 'not_connected'
-            ? 'Pocket Cloud is not connected yet.'
+            ? 'Pocket Cloud is temporarily unavailable.'
             : "You're offline or the server is unreachable.",
         )
       } else {

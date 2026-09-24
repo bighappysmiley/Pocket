@@ -12,7 +12,7 @@ export class AppError extends Error {
 }
 
 export const Errors = {
-  unauthorized: () => new AppError(401, "unauthorized", "Sign in to continue."),
+  unauthorized: (message = "Sign in to continue.") => new AppError(401, "unauthorized", message),
   forbidden: () => new AppError(403, "forbidden", "You don't have access to that."),
   notEntitled: () =>
     new AppError(403, "not_entitled", "Pocket Cloud isn't active on this account."),

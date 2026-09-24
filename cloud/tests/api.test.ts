@@ -15,6 +15,39 @@ describe("HTTP smoke — auth, pair, entitlement gate", () => {
     await openMemoryDatabase();
   });
 
+  it("register → verify email → login → me", async () => {
+    const app = createApp();
+    const { registerWithPassword, verifyEmailToken } = await import("../src/lib/auth.js");
+
+    const { verifyToken } = registerWithPassword("new@example.com", "password123");
+
+    const beforeVerify = await app.request("http://localhost/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "new@example.com", password: "password123" }),
+    });
+    expect(beforeVerify.status).toBe(400);
+
+    verifyEmailToken(verifyToken);
+
+    const login = await app.request("http://localhost/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "new@example.com", password: "password123" }),
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.get("set-cookie") || "";
+    expect(cookie).toContain("pocket_session=");
+
+    const me = await app.request("http://localhost/v1/me", {
+      headers: { cookie: cookie.split(";")[0]! },
+    });
+    expect(me.status).toBe(200);
+    const body = await me.json();
+    expect(body.user.email).toBe("new@example.com");
+    expect(body.user.email_verified).toBe(true);
+  });
+
   it("magic-link → session → me", async () => {
     const app = createApp();
     const send = await app.request("http://localhost/v1/auth/magic-link", {

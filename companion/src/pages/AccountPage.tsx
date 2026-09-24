@@ -30,6 +30,9 @@ export function AccountPage() {
         <Link className="btn btn-ghost" to="/devices">
           Devices
         </Link>
+        <Link className="btn btn-primary" to="/pair">
+          Link a Pocket
+        </Link>
         <Link className="btn btn-ghost" to="/billing">
           Billing
         </Link>
