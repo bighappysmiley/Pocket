@@ -170,12 +170,12 @@ void App::render_onboarding() {
       if (wifi_ap_ssid_.empty()) wifi_ap_ssid_ = wifi_.provision_ap_ssid();
       if (wifi_ap_pass_.empty()) wifi_ap_pass_ = wifi_.provision_ap_password();
 
-      canvas_.draw_text(kSideMargin, ty, "Phone setup", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, ty, "Link", Canvas::TextRole::ScreenTitle, Gray::G0);
       int y = canvas_.draw_text_wrapped(kSideMargin, ty + 48, kWrapW, kLineGap,
-                                        "Join Pocket's Wi-Fi, then enter your home network password.",
+                                        "On your phone: join Pocket Wi‑Fi, then enter the home password.",
                                         Canvas::TextRole::Secondary, Gray::G1);
 
-      canvas_.draw_text(kSideMargin, y + 16, "Join this network", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, y + 16, "Pocket Wi‑Fi", Canvas::TextRole::Secondary, Gray::G1);
       if (!wifi_ap_ssid_.empty()) {
         canvas_.draw_text_fit(kSideMargin, y + 44, kWrapW, wifi_ap_ssid_, Canvas::TextRole::Body, Gray::G0);
       } else {
@@ -198,8 +198,9 @@ void App::render_onboarding() {
       }
       canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 12, "Scan · or open 192.168.4.1",
                                  Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 44, "Waiting for home Wi-Fi…",
-                                 Canvas::TextRole::Secondary, Gray::G1);
+      const char* wait_line = wifi_sta_connecting_ ? "Connecting to home Wi‑Fi…" : "Waiting for home password…";
+      canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 44, wait_line, Canvas::TextRole::Secondary,
+                                 Gray::G1);
 
       const bool already_online = wifi_.connected();
       focus_.count = already_online ? 3 : 2;
@@ -398,6 +399,7 @@ void App::handle_onboarding(InputEvent e) {
       case ScreenId::OnboardingWelcome:
         break;
       case ScreenId::OnboardingWifiPassword:
+        wifi_sta_connecting_ = false;
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           nav_.replace(ScreenId::OnboardingWifiList);
@@ -616,6 +618,7 @@ void App::handle_onboarding(InputEvent e) {
         }
       } else if (focus_.index == cancel_i) {
         play_sound(SoundId::Click);
+        wifi_sta_connecting_ = false;
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           nav_.replace(ScreenId::OnboardingWifiList);

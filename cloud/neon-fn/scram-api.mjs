@@ -39,7 +39,8 @@ function cors(req) {
   if (o) {
     h["access-control-allow-origin"] = o;
     h["access-control-allow-credentials"] = "true";
-    h["access-control-allow-headers"] = "content-type,authorization,x-device-key";
+    // x-pocket-session: bearer alternative — third-party cookies often blocked on mobile Safari / ITP.
+    h["access-control-allow-headers"] = "content-type,authorization,x-device-key,x-pocket-session";
     h["access-control-allow-methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
   }
   return h;
@@ -241,7 +242,10 @@ async function query(sql) {
   }
 }
 async function userFromSession(req) {
-  const token = getCookie(req, SESSION_COOKIE);
+  // Prefer explicit header (works cross-site when cookies are blocked on mobile).
+  const headerTok = (req.headers.get("x-pocket-session") || "").trim();
+  const cookieTok = getCookie(req, SESSION_COOKIE);
+  const token = headerTok || cookieTok;
   if (!token) return null;
   const sessions = await query(`SELECT user_id, expires_at FROM sessions WHERE token_hash='${esc(sha256Hex(token))}'`);
   const session = sessions[0];
@@ -711,7 +715,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v8-music" });
+        return json(req, { ok: true, build: "scram-api-v9-session-header" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
@@ -723,25 +727,14 @@ export default {
         const existing = await query(`SELECT id FROM users WHERE email='${esc(email)}'`);
         if (existing.length) return json(req, { message: "An account with that email already exists. Sign in instead." }, 400);
         const id = newId(), now = new Date().toISOString(), ph = hashPassword(password);
+        // For now: no email verification — mark verified at create so sign-in works immediately.
         await query(`INSERT INTO users (id,email,password_hash,email_verified_at,created_at,trial_consumed,stripe_customer_id,had_subscription) VALUES ('${esc(id)}','${esc(email)}','${esc(ph)}','${now}','${now}',0,NULL,0)`);
-        const verifyToken = randomToken(32);
-        await query(`INSERT INTO email_verifications (id,user_id,token_hash,created_at,expires_at,consumed_at) VALUES ('${esc(newId())}','${esc(id)}','${esc(sha256Hex(verifyToken))}','${now}','${new Date(Date.now() + 15 * 60e3).toISOString()}',NULL)`);
-        const base = PUBLIC_BASE_URL || u.origin;
-        console.log(`[verify-email] ${email} -> ${base}/v1/auth/verify-email?token=${encodeURIComponent(verifyToken)}`);
         return json(req, { ok: true, message: "Account created. You can sign in now." });
       }
 
       if (req.method === "GET" && path === "/v1/auth/verify-email") {
-        const token = u.searchParams.get("token");
-        if (!token) return json(req, { message: "This verification link is invalid." }, 400);
-        const rows = await query(`SELECT * FROM email_verifications WHERE token_hash='${esc(sha256Hex(token))}'`);
-        const row = rows[0];
-        if (!row || row.consumed_at) return Response.redirect(`${PWA_ORIGIN}/login?verified=0`, 302);
-        if (Date.parse(row.expires_at) < Date.now()) return Response.redirect(`${PWA_ORIGIN}/login?verified=0`, 302);
-        const now = new Date().toISOString();
-        await query(`UPDATE email_verifications SET consumed_at='${now}' WHERE id='${esc(row.id)}'`);
-        await query(`UPDATE users SET email_verified_at='${now}' WHERE id='${esc(row.user_id)}' AND email_verified_at IS NULL`);
-        return Response.redirect(`${PWA_ORIGIN}/login?verified=1`, 302);
+        // Legacy links: email verification is not required. Send them to sign in.
+        return Response.redirect(`${PWA_ORIGIN}/login`, 302);
       }
 
       if (req.method === "POST" && path === "/v1/auth/login") {
@@ -753,24 +746,35 @@ export default {
         if (!user?.password_hash || !verifyPassword(password, user.password_hash)) {
           return json(req, { message: "Wrong email or password." }, 401);
         }
-        if (!user.email_verified_at) {
-          return json(req, { message: "Verify your email before signing in. Check your inbox for the link." }, 400);
-        }
         if (user.disabled_at) {
           return json(req, { message: "This account is disabled." }, 403);
         }
         const token = randomToken(32);
         const nowIso = new Date().toISOString();
         const expires = new Date(Date.now() + 30 * 86400e3).toISOString();
+        // Backfill verified_at for any older accounts that never clicked a link.
+        if (!user.email_verified_at) {
+          await query(`UPDATE users SET email_verified_at='${nowIso}' WHERE id='${esc(user.id)}'`);
+        }
         await query(`INSERT INTO sessions (id,user_id,token_hash,created_at,expires_at) VALUES ('${esc(newId())}','${esc(user.id)}','${esc(sha256Hex(token))}','${nowIso}','${expires}')`);
         await query(`UPDATE users SET last_login_at='${nowIso}' WHERE id='${esc(user.id)}'`);
-        return json(req, { ok: true, user: { id: user.id, email: user.email, role: user.role || "user", is_admin: isAdminUser(user) } }, 200, {
-          "set-cookie": sessionCookie(token, 30 * 86400),
-        });
+        // session_token in body: required on mobile where cross-site cookies are blocked.
+        return json(
+          req,
+          {
+            ok: true,
+            session_token: token,
+            user: { id: user.id, email: user.email, role: user.role || "user", is_admin: isAdminUser(user) },
+          },
+          200,
+          { "set-cookie": sessionCookie(token, 30 * 86400) },
+        );
       }
 
       if (req.method === "POST" && path === "/v1/auth/logout") {
-        const token = getCookie(req, SESSION_COOKIE);
+        const headerTok = (req.headers.get("x-pocket-session") || "").trim();
+        const cookieTok = getCookie(req, SESSION_COOKIE);
+        const token = headerTok || cookieTok;
         if (token) await query(`DELETE FROM sessions WHERE token_hash='${esc(sha256Hex(token))}'`);
         return json(req, { ok: true }, 200, {
           "set-cookie": `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`,

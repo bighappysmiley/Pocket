@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
-import { api, isApiConfigured, isNetworkError } from '../lib/api'
+import { api, getSessionToken, isApiConfigured, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/types'
 import { ErrorState } from '../components/ErrorState'
@@ -8,14 +8,13 @@ import { WordMark } from '../components/WordMark'
 import { useDocumentTitle } from '../components/useDocumentTitle'
 
 type Mode = 'signin' | 'signup'
-type State = 'idle' | 'busy' | 'registered' | 'error'
+type State = 'idle' | 'busy' | 'error'
 
 export function LoginPage() {
   useDocumentTitle('Sign in')
   const { isAuthenticated, loading, offline, error: authError, refresh } = useAuth()
   const [params] = useSearchParams()
   const returnTo = params.get('return_to') || '/'
-  const justVerified = params.get('verified') === '1'
   const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -39,10 +38,11 @@ export function LoginPage() {
     try {
       if (mode === 'signup') {
         await api.register(email.trim(), password)
-        setState('registered')
-        return
       }
       await api.login(email.trim(), password)
+      if (!getSessionToken()) {
+        throw new ApiError("Couldn't save your sign-in on this device. Try again.", 0)
+      }
       await refresh()
       setState('idle')
     } catch (err) {
@@ -72,12 +72,6 @@ export function LoginPage() {
             : 'Use the email and password for your Pocket Cloud account.'}
         </p>
       </div>
-
-      {justVerified ? (
-        <div className="panel" role="status">
-          <p>Email verified. Sign in with your password.</p>
-        </div>
-      ) : null}
 
       {!cloudReady || offline ? (
         <div className="panel" role="status">
@@ -114,78 +108,58 @@ export function LoginPage() {
         </button>
       </div>
 
-      {state === 'registered' ? (
-        <div className="panel stack-sm">
-          <p>Account created. You can sign in now.</p>
-          <p className="muted">
-            Inbox verification email needs a mail provider (Resend/SMTP) configured once on Pocket
-            Cloud. Today you can sign in right away with the password you just chose.
-          </p>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              setMode('signin')
-              setState('idle')
-            }}
-          >
-            Go to sign in
-          </button>
-        </div>
-      ) : (
-        <form className="stack" onSubmit={(e) => void onSubmit(e)}>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={state === 'busy' || !cloudReady}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={state === 'busy' || !cloudReady}
-            />
-            {mode === 'signup' ? <p className="muted">At least 8 characters.</p> : null}
-          </div>
-          {error ? (
-            error.includes('unreachable') || error.includes('unavailable') ? (
-              <ErrorState message={error} onRetry={() => setError(null)} />
-            ) : (
-              <p className="muted" role="alert">
-                {error}
-              </p>
-            )
-          ) : null}
-          <button
-            type="submit"
-            className="btn btn-primary btn-block"
+      <form className="stack" onSubmit={(e) => void onSubmit(e)}>
+        <div className="field">
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             disabled={state === 'busy' || !cloudReady}
-          >
-            {state === 'busy'
-              ? mode === 'signup'
-                ? 'Creating…'
-                : 'Signing in…'
-              : mode === 'signup'
-                ? 'Create account'
-                : 'Sign in'}
-          </button>
-        </form>
-      )}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            required
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={state === 'busy' || !cloudReady}
+          />
+          {mode === 'signup' ? <p className="muted">At least 8 characters.</p> : null}
+        </div>
+        {error ? (
+          error.includes('unreachable') || error.includes('unavailable') ? (
+            <ErrorState message={error} onRetry={() => setError(null)} />
+          ) : (
+            <p className="muted" role="alert">
+              {error}
+            </p>
+          )
+        ) : null}
+        <button
+          type="submit"
+          className="btn btn-primary btn-block"
+          disabled={state === 'busy' || !cloudReady}
+        >
+          {state === 'busy'
+            ? mode === 'signup'
+              ? 'Creating…'
+              : 'Signing in…'
+            : mode === 'signup'
+              ? 'Create account'
+              : 'Sign in'}
+        </button>
+      </form>
 
       <p className="footer-note">Pocket Cloud syncs Notes from your Pocket device.</p>
       {returnTo.startsWith('/pair') || returnTo.startsWith('/link') ? (
