@@ -63,5 +63,7 @@ Keys: `j`/`k` = Down/Up, `Enter` = Function short, `H` = Function long (Home),
 
 ## Cloud pairing
 
-Pairing QR encodes `https://app.getpocket.device/pair?code={CODE}` (TTL 10 minutes).
-Device registers sessions with Pocket Cloud (`POST /v1/pair/sessions`) and polls status.
+Pairing QR encodes `https://bighappysmiley.github.io/Pocket/pair?code={CODE}` (TTL 10 minutes).
+Device registers sessions with Pocket Cloud (`POST /v1/pair/sessions` + Bearer `DEVICE_API_KEY`) and polls
+`GET /v1/pair/sessions/:code`. Defaults: `POCKET_CLOUD_BASE=https://pocket-cloud.fly.dev`,
+`POCKET_PWA_ORIGIN=https://bighappysmiley.github.io/Pocket` (override at compile time).

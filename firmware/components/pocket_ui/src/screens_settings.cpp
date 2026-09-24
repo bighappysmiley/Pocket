@@ -40,7 +40,7 @@ void App::render_settings() {
     canvas_.draw_text(16, 360, cfg_.companion_linked ? "Companion: Linked" : "Companion: Not linked",
                       Canvas::TextRole::Secondary, Gray::G1);
     focus_.count = 2;
-    const char* acts[] = {"Reset Pocket…", "Back"};
+    const char* acts[] = {"Reset Pocket...", "Back"};
     for (int i = 0; i < 2; ++i) {
       int y = 500 + i * 56;
       if (i == focus_.index)
@@ -53,7 +53,8 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsCloud) {
     canvas_.draw_text(16, 40, "Pocket Cloud", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_text(16, 90, "Sync Notes to your phone with Pocket Cloud.", Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text_fit(16, 90, kCanvasW - 32, "Sync Notes to your phone with Pocket Cloud.",
+                          Canvas::TextRole::Secondary, Gray::G1);
     const char* status = "Not subscribed";
     if (cfg_.cloud_status == "trialing")
       status = "Trial";
@@ -62,19 +63,24 @@ void App::render_settings() {
     else if (cfg_.cloud_status == "past_due")
       status = "Payment issue";
     canvas_.draw_text(16, 140, status, Canvas::TextRole::Body, Gray::G0);
+    if (cfg_.companion_linked) {
+      canvas_.draw_text(16, 176, "Companion: Linked", Canvas::TextRole::Secondary, Gray::G1);
+    } else {
+      canvas_.draw_text(16, 176, "Companion: Not linked", Canvas::TextRole::Secondary, Gray::G1);
+    }
     focus_.count = 3;
-    const char* acts[] = {"Start free trial", "Subscribe — $3.99/mo", "Link account"};
+    const char* acts[] = {"Start free trial", "Subscribe $3.99/mo", "Link companion app"};
     for (int i = 0; i < 3; ++i) {
-      int y = 220 + i * 56;
+      int y = 230 + i * 56;
       if (i == focus_.index)
         canvas_.draw_focus_tile(16, y, kCanvasW - 32, 48, acts[i], Canvas::TextRole::Body);
       else
         canvas_.draw_text(24, y + 14, acts[i], Canvas::TextRole::Body, Gray::G0);
     }
-    // QR sheet hint
-    canvas_.draw_text(16, 420, "Continue on your phone", Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text(16, 450, "Scan with your phone camera", Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.stroke_rect(140, 500, 200, 200, Gray::G0);
+    canvas_.draw_text(16, 430, "Link opens a QR for the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
+    if (now_ms_ < error_until_ms_) {
+      canvas_.draw_text_fit(16, 470, kCanvasW - 32, error_msg_, Canvas::TextRole::Body, Gray::G0);
+    }
     return;
   }
 
@@ -82,9 +88,9 @@ void App::render_settings() {
     canvas_.draw_text(16, 40, "Display", Canvas::TextRole::ScreenTitle, Gray::G0);
     focus_.count = 5;
     char idle[48];
-    std::snprintf(idle, sizeof(idle), "Idle lock · %ds", cfg_.idle_lock_s);
+    std::snprintf(idle, sizeof(idle), "Idle lock: %ds", cfg_.idle_lock_s);
     const char* rows[] = {idle,
-                          cfg_.show_batt_pct ? "Show battery % · On" : "Show battery % · Off", "Full refresh · Now",
+                          cfg_.show_batt_pct ? "Show battery %: On" : "Show battery %: Off", "Full refresh: Now",
                           "Ghosting control", "Back"};
     for (int i = 0; i < 5; ++i) {
       int y = 100 + i * 56;
@@ -136,7 +142,7 @@ void App::render_settings() {
     for (int i = 0; i < 6; ++i) {
       int y = 120 + i * 52;
       bool on = home_app_visible(cfg_, static_cast<HomeApp>(i));
-      std::string label = std::string(names[i]) + (on ? " · On" : " · Off");
+      std::string label = std::string(names[i]) + (on ? ": On" : ": Off");
       if (i == focus_.index)
         canvas_.draw_focus_tile(16, y, kCanvasW - 32, 48, label, Canvas::TextRole::Body);
       else
@@ -167,7 +173,7 @@ void App::render_settings() {
     canvas_.draw_text(16, 40, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(16, 100, wifi_.connected() ? cfg_.wifi_ssid : "Not connected", Canvas::TextRole::Body, Gray::G0);
     focus_.count = 2;
-    const char* rows[] = {"Choose network…", "Back"};
+    const char* rows[] = {"Choose network...", "Back"};
     for (int i = 0; i < 2; ++i) {
       int y = 180 + i * 56;
       if (i == focus_.index)
@@ -327,6 +333,38 @@ void App::handle_settings(InputEvent e) {
       } else {
         nav_.replace(ScreenId::SettingsRoot);
         after_nav(true);
+      }
+    }
+    return;
+  }
+
+  if (s == ScreenId::SettingsCloud) {
+    focus_.count = 3;
+    if (e == InputEvent::Up) {
+      focus_.move(-1);
+      dirty_ = true;
+    } else if (e == InputEvent::Down) {
+      focus_.move(1);
+      dirty_ = true;
+    } else if (e == InputEvent::Select) {
+      if (focus_.index == 2) {
+        // Link companion app — mint pair session + show QR
+        if (!wifi_.connected()) {
+          error_msg_ = "Connect to Wi-Fi first.";
+          error_until_ms_ = now_ms_ + 2500;
+          dirty_ = true;
+        } else {
+          pair_code_ = cloud_.create_pair_session(cfg_.device_id);
+          pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
+          pair_status_ = "pending";
+          last_pair_poll_ms_ = 0;
+          focus_.index = 0;
+          nav_.push(ScreenId::OnboardingCompanionQr);
+          after_nav(true);
+        }
+      } else {
+        // Trial / subscribe — open companion billing via same pair path if unlinked
+        dirty_ = true;
       }
     }
     return;

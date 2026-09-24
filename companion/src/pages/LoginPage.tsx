@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useSearchParams } from 'react-router-dom'
-import { api, isApiConfigured, isNetworkError } from '../lib/api'
+import { api, getApiBase, isApiConfigured, isNetworkError, setApiBase } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/types'
 import { ErrorState } from '../components/ErrorState'
@@ -11,16 +11,38 @@ type State = 'idle' | 'sending' | 'sent' | 'error'
 
 export function LoginPage() {
   useDocumentTitle('Sign in')
-  const { isAuthenticated, loading, offline, error: authError } = useAuth()
+  const { isAuthenticated, loading, offline, error: authError, refresh } = useAuth()
   const [params] = useSearchParams()
   const returnTo = params.get('return_to') || '/'
   const [email, setEmail] = useState('')
   const [state, setState] = useState<State>('idle')
   const [error, setError] = useState<string | null>(null)
-  const cloudReady = isApiConfigured()
+  const [cloudUrl, setCloudUrl] = useState(() => (isApiConfigured() ? getApiBase() : ''))
+  const [cloudReady, setCloudReady] = useState(() => isApiConfigured())
 
   if (!loading && isAuthenticated) {
     return <Navigate to={returnTo} replace />
+  }
+
+  function onSaveCloud(e: FormEvent) {
+    e.preventDefault()
+    const next = cloudUrl.trim()
+    if (!next) {
+      setError('Enter your Pocket Cloud URL (https://…).')
+      return
+    }
+    try {
+      // Validate URL shape
+      // eslint-disable-next-line no-new
+      new URL(next)
+    } catch {
+      setError('That does not look like a valid URL.')
+      return
+    }
+    setApiBase(next)
+    setCloudReady(true)
+    setError(null)
+    void refresh()
   }
 
   async function onSubmit(e: FormEvent) {
@@ -55,11 +77,28 @@ export function LoginPage() {
       </div>
 
       {!cloudReady || offline ? (
-        <div className="panel stack-sm" role="status">
+        <div className="panel stack" role="status">
           <p>
-            <strong>Not connected</strong> — Pocket Cloud API is not hosted yet. You can still open this
-            companion shell; sign-in and sync will work once Cloud is deployed.
+            <strong>Connect Pocket Cloud</strong> — enter the API URL for your hosted Cloud (for example a Fly
+            app), then sign in to link your Pocket.
           </p>
+          <form className="stack" onSubmit={onSaveCloud}>
+            <div className="field">
+              <label htmlFor="cloud-url">Cloud API URL</label>
+              <input
+                id="cloud-url"
+                name="cloud-url"
+                type="url"
+                placeholder="https://pocket-cloud.example.com"
+                value={cloudUrl}
+                onChange={(e) => setCloudUrl(e.target.value)}
+                autoComplete="url"
+              />
+            </div>
+            <button type="submit" className="btn btn-secondary btn-block">
+              Save Cloud URL
+            </button>
+          </form>
           {authError ? <p className="muted">{authError}</p> : null}
         </div>
       ) : null}
@@ -84,7 +123,7 @@ export function LoginPage() {
             />
           </div>
           {error ? (
-            error.includes('unreachable') || error.includes('not connected') ? (
+            error.includes('unreachable') || error.includes('not connected') || error.includes('valid URL') ? (
               <ErrorState message={error} onRetry={() => setError(null)} />
             ) : (
               <p className="muted" role="alert">

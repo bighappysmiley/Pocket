@@ -6,6 +6,7 @@
 #include "pocket_board/epd.hpp"
 #include "pocket_board/pins.hpp"
 #include "esp_wifi_platform.hpp"
+#include "esp_cloud_platform.hpp"
 
 #ifdef POCKET_HOST
 #error "app_main is for ESP-IDF only"
@@ -21,7 +22,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v12-ui-wifi";
+static const char* kBuildId = "POCKET-LIVE-v13-font-pair";
 
 namespace {
 
@@ -52,13 +53,6 @@ struct EspClock : pocket::PlatformClock {
     month = 0;
     day = 1;
   }
-};
-
-struct EspCloud : pocket::PlatformCloud {
-  std::string create_pair_session(const std::string&) override { return "AAAAAAAA"; }
-  std::string pair_status(const std::string&) override { return "pending"; }
-  void refresh_entitlement(pocket::DeviceConfig&) override {}
-  std::string stt_transcribe(const std::vector<uint8_t>&) override { return {}; }
 };
 
 struct EspDisplay : pocket::PlatformDisplay {
