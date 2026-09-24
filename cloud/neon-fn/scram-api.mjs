@@ -373,6 +373,10 @@ async function ensureAdminSchema() {
   await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ`);
   await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS sd_present BOOLEAN NOT NULL DEFAULT false`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS pending_wifi_ssid TEXT`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS pending_wifi_password TEXT`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS pending_wifi_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS parental_json TEXT NOT NULL DEFAULT '{}'`);
   await query(`CREATE TABLE IF NOT EXISTS badges (
     id TEXT PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
@@ -877,6 +881,150 @@ export default {
         if (!user) return json(req, { message: "Sign in to continue." }, 401);
         const devices = await query(`SELECT id, device_id, device_name, linked_at, last_seen_at FROM device_links WHERE user_id='${esc(user.id)}' ORDER BY linked_at DESC`);
         return json(req, { devices });
+      }
+
+      const deviceIdMatch = path.match(/^\/v1\/devices\/([^/]+)$/);
+      if (deviceIdMatch && (req.method === "GET" || req.method === "PATCH")) {
+        const user = await userFromSession(req);
+        if (!user) return json(req, { message: "Sign in to continue." }, 401);
+        const id = decodeURIComponent(deviceIdMatch[1]);
+        const rows = await query(
+          `SELECT id, device_id, device_name, linked_at, last_seen_at, parental_json FROM device_links WHERE (id='${esc(id)}' OR device_id='${esc(id)}') AND user_id='${esc(user.id)}' LIMIT 1`,
+        );
+        const row = rows[0];
+        if (!row) return json(req, { message: "That device wasn't found." }, 404);
+        if (req.method === "GET") {
+          let parental = {};
+          try { parental = JSON.parse(row.parental_json || "{}") || {}; } catch { parental = {}; }
+          return json(req, {
+            id: row.id,
+            device_id: row.device_id,
+            device_name: row.device_name,
+            linked_at: row.linked_at,
+            last_seen_at: row.last_seen_at,
+            parental,
+          });
+        }
+        const body = await req.json().catch(() => ({}));
+        let name = typeof body.device_name === "string" ? body.device_name.trim() : "";
+        if (!name) return json(req, { message: "Enter a name" }, 400);
+        if (name.length > 20) return json(req, { message: "Name must be 20 characters or fewer." }, 400);
+        if (!/^[\p{L}\p{N} \-']+$/u.test(name)) {
+          return json(req, { message: "That name uses characters that aren't allowed." }, 400);
+        }
+        await query(`UPDATE device_links SET device_name='${esc(name)}' WHERE id='${esc(row.id)}'`);
+        return json(req, {
+          id: row.id,
+          device_id: row.device_id,
+          device_name: name,
+          linked_at: row.linked_at,
+          last_seen_at: row.last_seen_at,
+        });
+      }
+
+      const deviceLinkMatch = path.match(/^\/v1\/devices\/([^/]+)\/link$/);
+      if (req.method === "DELETE" && deviceLinkMatch) {
+        const user = await userFromSession(req);
+        if (!user) return json(req, { message: "Sign in to continue." }, 401);
+        const id = decodeURIComponent(deviceLinkMatch[1]);
+        const rows = await query(
+          `SELECT id FROM device_links WHERE (id='${esc(id)}' OR device_id='${esc(id)}') AND user_id='${esc(user.id)}' LIMIT 1`,
+        );
+        if (!rows[0]) return json(req, { message: "That device wasn't found." }, 404);
+        await query(`DELETE FROM device_links WHERE id='${esc(rows[0].id)}'`);
+        return json(req, { ok: true });
+      }
+
+      const deviceWifiMatch = path.match(/^\/v1\/devices\/([^/]+)\/wifi$/);
+      if (req.method === "POST" && deviceWifiMatch) {
+        const user = await userFromSession(req);
+        if (!user) return json(req, { message: "Sign in to continue." }, 401);
+        const id = decodeURIComponent(deviceWifiMatch[1]);
+        const rows = await query(
+          `SELECT id FROM device_links WHERE (id='${esc(id)}' OR device_id='${esc(id)}') AND user_id='${esc(user.id)}' LIMIT 1`,
+        );
+        if (!rows[0]) return json(req, { message: "That device wasn't found." }, 404);
+        const body = await req.json().catch(() => ({}));
+        const ssid = typeof body.ssid === "string" ? body.ssid.trim().slice(0, 32) : "";
+        const password = typeof body.password === "string" ? body.password.slice(0, 64) : "";
+        if (!ssid) return json(req, { message: "Enter a network name." }, 400);
+        const now = new Date().toISOString();
+        await query(
+          `UPDATE device_links SET pending_wifi_ssid=${sqlStr(ssid)}, pending_wifi_password=${sqlStr(password)}, pending_wifi_at='${now}' WHERE id='${esc(rows[0].id)}'`,
+        );
+        return json(req, { ok: true, queued: true });
+      }
+
+      const deviceParentalMatch = path.match(/^\/v1\/devices\/([^/]+)\/parental$/);
+      if (deviceParentalMatch && (req.method === "GET" || req.method === "PATCH")) {
+        const user = await userFromSession(req);
+        if (!user) return json(req, { message: "Sign in to continue." }, 401);
+        const id = decodeURIComponent(deviceParentalMatch[1]);
+        const rows = await query(
+          `SELECT id, parental_json FROM device_links WHERE (id='${esc(id)}' OR device_id='${esc(id)}') AND user_id='${esc(user.id)}' LIMIT 1`,
+        );
+        if (!rows[0]) return json(req, { message: "That device wasn't found." }, 404);
+        if (req.method === "GET") {
+          let parental = {};
+          try { parental = JSON.parse(rows[0].parental_json || "{}") || {}; } catch { parental = {}; }
+          return json(req, { parental });
+        }
+        const body = await req.json().catch(() => ({}));
+        const pin_gated_apps = Array.isArray(body.pin_gated_apps)
+          ? body.pin_gated_apps.map((a) => String(a).trim().toLowerCase()).filter(Boolean).slice(0, 16)
+          : [];
+        const hide_pass_share = body.hide_pass_share === true;
+        const block_connectors = body.block_connectors === true;
+        const parental = { pin_gated_apps, hide_pass_share, block_connectors };
+        await query(
+          `UPDATE device_links SET parental_json=${sqlStr(JSON.stringify(parental))} WHERE id='${esc(rows[0].id)}'`,
+        );
+        return json(req, { parental });
+      }
+
+      // Device heartbeat + entitlement + pending Wi‑Fi / parental (x-device-key + device_id)
+      if (req.method === "GET" && path === "/v1/device/attest") {
+        const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
+        const userId = await userIdForDeviceKey(req, deviceId);
+        if (!userId) return json(req, { message: "Sign in to continue." }, 401);
+        const now = new Date().toISOString();
+        const links = await query(
+          `SELECT id, device_id, device_name, pending_wifi_ssid, pending_wifi_password, pending_wifi_at, parental_json
+           FROM device_links WHERE device_id='${esc(deviceId)}' ORDER BY linked_at DESC LIMIT 1`,
+        );
+        const link = links[0];
+        if (!link) return json(req, { message: "That device wasn't found." }, 404);
+        await query(`UPDATE device_links SET last_seen_at='${now}' WHERE id='${esc(link.id)}'`);
+        const subs = await query(`SELECT status, trial_ends_at, current_period_end FROM subscription_mirrors WHERE user_id='${esc(userId)}'`);
+        const sub = subs[0];
+        const entitled = sub?.status === "active" || sub?.status === "trialing";
+        let parental = {};
+        try { parental = JSON.parse(link.parental_json || "{}") || {}; } catch { parental = {}; }
+        let pending_wifi = null;
+        if (link.pending_wifi_ssid) {
+          pending_wifi = {
+            ssid: link.pending_wifi_ssid,
+            password: link.pending_wifi_password || "",
+            queued_at: link.pending_wifi_at || null,
+          };
+          await query(
+            `UPDATE device_links SET pending_wifi_ssid=NULL, pending_wifi_password=NULL, pending_wifi_at=NULL WHERE id='${esc(link.id)}'`,
+          );
+        }
+        return json(req, {
+          entitled,
+          status: sub?.status || "free",
+          trial_ends_at: sub?.trial_ends_at || null,
+          current_period_end: sub?.current_period_end || null,
+          cloud_entitled: entitled,
+          device_id: link.device_id,
+          device_name: link.device_name,
+          parental,
+          pin_gated_apps: Array.isArray(parental.pin_gated_apps) ? parental.pin_gated_apps : [],
+          hide_pass_share: parental.hide_pass_share === true,
+          block_connectors: parental.block_connectors === true,
+          pending_wifi,
+        });
       }
 
       // ---- Music (Companion manage + device pull) ----
@@ -1550,8 +1698,11 @@ export default {
           } else {
             const existing = await query(`SELECT user_id FROM subscription_mirrors WHERE user_id='${esc(id)}'`);
             const trialEnd = st === "trialing" ? new Date(Date.now() + 7 * 86400e3).toISOString() : null;
+            // active = permanent/comped grant (no Stripe period end). Trial keeps 7-day end.
             if (existing[0]) {
-              await query(`UPDATE subscription_mirrors SET status='${esc(st)}', trial_ends_at=${sqlNullable(trialEnd)}, updated_at='${now}' WHERE user_id='${esc(id)}'`);
+              await query(
+                `UPDATE subscription_mirrors SET status='${esc(st)}', trial_ends_at=${sqlNullable(trialEnd)}, current_period_end=${st === "active" ? "NULL" : "current_period_end"}, updated_at='${now}' WHERE user_id='${esc(id)}'`,
+              );
             } else {
               await query(`INSERT INTO subscription_mirrors (user_id,stripe_subscription_id,status,trial_ends_at,current_period_end,cancel_at_period_end,updated_at) VALUES ('${esc(id)}',NULL,'${esc(st)}',${sqlNullable(trialEnd)},NULL,0,'${now}')`);
             }

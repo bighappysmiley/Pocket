@@ -42,6 +42,12 @@ struct DeviceConfig {
   std::string device_id;  // UUID
   std::string device_token;
   std::string cloud_status = "free";  // free|trialing|active|lapsed
+  /** Parental: bit mask of HomeApp indices that require PIN to open. Synced from Companion. */
+  uint16_t parental_pin_gated = 0;
+  bool parental_hide_pass_share = false;
+  bool parental_block_connectors = false;
+  /** Seen What’s New for this build (skip auto tips once acknowledged). */
+  std::string seen_whats_new_build;
 };
 
 /** Insert or update SSID; move to front as preferred (`wifi_ssid`). Cap at kMaxKnownWifi. */

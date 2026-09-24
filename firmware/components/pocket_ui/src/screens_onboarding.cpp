@@ -380,11 +380,54 @@ void App::render_onboarding() {
       break;
     }
     case ScreenId::OnboardingDone: {
-      canvas_.draw_text_centered(kCanvasW / 2, 200, "You're ready", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text_centered(kCanvasW / 2, 260, "Your phone is linked.", Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text_wrapped(kSideMargin, 296, kWrapW, kLineGap, "Manage name and Cloud in the app.",
-                                Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text_centered(kCanvasW / 2, kBottomCtaY, "Press to go Home", Canvas::TextRole::Secondary, Gray::G1);
+      // Multi-page controls tutorial + ready (tips_page_ 0..3).
+      if (tips_page_ <= 0) {
+        canvas_.draw_text_centered(kCanvasW / 2, 180, "You're ready", Canvas::TextRole::ScreenTitle, Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, 240, "Pocket Version 1", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_wrapped(kSideMargin, 280, kWrapW, kLineGap,
+                                  "A short tour of the dial, side button, and power — or go Home now.",
+                                  Canvas::TextRole::Body, Gray::G0);
+        focus_.count = 2;
+        const char* acts[] = {"Go to Home", "Controls tips"};
+        for (int i = 0; i < 2; ++i) {
+          const int row_y = 400 + i * kRowPitch;
+          if (i == focus_.index)
+            canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+          else
+            canvas_.draw_text(kSideMargin + 8, row_y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
+        }
+      } else if (tips_page_ == 1) {
+        canvas_.draw_text(kSideMargin, ty, "Rotary dial", Canvas::TextRole::ScreenTitle, Gray::G0);
+        // Up / Down arrows
+        const int cx = kCanvasW / 2;
+        canvas_.fill_rect(cx - 8, 220, 16, 4, Gray::G0);
+        canvas_.fill_rect(cx - 4, 212, 8, 8, Gray::G0);  // up chevron block
+        canvas_.fill_rect(cx - 8, 280, 16, 4, Gray::G0);
+        canvas_.fill_rect(cx - 4, 284, 8, 8, Gray::G0);  // down
+        canvas_.draw_text_centered(cx, 250, "Turn", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_wrapped(kSideMargin, 320, kWrapW, kLineGap,
+                                  "Turn the dial to move. Press the dial to choose.",
+                                  Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_centered(cx, kBottomCtaY, "Next", Canvas::TextRole::Secondary, Gray::G1);
+      } else if (tips_page_ == 2) {
+        canvas_.draw_text(kSideMargin, ty, "Side button", Canvas::TextRole::ScreenTitle, Gray::G0);
+        // Side button silhouette (left edge)
+        canvas_.fill_rect(24, 240, 18, 56, Gray::G0);
+        canvas_.draw_text(56, 250, "←", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_wrapped(kSideMargin, 320, kWrapW, kLineGap,
+                                  "Short press goes Back. Hold in Notes to dictate.",
+                                  Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, kBottomCtaY, "Next", Canvas::TextRole::Secondary, Gray::G1);
+      } else {
+        canvas_.draw_text(kSideMargin, ty, "Power", Canvas::TextRole::ScreenTitle, Gray::G0);
+        canvas_.stroke_rect(kCanvasW / 2 - 20, 230, 40, 70, Gray::G0);
+        canvas_.fill_rect(kCanvasW / 2 - 6, 220, 12, 14, Gray::G0);
+        canvas_.draw_text_wrapped(kSideMargin, 320, kWrapW, kLineGap,
+                                  "Short press locks. Manage name and Cloud in the phone app.",
+                                  Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, kBottomCtaY, "Press to go Home",
+                                   Canvas::TextRole::Secondary, Gray::G1);
+      }
       break;
     }
     default:
@@ -674,18 +717,9 @@ void App::handle_onboarding(InputEvent e) {
   if (s == ScreenId::OnboardingPinSet || s == ScreenId::OnboardingPinConfirm) {
     if (e == InputEvent::Up) {
       pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 9) % 10));
-      if (pin_entry_.size() <= static_cast<size_t>(focus_.index)) {
-        if (pin_entry_.size() == static_cast<size_t>(focus_.index)) pin_entry_.push_back(pin_digit_working_);
-      } else {
-        pin_entry_[focus_.index] = pin_digit_working_;
-      }
       mark_pin_dirty();
     } else if (e == InputEvent::Down) {
       pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 1) % 10));
-      if (pin_entry_.size() == static_cast<size_t>(focus_.index))
-        pin_entry_.push_back(pin_digit_working_);
-      else if (focus_.index < static_cast<int>(pin_entry_.size()))
-        pin_entry_[focus_.index] = pin_digit_working_;
       mark_pin_dirty();
     } else if (e == InputEvent::Back) {
       if (pin_entry_.empty()) {
@@ -705,7 +739,9 @@ void App::handle_onboarding(InputEvent e) {
         mark_pin_dirty();
       }
     } else if (e == InputEvent::Select) {
-      if (pin_entry_.size() == static_cast<size_t>(focus_.index)) pin_entry_.push_back(pin_digit_working_);
+      if (static_cast<int>(pin_entry_.size()) < cfg_.pin_length) {
+        pin_entry_.push_back(pin_digit_working_);
+      }
       if (static_cast<int>(pin_entry_.size()) >= cfg_.pin_length) {
         if (s == ScreenId::OnboardingPinSet) {
           pin_pending_ = pin_entry_;
@@ -735,7 +771,6 @@ void App::handle_onboarding(InputEvent e) {
         }
       } else {
         focus_.index = static_cast<int>(pin_entry_.size());
-        pin_digit_working_ = '0';
         mark_pin_dirty();
       }
     }
@@ -797,6 +832,7 @@ void App::handle_onboarding(InputEvent e) {
         } else {
           cfg_.stt_path = 0;
           store_.save(cfg_);
+          tips_page_ = 0;
           nav_.replace(ScreenId::OnboardingDone);
           after_nav();
         }
@@ -805,12 +841,69 @@ void App::handle_onboarding(InputEvent e) {
     return;
   }
 
-  if (s == ScreenId::OnboardingDone && e == InputEvent::Select) {
-    play_sound(SoundId::Success);
-    cfg_.onboarding_complete = true;
-    if (cfg_.device_name.empty()) cfg_.device_name = "Pocket";
-    store_.save(cfg_);
-    go_home();
+  if (s == ScreenId::OnboardingDone) {
+    if (tips_page_ <= 0) {
+      focus_.count = 2;
+      if (e == InputEvent::Up) {
+        focus_.move(-1);
+        mark_content_dirty();
+        return;
+      }
+      if (e == InputEvent::Down) {
+        focus_.move(1);
+        mark_content_dirty();
+        return;
+      }
+      if (e == InputEvent::Select) {
+        if (focus_.index == 1) {
+          tips_page_ = 1;
+          mark_content_dirty();
+          return;
+        }
+        // Go to Home (index 0)
+        if (cfg_.onboarding_complete) {
+          cfg_.seen_whats_new_build = cfg_.fw_build_id;
+          store_.save(cfg_);
+          nav_.pop();
+          after_nav();
+          return;
+        }
+        play_sound(SoundId::Success);
+        cfg_.onboarding_complete = true;
+        if (cfg_.device_name.empty()) cfg_.device_name = "Pocket";
+        cfg_.seen_whats_new_build = cfg_.fw_build_id;
+        store_.save(cfg_);
+        go_home();
+        return;
+      }
+      return;
+    }
+    if (e == InputEvent::Back && tips_page_ > 0) {
+      --tips_page_;
+      if (tips_page_ == 0) focus_.index = 0;
+      mark_content_dirty();
+      return;
+    }
+    if (e == InputEvent::Select) {
+      if (tips_page_ < 3) {
+        ++tips_page_;
+        mark_content_dirty();
+        return;
+      }
+      if (cfg_.onboarding_complete) {
+        cfg_.seen_whats_new_build = cfg_.fw_build_id;
+        store_.save(cfg_);
+        nav_.pop();
+        after_nav();
+        return;
+      }
+      play_sound(SoundId::Success);
+      cfg_.onboarding_complete = true;
+      if (cfg_.device_name.empty()) cfg_.device_name = "Pocket";
+      cfg_.seen_whats_new_build = cfg_.fw_build_id;
+      store_.save(cfg_);
+      go_home();
+    }
   }
 }
 

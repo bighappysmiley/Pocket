@@ -153,11 +153,11 @@ void App::mark_region_dirty(int x, int y, int w, int h) {
 }
 
 void App::pin_band_geometry(int& x, int& y, int& w, int& h) const {
-  // Covers progress label, digit slots, hint, and error strip for unlock + setup.
+  // Covers progress label, digit slots, hint, error, and lockout strip.
   x = 0;
   y = 140;
   w = kCanvasW;
-  h = 320;
+  h = 360;
 }
 
 void App::mark_pin_dirty() {
@@ -344,7 +344,138 @@ void App::go_home() {
 void App::go_lock() {
   nav_.reset(ScreenId::Lock);
   pin_entry_.clear();
+  parental_session_unlocked_ = false;
+  parental_pin_for_app_ = false;
   after_nav();
+}
+
+bool App::parental_requires_pin(HomeApp app) const {
+  if (!home_app_is_real(app)) return false;
+  if (app == HomeApp::Settings || app == HomeApp::Update) return false;
+  return (cfg_.parental_pin_gated & (1u << static_cast<uint8_t>(app))) != 0;
+}
+
+void App::launch_home_app(HomeApp launch) {
+  switch (launch) {
+    case HomeApp::Notes:
+      notes_tab_ = 0;
+      nav_.push(ScreenId::NotesList);
+      break;
+    case HomeApp::Ledger:
+      nav_.push(ScreenId::LedgerComingSoon);
+      break;
+    case HomeApp::Clock:
+      clock_tab_ = 0;
+      nav_.push(ScreenId::ClockFace);
+      break;
+    case HomeApp::Pass:
+      nav_.push(ScreenId::PassList);
+      break;
+    case HomeApp::Weather:
+      nav_.push(ScreenId::WeatherMain);
+      break;
+    case HomeApp::Music:
+      music_index_ = 0;
+      nav_.push(ScreenId::MusicList);
+      break;
+    case HomeApp::Settings:
+      nav_.push(ScreenId::SettingsRoot);
+      break;
+    case HomeApp::Update:
+      begin_firmware_update();
+      return;
+    default:
+      return;
+  }
+  after_nav();
+}
+
+void App::maybe_cloud_attest() {
+  if (!cfg_.onboarding_complete || !cfg_.companion_linked) return;
+  if (!wifi_.connected() || cfg_.device_id.empty()) return;
+  if (last_attest_ms_ != 0 && now_ms_ - last_attest_ms_ < 60000u) return;
+  last_attest_ms_ = now_ms_;
+  const std::string body = cloud_.device_attest_json(cfg_.device_id);
+  if (body.empty()) return;
+
+  auto json_bool = [](const std::string& j, const char* key) -> int {
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t p = j.find(needle);
+    if (p == std::string::npos) return -1;
+    p = j.find(':', p + needle.size());
+    if (p == std::string::npos) return -1;
+    while (p + 1 < j.size() && (j[p + 1] == ' ' || j[p + 1] == '\t')) ++p;
+    if (j.compare(p + 1, 4, "true") == 0) return 1;
+    if (j.compare(p + 1, 5, "false") == 0) return 0;
+    return -1;
+  };
+  auto json_str = [](const std::string& j, const char* key) -> std::string {
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t p = j.find(needle);
+    if (p == std::string::npos) return {};
+    p = j.find(':', p + needle.size());
+    if (p == std::string::npos) return {};
+    p = j.find('"', p + 1);
+    if (p == std::string::npos) return {};
+    size_t end = j.find('"', p + 1);
+    if (end == std::string::npos) return {};
+    return j.substr(p + 1, end - p - 1);
+  };
+
+  const int entitled = json_bool(body, "cloud_entitled");
+  if (entitled >= 0) cfg_.cloud_entitled = entitled == 1;
+  const std::string st = json_str(body, "status");
+  if (!st.empty()) cfg_.cloud_status = st;
+  const std::string dname = json_str(body, "device_name");
+  if (!dname.empty() && dname != cfg_.device_name) {
+    cfg_.device_name = dname;
+  }
+
+  // Parental pin_gated_apps: ["notes","music",...]
+  uint16_t gated = 0;
+  const size_t arr = body.find("\"pin_gated_apps\"");
+  if (arr != std::string::npos) {
+    size_t lb = body.find('[', arr);
+    size_t rb = body.find(']', lb == std::string::npos ? arr : lb);
+    if (lb != std::string::npos && rb != std::string::npos && rb > lb) {
+      const std::string list = body.substr(lb, rb - lb + 1);
+      auto has = [&](const char* name) { return list.find(name) != std::string::npos; };
+      if (has("notes")) gated |= 1u << static_cast<uint8_t>(HomeApp::Notes);
+      if (has("ledger")) gated |= 1u << static_cast<uint8_t>(HomeApp::Ledger);
+      if (has("clock")) gated |= 1u << static_cast<uint8_t>(HomeApp::Clock);
+      if (has("pass")) gated |= 1u << static_cast<uint8_t>(HomeApp::Pass);
+      if (has("weather")) gated |= 1u << static_cast<uint8_t>(HomeApp::Weather);
+      if (has("music")) gated |= 1u << static_cast<uint8_t>(HomeApp::Music);
+    }
+  }
+  cfg_.parental_pin_gated = gated;
+  const int hide_pass = json_bool(body, "hide_pass_share");
+  if (hide_pass >= 0) cfg_.parental_hide_pass_share = hide_pass == 1;
+  const int block_conn = json_bool(body, "block_connectors");
+  if (block_conn >= 0) cfg_.parental_block_connectors = block_conn == 1;
+
+  // Pending Wi‑Fi from Companion (in-app, no SoftAP hop).
+  const std::string pending_ssid = json_str(body, "ssid");
+  // pending_wifi object nests ssid — look near pending_wifi key
+  std::string wifi_ssid;
+  std::string wifi_pass;
+  const size_t pw = body.find("\"pending_wifi\"");
+  if (pw != std::string::npos && body.find("null", pw) != pw + 16) {
+    const size_t obj = body.find('{', pw);
+    const size_t end = obj == std::string::npos ? std::string::npos : body.find('}', obj);
+    if (obj != std::string::npos && end != std::string::npos) {
+      const std::string chunk = body.substr(obj, end - obj + 1);
+      wifi_ssid = json_str(chunk, "ssid");
+      wifi_pass = json_str(chunk, "password");
+    }
+  }
+  (void)pending_ssid;
+  if (!wifi_ssid.empty()) {
+    connect_and_remember(wifi_ssid, wifi_pass);
+  }
+
+  store_.save(cfg_);
+  mark_status_dirty();
 }
 
 void App::tick(uint32_t now_ms) {
@@ -441,6 +572,7 @@ void App::tick(uint32_t now_ms) {
   }
   maybe_poll_sd_hotplug();
   maybe_wifi_auto_reconnect();
+  maybe_cloud_attest();
   if (dirty_) {
     present_canvas(false);
     dirty_ = false;
@@ -471,10 +603,15 @@ void App::present_canvas(bool full) {
   }
   if (dirty_kind_ == DirtyKind::StatusBar) {
     display_.present_region(canvas_, 0, 0, kCanvasW, kStatusBarH);
-    refresh_.on_applied(RefreshMode::Partial);
+    refresh_.on_applied_tiny(RefreshMode::Partial);
   } else if (dirty_kind_ == DirtyKind::Region) {
     display_.present_region(canvas_, dirty_rx_, dirty_ry_, dirty_rw_, dirty_rh_);
-    refresh_.on_applied(RefreshMode::Partial);
+    // PIN / home tile regions are small — discount toward ghosting.
+    if (dirty_rh_ <= kStatusBarH + 40 || dirty_rw_ * dirty_rh_ < (kCanvasW * kCanvasH) / 4) {
+      refresh_.on_applied_tiny(RefreshMode::Partial);
+    } else {
+      refresh_.on_applied(RefreshMode::Partial);
+    }
   } else {
     // Content below status bar — true region partial when one UI piece changes.
     display_.present_region(canvas_, 0, kStatusBarH, kCanvasW, kCanvasH - kStatusBarH);
@@ -700,7 +837,7 @@ void App::draw_pin_entry(bool mask_completed, int band_top) {
   const int x0 = (kCanvasW - total) / 2;
   const int slot_y = band_top;
 
-  // Progress — which digit we're on.
+  // Progress — which digit we're on (preview slot = next to fill).
   char prog[32];
   const int at = std::min(static_cast<int>(pin_entry_.size()) + 1, n);
   std::snprintf(prog, sizeof(prog), "Digit %d of %d", at, n);
@@ -714,17 +851,17 @@ void App::draw_pin_entry(bool mask_completed, int band_top) {
     canvas_.stroke_rect(x, slot_y, kSlotW, kSlotH, focused ? Gray::G0 : Gray::G2);
     if (focused) {
       canvas_.stroke_rect(x + 2, slot_y + 2, kSlotW - 4, kSlotH - 4, Gray::G0);
-      char dig = pin_digit_working_;
-      if (filled) dig = pin_entry_[i];
-      char s[2] = {dig, 0};
+      char s[2] = {pin_digit_working_, 0};
       const int tw = canvas_.text_width(s, Canvas::TextRole::PinDigit);
       canvas_.draw_text(x + (kSlotW - tw) / 2, slot_y + 16, s, Canvas::TextRole::PinDigit, Gray::G0);
     } else if (filled) {
       if (mask_completed) {
-        // Dot for a locked-in digit.
+        // Disk for a locked-in digit.
         const int cx = x + kSlotW / 2;
         const int cy = slot_y + kSlotH / 2;
-        canvas_.fill_rect(cx - 6, cy - 6, 12, 12, Gray::G0);
+        canvas_.fill_rect(cx - 7, cy - 7, 14, 14, Gray::G0);
+        canvas_.fill_rect(cx - 5, cy - 9, 10, 2, Gray::G3);
+        canvas_.fill_rect(cx - 5, cy + 7, 10, 2, Gray::G3);
       } else {
         char s[2] = {pin_entry_[i], 0};
         const int tw = canvas_.text_width(s, Canvas::TextRole::PinDigit);
@@ -750,7 +887,7 @@ void App::render_pin() {
     canvas_.draw_text_centered(kCanvasW / 2, 420, error_msg_.c_str(), Canvas::TextRole::Body, Gray::G0);
   }
   if (now_ms_ < pin_lockout_until_ms_) {
-    canvas_.draw_text_centered(kCanvasW / 2, 460, "Try again in 30 seconds", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_centered(kCanvasW / 2, 448, "Try again in 30 seconds", Canvas::TextRole::Body, Gray::G0);
   }
 }
 
@@ -758,6 +895,7 @@ void App::handle_pin(InputEvent e) {
   if (now_ms_ < pin_lockout_until_ms_) return;
   if (e == InputEvent::Back) {
     if (pin_entry_.empty()) {
+      parental_pin_for_app_ = false;
       nav_.pop();
       after_nav();
     } else {
@@ -769,35 +907,36 @@ void App::handle_pin(InputEvent e) {
     return;
   }
 
+  // Preview only — Select commits the digit (avoids slot-jump overwrite).
   if (e == InputEvent::Up) {
     pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 9) % 10));
-    if (pin_entry_.size() == static_cast<size_t>(focus_.index)) {
-      pin_entry_.push_back(pin_digit_working_);
-    } else if (focus_.index < static_cast<int>(pin_entry_.size())) {
-      pin_entry_[focus_.index] = pin_digit_working_;
-    }
     mark_pin_dirty();
     return;
   }
   if (e == InputEvent::Down) {
     pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 1) % 10));
-    if (pin_entry_.size() == static_cast<size_t>(focus_.index)) {
-      pin_entry_.push_back(pin_digit_working_);
-    } else if (focus_.index < static_cast<int>(pin_entry_.size())) {
-      pin_entry_[focus_.index] = pin_digit_working_;
-    }
     mark_pin_dirty();
     return;
   }
   if (e == InputEvent::Select) {
-    if (pin_entry_.size() == static_cast<size_t>(focus_.index)) {
+    if (static_cast<int>(pin_entry_.size()) < cfg_.pin_length) {
       pin_entry_.push_back(pin_digit_working_);
     }
     if (static_cast<int>(pin_entry_.size()) >= cfg_.pin_length) {
       if (verify_pin(cfg_, pin_entry_)) {
         pin_fail_count_ = 0;
         pin_digit_working_ = '0';
-        go_home();
+        parental_session_unlocked_ = true;
+        if (parental_pin_for_app_) {
+          parental_pin_for_app_ = false;
+          const HomeApp pending = parental_pending_app_;
+          pin_entry_.clear();
+          nav_.pop();
+          launch_home_app(pending);
+        } else {
+          pin_entry_.clear();
+          go_home();
+        }
       } else {
         error_msg_ = "Incorrect PIN";
         error_until_ms_ = now_ms_ + 2000;
@@ -813,7 +952,7 @@ void App::handle_pin(InputEvent e) {
       }
     } else {
       focus_.index = static_cast<int>(pin_entry_.size());
-      pin_digit_working_ = '0';
+      // Keep working digit so consecutive same digits are one press each.
       mark_pin_dirty();
     }
   }

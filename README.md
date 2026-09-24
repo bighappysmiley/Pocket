@@ -1,6 +1,6 @@
-# Pocket
+# Pocket Version 1
 
-Greenfield monorepo for **Pocket** device firmware, **Pocket Cloud** backend, and the companion PWA.
+Greenfield monorepo for **Pocket Version 1** device firmware, **Pocket Cloud** backend, and the companion PWA.
 
 Authoritative Spec: Project docs `pocket-firmware-and-companion-spec.md` (Parts A–E). Part B (onboarding) and Part C (hardware) override Part A where they conflict.
 

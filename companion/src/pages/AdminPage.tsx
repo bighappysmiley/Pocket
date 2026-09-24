@@ -496,7 +496,7 @@ export function AdminPage() {
                     type="button"
                     className="btn btn-ghost"
                     disabled={busy}
-                    onClick={() => void patchUser(u.id, { entitlement_status: 'trialing' }, 'Trial granted.')}
+                    onClick={() => void patchUser(u.id, { entitlement_status: 'trialing' }, 'Trial granted (7 days).')}
                   >
                     Grant trial
                   </button>
@@ -504,9 +504,11 @@ export function AdminPage() {
                     type="button"
                     className="btn btn-ghost"
                     disabled={busy}
-                    onClick={() => void patchUser(u.id, { entitlement_status: 'active' }, 'Active Cloud set.')}
+                    onClick={() =>
+                      void patchUser(u.id, { entitlement_status: 'active' }, 'Permanent Pocket Cloud granted.')
+                    }
                   >
-                    Set active
+                    Grant permanent Cloud
                   </button>
                   <button
                     type="button"
@@ -518,7 +520,7 @@ export function AdminPage() {
                   </button>
                 </div>
                 <p className="muted" style={{ fontSize: '0.85rem' }}>
-                  id <code>{u.id}</code>
+                  Permanent = active with no end date. Trial = 7 days. id <code>{u.id}</code>
                 </p>
               </li>
             ))}

@@ -7,7 +7,7 @@ namespace pocket {
 namespace {
 
 constexpr uint32_t kMagic = 0x314B4350u;  // 'PCK1' LE
-constexpr uint16_t kVersion = 3;
+constexpr uint16_t kVersion = 4;
 constexpr size_t kMaxString = 128;
 constexpr size_t kMaxBlob = 8192;
 
@@ -159,6 +159,12 @@ bool pack_device_config(const DeviceConfig& cfg, std::vector<uint8_t>& out) {
     put_str(out, cfg.wifi_known[i].ssid);
     put_str(out, cfg.wifi_known[i].password);
   }
+  // v4: parental + what's-new marker
+  put_u16(out, cfg.parental_pin_gated);
+  put_u8(out, cfg.parental_hide_pass_share ? 1 : 0);
+  put_u8(out, cfg.parental_block_connectors ? 1 : 0);
+  put_str(out, cfg.seen_whats_new_build);
+  put_str(out, cfg.fw_build_id);
   return out.size() <= kMaxBlob;
 }
 
@@ -169,7 +175,7 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
   uint16_t ver = 0;
   uint16_t flags = 0;
   if (!get_u32(data, len, off, magic) || magic != kMagic) return false;
-  if (!get_u16(data, len, off, ver) || (ver != 2 && ver != 3)) return false;
+  if (!get_u16(data, len, off, ver) || (ver != 2 && ver != 3 && ver != 4)) return false;
   if (!get_u16(data, len, off, flags)) return false;
   (void)flags;
 
@@ -214,6 +220,16 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
       if (!get_str(data, len, off, net.password)) return false;
       if (!net.ssid.empty()) cfg.wifi_known.push_back(std::move(net));
     }
+  }
+
+  if (ver >= 4) {
+    if (!get_u16(data, len, off, cfg.parental_pin_gated)) return false;
+    if (!get_u8(data, len, off, b)) return false;
+    cfg.parental_hide_pass_share = b != 0;
+    if (!get_u8(data, len, off, b)) return false;
+    cfg.parental_block_connectors = b != 0;
+    if (!get_str(data, len, off, cfg.seen_whats_new_build)) return false;
+    if (!get_str(data, len, off, cfg.fw_build_id)) return false;
   }
 
   out = std::move(cfg);

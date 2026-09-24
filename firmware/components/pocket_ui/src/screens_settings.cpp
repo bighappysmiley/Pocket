@@ -40,23 +40,31 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsAbout) {
     canvas_.draw_text(kSideMargin, kTitleY, "About", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
-    char ver[48];
-    std::snprintf(ver, sizeof(ver), "Version %s", cfg_.fw_version.c_str());
+    canvas_.draw_text(kSideMargin, kListTop, "Pocket Version 1", Canvas::TextRole::WordMark, Gray::G0);
+    char ver[64];
+    std::snprintf(ver, sizeof(ver), "Firmware %s", cfg_.fw_version.c_str());
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody, ver, Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + kBodyLinePitch, cfg_.device_name, Canvas::TextRole::Body,
-                      Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 2 * kBodyLinePitch, "Pocket Display",
-                      Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 12, "Pocket Cloud",
+    if (!cfg_.fw_build_id.empty()) {
+      canvas_.draw_text_fit(kSideMargin, kListTop + kTitleToBody + kBodyLinePitch, kContentW,
+                            cfg_.fw_build_id.c_str(), Canvas::TextRole::Secondary, Gray::G1);
+    }
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 2 * kBodyLinePitch, cfg_.device_name,
                       Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 4 * kBodyLinePitch + 12,
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, "What's new",
+                      Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_wrapped(
+        kSideMargin, kListTop + kTitleToBody + 4 * kBodyLinePitch + 8, kContentW, 5,
+        "Faster screen updates · clearer Home icons · clock over Wi‑Fi · in-app Wi‑Fi add · parental PIN gates.",
+        Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 7 * kBodyLinePitch + 16, "Pocket Cloud",
+                      Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 8 * kBodyLinePitch + 16,
                       cfg_.cloud_entitled ? "Subscribed" : "Not subscribed", Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 5 * kBodyLinePitch + 12,
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 9 * kBodyLinePitch + 16,
                       cfg_.companion_linked ? "Companion: Linked" : "Companion: Not linked",
                       Canvas::TextRole::Secondary, Gray::G1);
-    const char* acts[] = {"Reset Pocket...", "Back"};
-    draw_focus_rows(canvas_, focus_, acts, 2, 520);
+    const char* acts[] = {"Controls tips", "Reset Pocket...", "Back"};
+    draw_focus_rows(canvas_, focus_, acts, 3, 560);
     return;
   }
 
@@ -206,7 +214,7 @@ void App::render_settings() {
         canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, label.c_str(), Canvas::TextRole::Body, Gray::G0);
       y += kRowPitch;
     }
-    const char* acts[] = {"Add with phone…", "Forget preferred", "Back"};
+    const char* acts[] = {"Add in Companion…", "Forget preferred", "Back"};
     for (int a = 0; a < n_actions; ++a) {
       const int idx = n_known + a;
       if (idx == focus_.index)
@@ -339,8 +347,15 @@ void App::handle_settings(InputEvent e) {
         }
         mark_content_dirty();
       } else if (focus_.index == n_known) {
-        // Add with phone — SoftAP; do not clear known list.
-        begin_add_wifi_network();
+        // Prefer Companion Cloud push when already online (no SoftAP hop).
+        if (wifi_.connected()) {
+          play_sound(SoundId::Click);
+          error_msg_ = "Open Companion → Devices → Add Wi‑Fi.";
+          error_until_ms_ = now_ms_ + 4000;
+          mark_content_dirty();
+        } else {
+          begin_add_wifi_network();
+        }
       } else if (focus_.index == n_known + 1) {
         if (n_known > 0) {
           std::string victim = cfg_.wifi_ssid;
@@ -392,7 +407,7 @@ void App::handle_settings(InputEvent e) {
   }
 
   if (s == ScreenId::SettingsAbout) {
-    focus_.count = 2;
+    focus_.count = 3;
     if (e == InputEvent::Up) {
       focus_.move(-1);
       mark_content_dirty();
@@ -401,7 +416,12 @@ void App::handle_settings(InputEvent e) {
       mark_content_dirty();
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
-        // Reset confirm — immediate wipe for v1 sim
+        tips_page_ = 1;
+        cfg_.seen_whats_new_build = cfg_.fw_build_id;
+        store_.save(cfg_);
+        nav_.push(ScreenId::OnboardingDone);
+        after_nav();
+      } else if (focus_.index == 1) {
         DeviceConfig fresh;
         fresh.device_id = cfg_.device_id;
         cfg_ = fresh;

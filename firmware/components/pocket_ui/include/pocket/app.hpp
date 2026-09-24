@@ -54,6 +54,11 @@ struct PlatformCloud {
   }
   /** Latest firmware metadata JSON: build_id, version, url, size. Empty on failure. */
   virtual std::string firmware_latest_json() { return {}; }
+  /**
+   * Heartbeat + entitlement + optional pending Wi‑Fi / parental JSON.
+   * Returns raw JSON body; empty on failure.
+   */
+  virtual std::string device_attest_json(const std::string& /*device_id*/) { return {}; }
 };
 
 struct FirmwareUpdateInfo {
@@ -294,6 +299,10 @@ class App {
   void maybe_wifi_auto_reconnect();
   /** Start SoftAP to add another known network (keeps existing list). */
   void begin_add_wifi_network();
+  /** Poll Cloud when online: last_seen, entitlement, pending Wi‑Fi, parental. */
+  void maybe_cloud_attest();
+  bool parental_requires_pin(HomeApp app) const;
+  void launch_home_app(HomeApp app);
 
   ConfigStore& store_;
   PlatformClock& clock_;
@@ -371,6 +380,13 @@ class App {
   std::string ota_status_;
   std::string pending_build_id_;
   bool welcome_sound_played_ = false;
+  uint32_t last_attest_ms_ = 0;
+  /** After unlock PIN for a parental-gated app, allow launches until lock. */
+  bool parental_session_unlocked_ = false;
+  bool parental_pin_for_app_ = false;
+  HomeApp parental_pending_app_ = HomeApp::Notes;
+  /** OnboardingDone / Tips pages (0=ready, 1=rotary, 2=side, 3=power). */
+  int tips_page_ = 0;
 };
 
 }  // namespace pocket

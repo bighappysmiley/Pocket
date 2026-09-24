@@ -179,3 +179,18 @@ std::string EspCloud::firmware_latest_json() {
   }
   return resp;
 }
+
+std::string EspCloud::device_attest_json(const std::string& device_id) {
+  if (device_id.empty()) return {};
+  const std::string url =
+      std::string(POCKET_CLOUD_BASE) + "/v1/device/attest?device_id=" + device_id;
+  int status = 0;
+  std::string resp;
+  if (!http_request("GET", url, POCKET_DEVICE_API_KEY, {}, status, resp, 15000, "application/json",
+                    "x-device-id", device_id.c_str()) ||
+      status != 200) {
+    ESP_LOGW(TAG, "attest HTTP %d", status);
+    return {};
+  }
+  return resp;
+}

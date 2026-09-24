@@ -239,6 +239,37 @@ export const api = {
   unlinkDevice(id: string) {
     return request<void>(`/v1/devices/${id}/link`, { method: 'DELETE' })
   },
+  queueDeviceWifi(id: string, payload: { ssid: string; password: string }) {
+    return request<{ ok: true; queued: boolean }>(`/v1/devices/${id}/wifi`, {
+      method: 'POST',
+      body: payload,
+    })
+  },
+  getDeviceParental(id: string) {
+    return request<{
+      parental: {
+        pin_gated_apps?: string[]
+        hide_pass_share?: boolean
+        block_connectors?: boolean
+      }
+    }>(`/v1/devices/${id}/parental`)
+  },
+  updateDeviceParental(
+    id: string,
+    payload: {
+      pin_gated_apps: string[]
+      hide_pass_share?: boolean
+      block_connectors?: boolean
+    },
+  ) {
+    return request<{
+      parental: {
+        pin_gated_apps?: string[]
+        hide_pass_share?: boolean
+        block_connectors?: boolean
+      }
+    }>(`/v1/devices/${id}/parental`, { method: 'PATCH', body: payload })
+  },
   getPairSession(code: string) {
     return request<PairSession>(`/v1/pair/sessions/${encodeURIComponent(code)}`)
   },

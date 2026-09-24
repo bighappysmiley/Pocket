@@ -117,8 +117,14 @@ export function HomePage() {
             <Link className="btn btn-secondary" to="/lists">
               Lists
             </Link>
+            <Link className="btn btn-secondary" to="/music">
+              Music
+            </Link>
             <Link className="btn btn-secondary" to="/devices">
               Devices
+            </Link>
+            <Link className="btn btn-secondary" to="/backup">
+              Backup
             </Link>
             <Link className="btn btn-secondary" to="/billing">
               Billing
@@ -133,7 +139,8 @@ export function HomePage() {
             {trialAvailable ? <p className="muted">7 days free</p> : null}
           </div>
           <p className="muted">
-            Sync Notes &amp; Lists to your phone, back up, and keep copies where you already work.
+            Pocket Version 1 syncs Notes, Lists, and Music to your phone with Pocket Cloud — plus backup
+            and connectors.
           </p>
           <div className="actions">
             {trialAvailable ? (
@@ -169,7 +176,12 @@ export function HomePage() {
                 <Link className="list-link" to={`/devices/${d.id}`}>
                   <div className="list-title">{d.device_name || 'Pocket'}</div>
                   <div className="list-meta">
-                    {d.last_seen_at ? `Last seen ${relativeTime(d.last_seen_at)}` : 'Waiting to link'}
+                    {d.last_seen_at &&
+                    Date.now() - new Date(d.last_seen_at).getTime() < 1000 * 60 * 15
+                      ? `Online · ${relativeTime(d.last_seen_at)}`
+                      : d.last_seen_at
+                        ? `Offline · ${relativeTime(d.last_seen_at)}`
+                        : 'Waiting to check in'}
                   </div>
                 </Link>
               </li>
