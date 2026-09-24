@@ -45,7 +45,8 @@ bool EpdDisplay::init() {
 
   if (!spi_init()) return false;
   gpio_init();
-  cs(true);  // idle high
+  // Waveshare demo holds CS low for the session (single device on the bus).
+  gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), 0);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdRst), 1);
 
   ready_ = true;
@@ -117,27 +118,25 @@ void EpdDisplay::reset() {
 }
 
 void EpdDisplay::send_cmd(uint8_t cmd) {
-  cs(false);
+  gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), 0);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdDc), 0);
   spi_transaction_t t = {};
   t.length = 8;
   t.tx_buffer = &cmd;
   spi_device_polling_transmit(as_spi(spi_), &t);
-  cs(true);
 }
 
 void EpdDisplay::send_data(uint8_t data) {
-  cs(false);
+  gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), 0);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdDc), 1);
   spi_transaction_t t = {};
   t.length = 8;
   t.tx_buffer = &data;
   spi_device_polling_transmit(as_spi(spi_), &t);
-  cs(true);
 }
 
 void EpdDisplay::send_buffer(const uint8_t* data, size_t len) {
-  cs(false);
+  gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), 0);
   gpio_set_level(static_cast<gpio_num_t>(kPinEpdDc), 1);
   constexpr size_t kChunk = 4096;
   for (size_t i = 0; i < len; i += kChunk) {
@@ -148,7 +147,6 @@ void EpdDisplay::send_buffer(const uint8_t* data, size_t len) {
     t.tx_buffer = data + i;
     spi_device_polling_transmit(as_spi(spi_), &t);
   }
-  cs(true);
 }
 
 bool EpdDisplay::wait_busy(uint32_t timeout_ms) {
