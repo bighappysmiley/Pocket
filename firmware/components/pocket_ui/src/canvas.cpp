@@ -112,24 +112,69 @@ int Canvas::role_px(TextRole r) {
 }
 
 int Canvas::role_scale(TextRole r) {
-  // Compact scales for 480×800 e-ink. StatusBar stays denser (scale 2).
+  // Compact type for 480×800. Body matches status-bar density; titles stay modest.
   switch (r) {
     case TextRole::StatusBar:
       return 2;
     case TextRole::Secondary:
-      return 2;
+      return 1;
     case TextRole::Body:
       return 2;
     case TextRole::ScreenTitle:
-      return 4;
+      return 2;
     case TextRole::WordMark:
-      return 5;
+      return 3;
     case TextRole::PinDigit:
-      return 5;
+      return 3;
     case TextRole::HugeClock:
-      return 8;
+      return 6;
   }
   return 2;
+}
+
+int Canvas::text_height(TextRole role) const { return 7 * role_scale(role); }
+
+int Canvas::text_width(std::string_view text, TextRole role) const {
+  const int scale = role_scale(role);
+  // Tight tracking: 1px gap at scale 1, scale/2 otherwise — less sparse than +scale.
+  const int gap = scale <= 1 ? 1 : (scale / 2);
+  return static_cast<int>(text.size()) * (5 * scale + gap);
+}
+
+void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray g) {
+  const int scale = role_scale(role);
+  const int gap = scale <= 1 ? 1 : (scale / 2);
+  int cx = x;
+  for (unsigned char uc : text) {
+    // Skip UTF-8 continuation / non-ASCII so multi-byte punctuation does not spray glyphs.
+    if (uc >= 0x80) continue;
+    char c = static_cast<char>(uc);
+    const int gi = glyph_index(c);
+    const uint8_t* cols = kFont5x7[gi];
+
+    // Always soft-AA (including scale 1) so 5×7 isn't hard-edged/pixelated.
+    constexpr int kAA = 4;
+    for (int oy = 0; oy < 7 * scale; ++oy) {
+      for (int ox = 0; ox < 5 * scale; ++ox) {
+        float sum = 0.f;
+        for (int sy = 0; sy < kAA; ++sy) {
+          for (int sx = 0; sx < kAA; ++sx) {
+            const float fx =
+                (static_cast<float>(ox) + (static_cast<float>(sx) + 0.5f) / static_cast<float>(kAA)) /
+                static_cast<float>(scale);
+            const float fy =
+                (static_cast<float>(oy) + (static_cast<float>(sy) + 0.5f) / static_cast<float>(kAA)) /
+                static_cast<float>(scale);
+            sum += ink_sample(cols, fx, fy);
+          }
+        }
+        const int cover = static_cast<int>(sum + 0.5f);
+        if (cover == 0) continue;
+        set_pixel(cx + ox, y + oy, coverage_to_gray(cover, g));
+      }
+    }
+    cx += 5 * scale + gap;
+  }
 }
 
 void Canvas::clear(Gray g) {
@@ -195,53 +240,6 @@ void Canvas::line(int x0, int y0, int x1, int y1, Gray g) {
   }
 }
 
-int Canvas::text_width(std::string_view text, TextRole role) const {
-  const int scale = role_scale(role);
-  return static_cast<int>(text.size()) * (5 * scale + scale);
-}
-
-void Canvas::draw_text(int x, int y, std::string_view text, TextRole role, Gray g) {
-  const int scale = role_scale(role);
-  int cx = x;
-  for (unsigned char uc : text) {
-    char c = static_cast<char>(uc);
-    const int gi = glyph_index(c);
-    const uint8_t* cols = kFont5x7[gi];
-
-    if (scale == 1) {
-      for (int col = 0; col < 5; ++col) {
-        uint8_t bits = cols[col];
-        for (int row = 0; row < 7; ++row) {
-          if (bits & (1u << row)) set_pixel(cx + col, y + row, g);
-        }
-      }
-    } else {
-      // 4×4 supersampled + bilinear glyph sample → softer e-ink type.
-      constexpr int kAA = 4;
-      for (int oy = 0; oy < 7 * scale; ++oy) {
-        for (int ox = 0; ox < 5 * scale; ++ox) {
-          float sum = 0.f;
-          for (int sy = 0; sy < kAA; ++sy) {
-            for (int sx = 0; sx < kAA; ++sx) {
-              const float fx =
-                  (static_cast<float>(ox) + (static_cast<float>(sx) + 0.5f) / static_cast<float>(kAA)) /
-                  static_cast<float>(scale);
-              const float fy =
-                  (static_cast<float>(oy) + (static_cast<float>(sy) + 0.5f) / static_cast<float>(kAA)) /
-                  static_cast<float>(scale);
-              sum += ink_sample(cols, fx, fy);
-            }
-          }
-          const int cover = static_cast<int>(sum + 0.5f);
-          if (cover == 0) continue;
-          set_pixel(cx + ox, y + oy, coverage_to_gray(cover, g));
-        }
-      }
-    }
-    cx += 5 * scale + scale;
-  }
-}
-
 void Canvas::draw_text_centered(int cx, int y, std::string_view text, TextRole role, Gray g) {
   const int w = text_width(text, role);
   draw_text(cx - w / 2, y, text, role, g);
@@ -262,7 +260,7 @@ void Canvas::draw_focus_tile(int x, int y, int w, int h, std::string_view label,
   fill_rect(x, y, w, h, Gray::G0);
   const int pad = 12;
   const int max_w = std::max(8, w - pad * 2);
-  const int th = 7 * role_scale(role);  // actual rendered glyph height
+  const int th = text_height(role);
   // Fit then center the (possibly truncated) label.
   std::string s(label);
   const std::string ell = "...";
