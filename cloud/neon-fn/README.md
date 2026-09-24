@@ -24,7 +24,7 @@ Env (carried across deploys; set on change):
 - `ADMIN_EMAILS` — comma-separated (default includes owner)
 - `DATABASE_URL` injected by Neon
 
-Health: `{ "ok": true, "build": "scram-api-v9-session-header" }`
+Health: `{ "ok": true, "build": "scram-api-v10-firmware-ota" }`
 
 ## Stripe (Admin UI)
 

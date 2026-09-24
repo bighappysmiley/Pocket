@@ -344,7 +344,9 @@ function serializeMusicMeta(row) {
   };
 }
 
-const MUSIC_MAX_BYTES = 2 * 1024 * 1024; // 2 MiB decoded (fits LittleFS; SD can hold more per free space)
+const MUSIC_MAX_INTERNAL_BYTES = 2 * 1024 * 1024; // LittleFS-safe
+const MUSIC_MAX_SD_BYTES = 32 * 1024 * 1024; // when Pocket reports microSD
+const MUSIC_MAX_BYTES = MUSIC_MAX_SD_BYTES; // cloud accepts up to SD ceiling
 
 async function userIdForDeviceKey(req, deviceId) {
   const key = (req.headers.get("x-device-key") || "").trim();
@@ -370,6 +372,7 @@ async function ensureAdminSchema() {
   await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'`);
   await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ`);
   await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS sd_present BOOLEAN NOT NULL DEFAULT false`);
   await query(`CREATE TABLE IF NOT EXISTS badges (
     id TEXT PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
@@ -715,7 +718,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v9-session-header" });
+        return json(req, { ok: true, build: "scram-api-v10-firmware-ota" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
@@ -902,7 +905,13 @@ export default {
           return json(req, { message: "Upload data was invalid." }, 400);
         }
         if (!decoded.length || decoded.length > MUSIC_MAX_BYTES) {
-          return json(req, { message: `Track must be a WAV under ${MUSIC_MAX_BYTES} bytes.` }, 400);
+          return json(
+            req,
+            {
+              message: `Track must be a WAV under ${MUSIC_MAX_SD_BYTES / (1024 * 1024)} MB (or ${MUSIC_MAX_INTERNAL_BYTES / (1024 * 1024)} MB without an SD card).`,
+            },
+            400,
+          );
         }
         if (decoded.length < 12 || decoded.toString("ascii", 0, 4) !== "RIFF" || decoded.toString("ascii", 8, 12) !== "WAVE") {
           return json(req, { message: "Only WAV audio is supported on Pocket." }, 400);
@@ -974,16 +983,60 @@ export default {
         }
       }
 
-      // Device library pull (x-device-key + device_id)
+      // Device library pull (x-device-key + device_id); reports microSD for Companion limits
       if (req.method === "GET" && path === "/v1/device/music") {
         const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
         const userId = await userIdForDeviceKey(req, deviceId);
         if (!userId) return json(req, { message: "Sign in to continue." }, 401);
-        await query(`UPDATE device_links SET last_seen_at='${new Date().toISOString()}' WHERE device_id='${esc(deviceId)}'`);
+        const sdHeader = (req.headers.get("x-pocket-sd") || "").trim();
+        const sdQuery = u.searchParams.get("sd") === "1";
+        const sdPresent = sdHeader === "1" || sdQuery;
+        const now = new Date().toISOString();
+        await query(
+          `UPDATE device_links SET last_seen_at='${now}', sd_present=${sdPresent ? "true" : "false"} WHERE device_id='${esc(deviceId)}'`,
+        );
         const rows = await query(
           `SELECT id, title, filename, mime, size_bytes, created_at FROM music_tracks WHERE user_id='${esc(userId)}' AND deleted_at IS NULL ORDER BY created_at DESC`,
         );
-        return json(req, { tracks: rows.map(serializeMusicMeta) });
+        return json(req, { tracks: rows.map(serializeMusicMeta), sd_present: sdPresent });
+      }
+
+      if (req.method === "GET" && path === "/v1/music/limits") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const rows = await query(
+          `SELECT COALESCE(BOOL_OR(sd_present), false) AS sd FROM device_links WHERE user_id='${esc(gate.user.id)}'`,
+        );
+        const sd = Boolean(rows[0]?.sd === true || rows[0]?.sd === "t" || rows[0]?.sd === "true");
+        return json(req, {
+          sd_present: sd,
+          max_upload_bytes: sd ? MUSIC_MAX_SD_BYTES : MUSIC_MAX_INTERNAL_BYTES,
+          internal_max_bytes: MUSIC_MAX_INTERNAL_BYTES,
+          sd_max_bytes: MUSIC_MAX_SD_BYTES,
+        });
+      }
+
+      // Device OTA discovery — points at firmware-latest app image (A/B OTA, not merged USB bin).
+      if (req.method === "GET" && path === "/v1/firmware/latest") {
+        const manifestUrl =
+          "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/firmware-manifest.json";
+        try {
+          const r = await fetch(manifestUrl, { headers: { Accept: "application/json" } });
+          if (r.ok) {
+            const body = await r.json();
+            if (body && body.url) return json(req, { ok: true, ...body });
+          }
+        } catch (_) {
+          /* fall through */
+        }
+        return json(req, {
+          ok: true,
+          build_id: "POCKET-LIVE-unknown",
+          version: "firmware-latest",
+          url: "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/pocket.bin",
+          size: 0,
+          channel: "stable",
+        });
       }
 
       // ---- Notes ----

@@ -93,38 +93,35 @@ void App::render_onboarding() {
         }
         break;
       }
-      if (sd_kind_ == SdContentKind::FirmwareRisk) {
-        int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap, "This card looks modified.",
-                                          Canvas::TextRole::Body, Gray::G0);
-        y = canvas_.draw_text_wrapped(
-            kSideMargin, y + 8, kWrapW, kLineGap,
-            "Firmware or install files were found. Erase the card before linking.", Canvas::TextRole::Secondary,
-            Gray::G1);
-        focus_.count = 1;
-        canvas_.draw_focus_tile(kSideMargin, y + 24, kCanvasW - 32, kFocusRowH, "Erase card", Canvas::TextRole::Body);
-        break;
-      }
       int body_y = ty + 52;
-      if (sd_kind_ == SdContentKind::Media) {
+      if (sd_kind_ == SdContentKind::FirmwareRisk) {
+        body_y = canvas_.draw_text_wrapped(kSideMargin, body_y, kWrapW, kLineGap, "This card looks modified.",
+                                           Canvas::TextRole::Body, Gray::G0);
+        body_y = canvas_.draw_text_wrapped(
+            kSideMargin, body_y + 8, kWrapW, kLineGap,
+            "Reformat before Pocket uses it, or eject to keep files.", Canvas::TextRole::Secondary, Gray::G1);
+      } else if (sd_kind_ == SdContentKind::Media) {
         body_y = canvas_.draw_text_wrapped(kSideMargin, body_y, kWrapW, kLineGap, "Card has media files.",
                                            Canvas::TextRole::Body, Gray::G0);
         body_y = canvas_.draw_text_wrapped(kSideMargin, body_y + 8, kWrapW, kLineGap,
-                                           "Erase to wipe, or eject to keep your music and photos.",
+                                           "Reformat clears the card for Pocket. Eject keeps your files.",
                                            Canvas::TextRole::Secondary, Gray::G1);
       } else if (sd_kind_ == SdContentKind::Empty) {
         body_y = canvas_.draw_text_wrapped(kSideMargin, body_y, kWrapW, kLineGap, "Empty card ready.",
                                            Canvas::TextRole::Body, Gray::G0);
         body_y = canvas_.draw_text_wrapped(kSideMargin, body_y + 8, kWrapW, kLineGap,
-                                           "Erase to reformat, or continue.", Canvas::TextRole::Secondary, Gray::G1);
+                                           "Reformat prepares the card, or eject to leave it unused.",
+                                           Canvas::TextRole::Secondary, Gray::G1);
       } else {
         body_y = canvas_.draw_text_wrapped(kSideMargin, body_y, kWrapW, kLineGap, "Card detected.",
                                            Canvas::TextRole::Body, Gray::G0);
-        body_y = canvas_.draw_text_wrapped(kSideMargin, body_y + 8, kWrapW, kLineGap, "Erase, eject, or continue.",
+        body_y = canvas_.draw_text_wrapped(kSideMargin, body_y + 8, kWrapW, kLineGap,
+                                           "Reformat for Pocket music and files, or eject.",
                                            Canvas::TextRole::Secondary, Gray::G1);
       }
-      focus_.count = 3;
-      const char* acts[] = {"Erase card", "Eject card", "Continue"};
-      for (int i = 0; i < 3; ++i) {
+      focus_.count = 2;
+      const char* acts[] = {"Reformat and continue", "Eject"};
+      for (int i = 0; i < 2; ++i) {
         const int row_y = body_y + 24 + i * kRowPitch;
         if (i == focus_.index)
           canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
@@ -515,40 +512,25 @@ void App::handle_onboarding(InputEvent e) {
       }
       return;
     }
-    if (sd_kind_ == SdContentKind::FirmwareRisk) {
-      // Force erase only
-      if (storage_ && storage_->erase_card()) {
-        storage_->unmount();
-        play_sound(SoundId::Success);
-        begin_softap_link();
-      } else {
-        error_msg_ = "Couldn't erase the card.";
-        error_until_ms_ = now_ms_ + 3000;
-        play_sound(SoundId::Attention);
-        mark_content_dirty();
-      }
-      return;
-    }
-    // Media / empty / unknown: Erase | Eject | Continue
+    // Present card: Reformat and continue | Eject (same as anytime SD gate).
     if (focus_.index == 0) {
       if (storage_ && storage_->erase_card()) {
         storage_->unmount();
+        if (storage_->probe()) storage_->music_ensure_root();
         play_sound(SoundId::Success);
         begin_softap_link();
       } else {
-        error_msg_ = "Couldn't erase the card.";
+        error_msg_ = "Couldn't reformat the card.";
         error_until_ms_ = now_ms_ + 3000;
         play_sound(SoundId::Attention);
         mark_content_dirty();
       }
-    } else if (focus_.index == 1) {
+    } else {
       if (storage_) storage_->unmount();
       sd_waiting_eject_ = true;
       last_sd_poll_ms_ = 0;
       play_sound(SoundId::Attention);
       mark_content_dirty();
-    } else {
-      begin_softap_link();
     }
     return;
   }

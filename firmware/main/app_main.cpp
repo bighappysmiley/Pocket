@@ -13,6 +13,7 @@
 #include "esp_wifi_platform.hpp"
 #include "esp_cloud_platform.hpp"
 #include "esp_config_store.hpp"
+#include "esp_ota_platform.hpp"
 
 #ifdef POCKET_HOST
 #error "app_main is for ESP-IDF only"
@@ -30,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v32-partial-refresh";
+static const char* kBuildId = "POCKET-LIVE-v33-sd-music-update";
 
 namespace {
 
@@ -151,6 +152,10 @@ struct EspStorage : pocket::PlatformStorage {
   }
   uint64_t free_bytes(const std::string& root) override {
     return pocket::board::fs_free_bytes(root.c_str());
+  }
+  bool music_on_sd() override {
+    const std::string root = music_root();
+    return root.rfind("/sdcard", 0) == 0;
   }
 };
 
@@ -275,12 +280,14 @@ extern "C" void app_main(void) {
   static EspClock clock;
   static EspWifi wifi;
   static EspCloud cloud;
+  static EspOta ota;
   static EspDisplay display(epd);
   static EspStorage storage;
   static EspAudio audio;
   static EspIdentity identity;
   static pocket::InputMapper mapper;
-  static pocket::App app(store, clock, wifi, cloud, display, &storage, &audio, &identity);
+  static pocket::App app(store, clock, wifi, cloud, display, &storage, &audio, &identity, &ota);
+  app.set_build_id(kBuildId);
 
   g_boot.buttons = &buttons;
   g_boot.epd = &epd;

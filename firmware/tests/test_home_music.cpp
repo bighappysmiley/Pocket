@@ -45,7 +45,7 @@ struct TCloud : PlatformCloud {
   std::string pair_status(const std::string&) override { return "pending"; }
   void refresh_entitlement(DeviceConfig&) override {}
   std::string stt_transcribe(const std::vector<uint8_t>&) override { return {}; }
-  std::string music_list_json(const std::string&) override {
+  std::string music_list_json(const std::string&, bool) override {
     return R"([{"id":"t1","title":"Chime","filename":"chime.wav","size":44}])";
   }
   std::vector<uint8_t> music_download(const std::string&, const std::string&) override {

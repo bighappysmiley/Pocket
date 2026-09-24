@@ -44,11 +44,31 @@ struct PlatformCloud {
   virtual void refresh_entitlement(DeviceConfig& cfg) = 0;
   virtual std::string stt_transcribe(const std::vector<uint8_t>& pcm) = 0;
   /** List music library metadata JSON (id/title/filename/size). Empty on failure. */
-  virtual std::string music_list_json(const std::string& /*device_id*/) { return "[]"; }
+  virtual std::string music_list_json(const std::string& /*device_id*/, bool /*sd_present*/ = false) {
+    return "[]";
+  }
   /** Download track audio bytes by id. Returns empty on failure. */
   virtual std::vector<uint8_t> music_download(const std::string& /*device_id*/,
                                               const std::string& /*track_id*/) {
     return {};
+  }
+  /** Latest firmware metadata JSON: build_id, version, url, size. Empty on failure. */
+  virtual std::string firmware_latest_json() { return {}; }
+};
+
+struct FirmwareUpdateInfo {
+  std::string build_id;
+  std::string version;
+  std::string url;
+  int size_bytes = 0;
+};
+
+struct PlatformOta {
+  virtual ~PlatformOta() = default;
+  /** Download `url` into the inactive OTA slot and set boot partition. Blocking. */
+  virtual bool apply_https_ota(const std::string& url, std::string* status_out) {
+    if (status_out) *status_out = "OTA not available.";
+    return false;
   }
 };
 
@@ -80,6 +100,8 @@ struct PlatformStorage {
   virtual std::string music_root() { return {}; }
   virtual bool music_ensure_root() { return false; }
   virtual uint64_t free_bytes(const std::string& /*root*/) { return 0; }
+  /** True when music_root is on the microSD mount (larger tracks OK). */
+  virtual bool music_on_sd() { return false; }
 };
 
 enum class SoundId : uint8_t { Click = 0, Welcome, Success, Attention };
@@ -184,9 +206,10 @@ class App {
  public:
   App(ConfigStore& store, PlatformClock& clock, PlatformWifi& wifi, PlatformCloud& cloud,
       PlatformDisplay& display, PlatformStorage* storage = nullptr, PlatformAudio* audio = nullptr,
-      PlatformIdentity* identity = nullptr);
+      PlatformIdentity* identity = nullptr, PlatformOta* ota = nullptr);
 
   void boot();
+  void set_build_id(std::string_view id);
   void tick(uint32_t now_ms);
   void handle(InputEvent e);
 
@@ -257,6 +280,14 @@ class App {
   void music_sync_from_cloud();
   void render_settings();
   void handle_settings(InputEvent e);
+  void render_sd_gate();
+  void handle_sd_gate(InputEvent e);
+  void enter_sd_gate_from_hotplug();
+  void leave_sd_gate();
+  void maybe_poll_sd_hotplug();
+  void refresh_sd_kind();
+  void begin_firmware_update();
+  bool parse_firmware_latest(const std::string& json, FirmwareUpdateInfo* out);
 
   ConfigStore& store_;
   PlatformClock& clock_;
@@ -266,6 +297,7 @@ class App {
   PlatformStorage* storage_ = nullptr;
   PlatformAudio* audio_ = nullptr;
   PlatformIdentity* identity_ = nullptr;
+  PlatformOta* ota_ = nullptr;
 
   DeviceConfig cfg_{};
   AppData data_{};
@@ -324,6 +356,12 @@ class App {
   SdContentKind sd_kind_ = SdContentKind::Absent;
   bool sd_waiting_eject_ = false;
   uint32_t last_sd_poll_ms_ = 0;
+  /** Edge-detect hot-insert after onboarding (true while card still seated after gate). */
+  bool sd_was_present_ = false;
+  bool sd_gate_active_ = false;
+  ScreenId sd_return_screen_ = ScreenId::Home;
+  std::string ota_status_;
+  std::string pending_build_id_;
   bool welcome_sound_played_ = false;
 };
 

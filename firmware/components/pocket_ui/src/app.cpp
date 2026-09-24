@@ -17,7 +17,7 @@ static const char* kTimezones[] = {"America/New_York", "America/Chicago", "Ameri
 
 App::App(ConfigStore& store, PlatformClock& clock, PlatformWifi& wifi, PlatformCloud& cloud,
          PlatformDisplay& display, PlatformStorage* storage, PlatformAudio* audio,
-         PlatformIdentity* identity)
+         PlatformIdentity* identity, PlatformOta* ota)
     : store_(store),
       clock_(clock),
       wifi_(wifi),
@@ -25,10 +25,25 @@ App::App(ConfigStore& store, PlatformClock& clock, PlatformWifi& wifi, PlatformC
       display_(display),
       storage_(storage),
       audio_(audio),
-      identity_(identity) {}
+      identity_(identity),
+      ota_(ota) {}
+
+void App::set_build_id(std::string_view id) {
+  pending_build_id_.assign(id.begin(), id.end());
+}
 
 void App::boot() {
   cfg_ = store_.load();
+  if (!cfg_.fw_build_id.empty()) {
+    // Keep flashed identity over any stale NVS version string.
+  } else if (!cfg_.fw_version.empty() && cfg_.fw_version.rfind("POCKET-LIVE", 0) == 0) {
+    cfg_.fw_build_id = cfg_.fw_version;
+  }
+  // Prefer identity stamped by app_main (kBuildId) when set before boot.
+  if (!pending_build_id_.empty()) {
+    cfg_.fw_build_id = pending_build_id_;
+    cfg_.fw_version = pending_build_id_;
+  }
   if (cfg_.device_name.empty()) cfg_.device_name = "Pocket";
   if (cfg_.device_id.empty()) {
     if (identity_) cfg_.device_id = identity_->device_uuid();
@@ -47,6 +62,11 @@ void App::boot() {
     nav_.reset(resume);
   } else {
     nav_.reset(ScreenId::Lock);
+    // Card already seated at boot is not a hot-insert — only interrupt on new insert.
+    if (storage_) {
+      storage_->probe();
+      sd_was_present_ = storage_->present();
+    }
   }
   after_nav();
 }
@@ -300,18 +320,25 @@ void App::tick(uint32_t now_ms) {
       }
     }
   }
-  // SD eject wait: poll until card gone, then continue to SoftAP Link
-  if (nav_.current() == ScreenId::OnboardingSdCard && sd_waiting_eject_) {
+  // SD eject wait (setup SoftAP path or anytime gate)
+  if ((nav_.current() == ScreenId::OnboardingSdCard || nav_.current() == ScreenId::SdCardGate) &&
+      sd_waiting_eject_) {
     if (now_ms - last_sd_poll_ms_ >= 500) {
       last_sd_poll_ms_ = now_ms;
       const bool still = storage_ && storage_->present();
       if (!still) {
         sd_waiting_eject_ = false;
         play_sound(SoundId::Click);
-        begin_softap_link();
+        if (nav_.current() == ScreenId::SdCardGate) {
+          sd_was_present_ = false;
+          leave_sd_gate();
+        } else {
+          begin_softap_link();
+        }
       }
     }
   }
+  maybe_poll_sd_hotplug();
   if (dirty_) {
     present_canvas(false);
     dirty_ = false;
@@ -406,6 +433,9 @@ void App::handle(InputEvent e) {
     case ScreenId::OnboardingDone:
       handle_onboarding(e);
       break;
+    case ScreenId::SdCardGate:
+      handle_sd_gate(e);
+      break;
     case ScreenId::Home:
       handle_home(e);
       break;
@@ -470,6 +500,9 @@ void App::render() {
     case ScreenId::OnboardingMicTest:
     case ScreenId::OnboardingDone:
       render_onboarding();
+      break;
+    case ScreenId::SdCardGate:
+      render_sd_gate();
       break;
     case ScreenId::Home:
       render_home();

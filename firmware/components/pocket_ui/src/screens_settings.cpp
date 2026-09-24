@@ -132,12 +132,15 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kTitleY, "Home apps", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(kSideMargin, kListTop - 8, "Choose what to show on Home.", Canvas::TextRole::Secondary,
                       Gray::G1);
-    const char* names[] = {"Notes", "Ledger", "Clock", "Pass", "Weather", "Music", "Settings (required)"};
-    focus_.count = 7;
-    for (int i = 0; i < 7; ++i) {
-      const int y = kListTop + 36 + i * kRowPitch;
+    // Settings + Update always visible on Home; not toggleable here.
+    const char* names[] = {"Notes", "Ledger", "Clock", "Pass", "Weather", "Music",
+                           "Settings (always on)", "Update (always on)"};
+    focus_.count = 8;
+    for (int i = 0; i < 8; ++i) {
+      const int y = kListTop + 28 + i * kRowPitch;
       bool on = home_app_visible(cfg_, static_cast<HomeApp>(i));
-      std::string label = std::string(names[i]) + (on ? ": On" : ": Off");
+      std::string label = std::string(names[i]);
+      if (i < 6) label += on ? ": On" : ": Off";
       if (i == focus_.index)
         canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
       else
@@ -148,13 +151,28 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsUpdate) {
     canvas_.draw_text(kSideMargin, kTitleY, "Software update", Canvas::TextRole::ScreenTitle, Gray::G0);
-    char ver[48];
-    std::snprintf(ver, sizeof(ver), "Version %s", cfg_.fw_version.c_str());
-    canvas_.draw_text(kSideMargin, kListTop, ver, Canvas::TextRole::Body, Gray::G0);
-    const char* rows[] = {"Check for update", "Back"};
+    char ver[64];
+    std::snprintf(ver, sizeof(ver), "%s", cfg_.fw_build_id.empty() ? cfg_.fw_version.c_str() : cfg_.fw_build_id.c_str());
+    canvas_.draw_text_fit(kSideMargin, kListTop, kContentW, ver, Canvas::TextRole::Secondary, Gray::G1);
+    const char* rows[] = {"Update Pocket", "Back"};
     draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 72);
-    canvas_.draw_text(kSideMargin, kListTop + 72 + 2 * kRowPitch + 16, "You're up to date",
-                      Canvas::TextRole::Secondary, Gray::G1);
+    return;
+  }
+
+  if (s == ScreenId::SettingsUpdateProgress) {
+    canvas_.draw_text(kSideMargin, kTitleY, "Updating", Canvas::TextRole::ScreenTitle, Gray::G0);
+    canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, 6,
+                              ota_status_.empty() ? "Working…" : ota_status_, Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin, kBottomCtaY, "Keep Pocket plugged in", Canvas::TextRole::Secondary, Gray::G1);
+    return;
+  }
+
+  if (s == ScreenId::SettingsUpdateResult) {
+    canvas_.draw_text(kSideMargin, kTitleY, "Update", Canvas::TextRole::ScreenTitle, Gray::G0);
+    canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, 6,
+                              ota_status_.empty() ? "Done." : ota_status_, Canvas::TextRole::Body, Gray::G0);
+    focus_.count = 1;
+    canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "OK", Canvas::TextRole::Body);
     return;
   }
 
@@ -225,7 +243,7 @@ void App::handle_settings(InputEvent e) {
   }
 
   if (s == ScreenId::SettingsHomeApps) {
-    focus_.count = 7;
+    focus_.count = 8;
     if (e == InputEvent::Up) {
       focus_.move(-1);
       mark_content_dirty();
@@ -233,7 +251,8 @@ void App::handle_settings(InputEvent e) {
       focus_.move(1);
       mark_content_dirty();
     } else if (e == InputEvent::Select) {
-      if (focus_.index != 6) {  // Settings always on
+      // Settings (6) + Update (7) always on
+      if (focus_.index < 6) {
         cfg_.home_visible ^= static_cast<uint16_t>(1u << focus_.index);
         store_.save(cfg_);
         mark_content_dirty();
@@ -369,6 +388,36 @@ void App::handle_settings(InputEvent e) {
         // Trial / subscribe — open companion billing via same pair path if unlinked
         mark_content_dirty();
       }
+    }
+    return;
+  }
+
+  if (s == ScreenId::SettingsUpdate) {
+    focus_.count = 2;
+    if (e == InputEvent::Up) {
+      focus_.move(-1);
+      mark_content_dirty();
+    } else if (e == InputEvent::Down) {
+      focus_.move(1);
+      mark_content_dirty();
+    } else if (e == InputEvent::Select) {
+      if (focus_.index == 0) begin_firmware_update();
+      else {
+        nav_.replace(ScreenId::SettingsRoot);
+        after_nav();
+      }
+    }
+    return;
+  }
+
+  if (s == ScreenId::SettingsUpdateProgress) {
+    return;  // blocking update owns the screen
+  }
+
+  if (s == ScreenId::SettingsUpdateResult) {
+    if (e == InputEvent::Select || e == InputEvent::Back) {
+      nav_.replace(ScreenId::Home);
+      after_nav();
     }
     return;
   }
