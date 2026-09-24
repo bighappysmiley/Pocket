@@ -14,7 +14,7 @@ constexpr uint8_t kAxpAddr = 0x34;
 constexpr int kSda = 41;
 constexpr int kScl = 42;
 
-// AXP2101 registers (XPowers / Waveshare)
+// AXP2101 registers (XPowersLib / Waveshare)
 constexpr uint8_t kRegDcOnOff = 0x80;
 constexpr uint8_t kRegDc1Vol = 0x82;
 constexpr uint8_t kRegLdoOnOff0 = 0x90;
@@ -44,9 +44,7 @@ bool rd(uint8_t reg, uint8_t* val) {
   return true;
 }
 
-}  // namespace
-
-bool axp_enable_epd_rails() {
+bool ensure_bus() {
   if (dev_) return true;
 
   i2c_master_bus_config_t bus_cfg = {};
@@ -72,10 +70,15 @@ bool axp_enable_epd_rails() {
     ESP_LOGE(TAG, "add axp: %s", esp_err_to_name(err));
     return false;
   }
-
   vTaskDelay(pdMS_TO_TICKS(20));
+  return true;
+}
 
-  // Chip ID / presence check — AXP2101 chip id reg 0x03 often reads 0x4A
+}  // namespace
+
+bool axp_enable_epd_rails() {
+  if (!ensure_bus()) return false;
+
   uint8_t id = 0;
   if (!rd(0x03, &id)) {
     ESP_LOGW(TAG, "AXP2101 not responding — continuing without PMIC tweaks");
@@ -88,13 +91,14 @@ bool axp_enable_epd_rails() {
   uint8_t dc = 0;
   if (rd(kRegDcOnOff, &dc)) wr(kRegDcOnOff, static_cast<uint8_t>(dc | 0x01));
 
-  // ALDO1/2/3 = 3.3V: (3300-500)/100 = 28 — feeds EPD_VCC_AXP on this board
+  // ALDO1/2/3 = 3.3V: (3300-500)/100 = 28 — EPD_VCC_AXP on this board
   wr(kRegAldo1Vol, 28);
   wr(kRegAldo2Vol, 28);
   wr(kRegAldo3Vol, 28);
   uint8_t ldo = 0;
   if (rd(kRegLdoOnOff0, &ldo)) {
-    wr(kRegLdoOnOff0, static_cast<uint8_t>(ldo | 0x07));  // ALDO1|2|3
+    // bit0=ALDO1, bit1=ALDO2, bit2=ALDO3 (XPowersLib)
+    wr(kRegLdoOnOff0, static_cast<uint8_t>(ldo | 0x07));
   } else {
     wr(kRegLdoOnOff0, 0x07);
   }
@@ -105,3 +109,8 @@ bool axp_enable_epd_rails() {
 }
 
 }  // namespace pocket::board
+
+extern "C" void pocket_axp_epd_power_on(void) {
+  // Waveshare EPD_Init → EPD_Power_ON → enableALDO3(). Idempotent full bring-up.
+  (void)pocket::board::axp_enable_epd_rails();
+}

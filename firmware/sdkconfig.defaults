@@ -1,20 +1,30 @@
 CONFIG_IDF_TARGET="esp32s3"
 # Waveshare ESP32-S3-ePaper-3.97 ships ESP32-S3-WROOM-1-N16R8 (16MB flash + 8MB OPI PSRAM).
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
-CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# CRITICAL: match Waveshare official sdkconfig.
+# Primary USB_SERIAL_JTAG stalls on this board right after "Multicore app"
+# (bootloader logs, then silence). UART primary + USB-Serial/JTAG secondary
+# is what the working factory/demo firmware uses; Mac cu.usbmodem still works.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+
 CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_BOOT_INIT=y
 # Do not brick boot if PSRAM probe fails on a rare module variant.
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
-# E-ink refresh + BUSY can be long; avoid WDT reboot loops.
-CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
-# Idle-task TWDT fires when main spins on SPI without yields — disable idle checks.
-CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
-CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
-# Interrupt WDT: raise so long polling SPI cannot trip INT_WDT either.
-CONFIG_ESP_INT_WDT_TIMEOUT_MS=800
+
+# Bring-up: disable task + interrupt WDTs entirely so a slow e-ink refresh
+# cannot reboot-loop. Waveshare demo also avoids TWDT panic on long BUSY.
+CONFIG_ESP_TASK_WDT_EN=n
+CONFIG_ESP_INT_WDT=n
