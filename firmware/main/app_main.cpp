@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "pocket/app.hpp"
 #include "pocket/input.hpp"
+#include "pocket_board/axp.hpp"
 #include "pocket_board/buttons.hpp"
 #include "pocket_board/epd.hpp"
 #include "pocket_board/pins.hpp"
@@ -69,9 +70,12 @@ extern "C" void app_main(void) {
            pocket::board::kPinButtonFunction, pocket::board::kPinButtonDown, pocket::board::kPinBoot,
            pocket::board::kPinPwr);
 
-  // Buttons first so a display hang still leaves a path after we return to the loop.
+  // Buttons first so we always reach the input loop after present returns.
   static pocket::board::ButtonPoller buttons;
   buttons.init();
+
+  // EPD_VCC is supplied by AXP2101 ALDOs on this Waveshare board.
+  pocket::board::axp_enable_epd_rails();
 
   static pocket::board::EpdDisplay epd;
   if (!epd.init()) {

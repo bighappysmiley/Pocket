@@ -338,7 +338,10 @@ Manual one-liner (your port, Homebrew esptool v5):
 fi
 
 say ""
-say "Done. The board should reboot into Pocket."
-say "Expect a full e-ink refresh (~1–2s), then 'Welcome to Pocket' (or Lock)."
-say "Rotary Up/Down should move focus; press (Function) selects Continue."
-say "If the Chinese factory demo is still visible, press RESET once and wait for refresh."
+say "Done. Unplug USB for 2 seconds, plug back in, wait up to ~15s."
+say "Expect a full e-ink refresh, then 'Welcome to Pocket'."
+say "Rotary Up/Down moves focus; press selects Continue."
+say "No SD card or battery is required (USB power is enough)."
+say "If the Chinese demo is still stuck, re-run with a full erase:"
+say "  esptool --chip esp32s3 -p $PORT_PATH erase-flash"
+say "  then flash again with this script."
