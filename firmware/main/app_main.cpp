@@ -5,6 +5,7 @@
 #include "pocket_board/buttons.hpp"
 #include "pocket_board/epd.hpp"
 #include "pocket_board/pins.hpp"
+#include "esp_wifi_platform.hpp"
 
 #ifdef POCKET_HOST
 #error "app_main is for ESP-IDF only"
@@ -20,7 +21,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v11-usb-console";
+static const char* kBuildId = "POCKET-LIVE-v12-ui-wifi";
 
 namespace {
 
@@ -53,12 +54,6 @@ struct EspClock : pocket::PlatformClock {
   }
 };
 
-struct EspWifi : pocket::PlatformWifi {
-  std::vector<std::string> scan() override { return {}; }
-  bool connect(const std::string&, const std::string&) override { return false; }
-  bool connected() const override { return false; }
-};
-
 struct EspCloud : pocket::PlatformCloud {
   std::string create_pair_session(const std::string&) override { return "AAAAAAAA"; }
   std::string pair_status(const std::string&) override { return "pending"; }
@@ -87,11 +82,11 @@ static BootCtx g_boot;
 
 static void epd_boot_task(void* /*arg*/) {
   esp_rom_printf("epd_boot_task: axp\n");
-  ESP_LOGI(TAG, "epd_boot_task: enabling AXP…");
+  ESP_LOGI(TAG, "epd_boot_task: enabling AXP");
   pocket::board::axp_enable_epd_rails();
 
   esp_rom_printf("epd_boot_task: epd.init\n");
-  ESP_LOGI(TAG, "epd_boot_task: e-paper init / factory wipe…");
+  ESP_LOGI(TAG, "epd_boot_task: e-paper init / factory wipe");
   if (g_boot.epd && !g_boot.epd->init()) {
     ESP_LOGE(TAG, "e-paper init failed — UI stays headless");
     vTaskDelete(nullptr);
@@ -99,7 +94,7 @@ static void epd_boot_task(void* /*arg*/) {
   }
 
   esp_rom_printf("epd_boot_task: app.boot\n");
-  ESP_LOGI(TAG, "epd_boot_task: painting Welcome…");
+  ESP_LOGI(TAG, "epd_boot_task: painting Welcome");
   if (g_boot.app) {
     g_boot.app->boot();
     ESP_LOGI(TAG, "UI boot complete, screen=%d", static_cast<int>(g_boot.app->screen()));
@@ -112,13 +107,11 @@ static void epd_boot_task(void* /*arg*/) {
 }  // namespace
 
 extern "C" void app_main(void) {
-  // First proof we reached user code on the USB Serial/JTAG console.
   esp_rom_printf("\n*** %s ***\n", kBuildId);
 
   const esp_reset_reason_t rr = esp_reset_reason();
   ESP_LOGI(TAG, "%s reset=%s (%d)", kBuildId, reset_reason_str(rr), static_cast<int>(rr));
 
-  // Three visible heartbeats before any heavy I/O.
   for (int i = 0; i < 3; ++i) {
     esp_rom_printf("heartbeat %d/3\n", i + 1);
     ESP_LOGI(TAG, "heartbeat %d/3", i + 1);
@@ -154,8 +147,6 @@ extern "C" void app_main(void) {
   g_boot.mapper = &mapper;
   g_boot.clock = &clock;
 
-  // EPD on a side task so a busy-wait cannot block rotary forever.
-  // Stack: wipe + paint needs room.
   xTaskCreate(epd_boot_task, "epd_boot", 8192, nullptr, 5, nullptr);
 
   ESP_LOGI(TAG, "input loop running (EPD wipe in background)");

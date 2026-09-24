@@ -18,15 +18,15 @@ class Canvas {
   void hline(int x, int y, int w, Gray g);
   void vline(int x, int y, int h, Gray g);
 
-  /** Bitmap text — sizes map to Spec type scale roles. */
+  /** Bitmap text — sizes map to Spec type scale roles (e-ink readable). */
   enum class TextRole : uint8_t {
-    StatusBar,   // 12
-    Secondary,   // 14
-    Body,        // 18
-    ScreenTitle, // 22
-    WordMark,    // 28
-    PinDigit,    // 40
-    HugeClock,   // 64
+    StatusBar,   // 12  (scale 1)
+    Secondary,   // 16  (scale 2)
+    Body,        // 24  (scale 3)
+    ScreenTitle, // 36  (scale 4)
+    WordMark,    // 48  (scale 6)
+    PinDigit,    // 48  (scale 6)
+    HugeClock,   // 72  (scale 9)
   };
 
   void draw_text(int x, int y, std::string_view text, TextRole role, Gray g);

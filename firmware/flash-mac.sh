@@ -302,8 +302,8 @@ say "Size:     $BIN_BYTES bytes"
 if [[ "$BIN_BYTES" -lt 450000 ]]; then
   die "Firmware file looks too small ($BIN_BYTES bytes). Re-download pocket-merged.bin from firmware-latest."
 fi
-if ! strings "$BIN_PATH" 2>/dev/null | grep -q 'POCKET-LIVE-v11'; then
-  say "WARNING: bin does not contain POCKET-LIVE-v11 — you may have an old download."
+if ! strings "$BIN_PATH" 2>/dev/null | grep -q 'POCKET-LIVE-v12'; then
+  say "WARNING: bin does not contain POCKET-LIVE-v12 — you may have an old download."
   say "Re-download from https://github.com/bighappysmiley/Pocket/releases/tag/firmware-latest"
 fi
 say "Port:     $PORT_PATH"
@@ -349,9 +349,9 @@ fi
 
 say ""
 say "Done. Unplug USB for 2 seconds, plug back in, wait up to ~20s."
-say "Serial MUST show:  *** POCKET-LIVE-v11-usb-console ***"
-say "Then: heartbeat 1/3 … wiping factory image → Welcome to Pocket."
-say "If you only see a PSRAM line and nothing else, you flashed the broken v10 UART build — re-download."
+say "Serial MUST show:  *** POCKET-LIVE-v12-ui-wifi ***"
+say "Then: Welcome with larger Pocket wordmark; Wi-Fi scan lists real SSIDs."
+say "If you only see a PSRAM line, you flashed an old UART build — re-download."
 say "Rotary Up/Down moves focus; press selects Continue."
 say "No SD card or battery is required (USB power is enough)."
 say "If the Chinese demo is still stuck, re-run with a full erase:"
