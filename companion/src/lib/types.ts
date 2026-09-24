@@ -6,6 +6,12 @@ export interface User {
   id: string
   email: string
   trial_consumed: boolean
+  role?: 'user' | 'admin' | string
+  is_admin?: boolean
+  email_verified?: boolean
+  disabled?: boolean
+  last_login_at?: string | null
+  created_at?: string
 }
 
 export interface Entitlement {

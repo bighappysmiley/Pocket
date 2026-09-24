@@ -19,6 +19,7 @@ import { PairPage } from './pages/PairPage'
 import { PassesPage } from './pages/PassesPage'
 import { WifiSetupPage } from './pages/WifiSetupPage'
 import { UpgradePage } from './pages/UpgradePage'
+import { AdminPage } from './pages/AdminPage'
 
 const routerBasename = (() => {
   const base = import.meta.env.BASE_URL || '/'
@@ -50,6 +51,7 @@ export default function App() {
               <Route path="/billing/cancel" element={<BillingCancelPage />} />
               <Route path="/upgrade" element={<UpgradePage />} />
               <Route path="/account" element={<AccountPage />} />
+              <Route path="/admin" element={<AdminPage />} />
 
               <Route element={<RequireEntitlement />}>
                 <Route path="/notes" element={<NotesListPage />} />
