@@ -23,14 +23,23 @@ uint8_t* alloc_fb(size_t n) {
   return p;
 }
 
+// Fully stop TWDT for long e-ink I/O. Deleting only the main task still leaves
+// idle-task checks armed; busy SPI without yields then reboots the chip.
 struct WdtPause {
-  bool paused = false;
+  bool stopped = false;
   WdtPause() {
-    // Unsubscribe current task from TWDT for the duration of e-ink I/O.
-    if (esp_task_wdt_delete(xTaskGetCurrentTaskHandle()) == ESP_OK) paused = true;
+    if (esp_task_wdt_deinit() == ESP_OK) stopped = true;
   }
   ~WdtPause() {
-    if (paused) esp_task_wdt_add(xTaskGetCurrentTaskHandle());
+    if (!stopped) return;
+    esp_task_wdt_config_t cfg = {
+        .timeout_ms = 60000,
+        .idle_core_mask = 0,
+        .trigger_panic = true,
+    };
+    if (esp_task_wdt_init(&cfg) == ESP_OK) {
+      esp_task_wdt_add(xTaskGetCurrentTaskHandle());
+    }
   }
 };
 
@@ -46,8 +55,7 @@ bool EpdDisplay::init() {
   }
 
   epaper_port_init();
-  gpio_set_level(static_cast<gpio_num_t>(kPinEpdCs), 0);
-  gpio_set_level(static_cast<gpio_num_t>(kPinEpdRst), 1);
+  // Soft-CS is handled inside the vendor driver; leave CS idle-high.
 
   ESP_LOGI(TAG, "wiping factory image (bulk white refresh)…");
   {

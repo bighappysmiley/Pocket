@@ -14,11 +14,28 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_task_wdt.h"
 
 static const char* TAG = "pocket";
 
 namespace {
+
+const char* reset_reason_str(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON: return "POWERON";
+    case ESP_RST_EXT: return "EXT";
+    case ESP_RST_SW: return "SW";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_INT_WDT: return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT: return "WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_SDIO: return "SDIO";
+    default: return "OTHER";
+  }
+}
 
 struct EspClock : pocket::PlatformClock {
   uint32_t now_ms() override {
@@ -57,7 +74,11 @@ struct EspDisplay : pocket::PlatformDisplay {
 }  // namespace
 
 extern "C" void app_main(void) {
-  // Task WDT timeout is 60s via sdkconfig; e-ink I/O also pauses TWDT briefly.
+  // Breadcrumb ASAP — prove we passed cpu_start before any e-ink I/O.
+  const esp_reset_reason_t rr = esp_reset_reason();
+  ESP_LOGI(TAG, "app_main start reset=%s (%d)", reset_reason_str(rr), static_cast<int>(rr));
+  vTaskDelay(pdMS_TO_TICKS(50));  // let USB-Serial/JTAG flush
+
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     ESP_ERROR_CHECK(nvs_flash_erase());
@@ -75,9 +96,11 @@ extern "C" void app_main(void) {
   buttons.init();
 
   // EPD_VCC is supplied by AXP2101 ALDOs on this Waveshare board.
+  ESP_LOGI(TAG, "enabling AXP EPD rails…");
   pocket::board::axp_enable_epd_rails();
 
   static pocket::board::EpdDisplay epd;
+  ESP_LOGI(TAG, "e-paper init…");
   if (!epd.init()) {
     ESP_LOGE(TAG, "e-paper init failed — continuing headless");
   }
