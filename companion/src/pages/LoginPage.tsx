@@ -40,10 +40,11 @@ export function LoginPage() {
         await api.register(email.trim(), password)
       }
       await api.login(email.trim(), password)
+      if (!getSessionToken()) {
+        throw new ApiError("Couldn't save your sign-in on this device. Try again.", 0)
+      }
       await refresh()
       setState('idle')
-      // Cross-site cookie may be blocked; session_token in localStorage should keep /me alive.
-      // If still not authenticated after refresh, show a clear error instead of a silent no-op.
     } catch (err) {
       setState('error')
       if (isNetworkError(err)) {
