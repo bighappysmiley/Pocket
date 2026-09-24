@@ -114,7 +114,7 @@ int main() {
   App app(store, clock, wifi, cloud, disp, &storage, &audio);
   app.boot();
   CHECK(app.screen() == ScreenId::OnboardingWelcome);
-  CHECK(app.config().device_name == "Pocket");
+  CHECK(app.config().device_name == "Pocket Classic");
 
   // Welcome → Download companion (required)
   app.handle(InputEvent::Select);
@@ -177,7 +177,7 @@ int main() {
   CHECK(app.config().onboarding_complete);
 
   // No naming screen ever
-  CHECK(app.config().device_name == "Pocket");
+  CHECK(app.config().device_name == "Pocket Classic");
 
   // Firmware-risk card forces erase
   {

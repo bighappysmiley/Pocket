@@ -17,7 +17,7 @@ inline constexpr size_t kMaxKnownWifi = 8;
 
 /** Device config (Spec §11.1 + Part B). Persisted via NVS and optional SD mirror. */
 struct DeviceConfig {
-  std::string device_name = "Pocket";
+  std::string device_name = "Pocket Classic";
   uint8_t pin_length = 4;
   std::array<uint8_t, 32> pin_hash{};
   uint8_t pin_salt[16]{};
@@ -37,8 +37,9 @@ struct DeviceConfig {
   bool cloud_entitled = false;
   bool companion_linked = false;
   std::string fw_channel = "stable";
-  std::string fw_version = "0.1.0";
-  std::string fw_build_id;  // e.g. POCKET-LIVE-v33-… for OTA compare
+  /** Consumer-facing semver shown in About / Update — never a POCKET-LIVE flash marker. */
+  std::string fw_version = "1.1.0";
+  std::string fw_build_id;  // internal OTA id e.g. POCKET-LIVE-v38-… (not shown to users)
   std::string device_id;  // UUID
   std::string device_token;
   std::string cloud_status = "free";  // free|trialing|active|lapsed
@@ -49,6 +50,10 @@ struct DeviceConfig {
   /** Seen What’s New for this build (skip auto tips once acknowledged). */
   std::string seen_whats_new_build;
 };
+
+/** Consumer product branding (UI). Flash markers stay in `fw_build_id` only. */
+inline constexpr const char* kProductName = "Pocket Classic";
+inline constexpr const char* kConsumerVersion = "1.1.0";
 
 /** Insert or update SSID; move to front as preferred (`wifi_ssid`). Cap at kMaxKnownWifi. */
 void wifi_known_upsert(DeviceConfig& cfg, const std::string& ssid, const std::string& password);

@@ -62,7 +62,7 @@ export function DevicesPage() {
         <div className="empty panel stack">
           <h2>No Pocket linked yet</h2>
           <p className="muted">
-            On Pocket Version 1, open Link. Enter Wi‑Fi in this Companion app, then enter the pairing
+            On Pocket Classic, open Link. Enter Wi‑Fi in this Companion app, then enter the pairing
             code shown on the device.
           </p>
           <Link className="btn btn-primary" to="/link">

@@ -53,7 +53,7 @@ export function LinkPage() {
   const addNetwork = params.get('add') === '1'
   const deviceId = params.get('device') || ''
   const wifiDone = params.get('wifi') === '1'
-  useDocumentTitle(addNetwork ? 'Add Wi‑Fi' : 'Link Pocket Version 1')
+  useDocumentTitle(addNetwork ? 'Add Wi‑Fi' : 'Link Pocket Classic')
 
   const [wifiPhase, setWifiPhase] = useState<WifiPhase>(
     codeFromQuery || wifiDone ? 'sent' : 'form',
@@ -255,7 +255,7 @@ export function LinkPage() {
     <div className="page stack" style={{ maxWidth: '28rem', paddingTop: '2rem' }}>
       <WordMark to="/" />
       <div className="stack-sm">
-        <h1>{addNetwork ? 'Add a Wi‑Fi network' : 'Link Pocket Version 1'}</h1>
+        <h1>{addNetwork ? 'Add a Wi‑Fi network' : 'Link Pocket Classic'}</h1>
         <p className="muted">
           {skipWifi || codeFromQuery
             ? 'Enter the pairing code from Pocket to link this Pocket Cloud account.'
@@ -263,7 +263,7 @@ export function LinkPage() {
               ? 'Enter the network here. If Pocket is already online, we send it through Pocket Cloud — no SoftAP hop.'
               : phone
                 ? 'Enter this phone’s Personal Hotspot name and password here in Companion.'
-                : 'Enter home Wi‑Fi here in Companion. Pocket Version 1 joins that network, then you enter the pairing code.'}
+                : 'Enter home Wi‑Fi here in Companion. Pocket Classic joins that network, then you enter the pairing code.'}
         </p>
       </div>
 

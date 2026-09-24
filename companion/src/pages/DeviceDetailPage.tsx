@@ -37,7 +37,7 @@ export function DeviceDetailPage() {
   const [wifiSsid, setWifiSsid] = useState('')
   const [wifiPassword, setWifiPassword] = useState('')
 
-  useDocumentTitle(device?.device_name || 'Pocket Version 1')
+  useDocumentTitle(device?.device_name || 'Pocket Classic')
 
   async function load() {
     setError(null)
@@ -204,7 +204,7 @@ export function DeviceDetailPage() {
           <form className="panel stack" onSubmit={(e) => void onQueueWifi(e)}>
             <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Add Wi‑Fi in Companion</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Pocket Version 1 must already be online. We send the network through Pocket Cloud — no join
+              Pocket Classic must already be online. We send the network through Pocket Cloud — no join
               SoftAP / no 192.168.4.1.
             </p>
             <div className="field">

@@ -301,6 +301,8 @@ class App {
   void begin_add_wifi_network();
   /** Poll Cloud when online: last_seen, entitlement, pending Wi‑Fi, parental. */
   void maybe_cloud_attest();
+  /** STA just associated — refresh clock sync + Cloud heartbeat promptly. */
+  void notify_wifi_connected();
   bool parental_requires_pin(HomeApp app) const;
   void launch_home_app(HomeApp app);
 
@@ -387,6 +389,8 @@ class App {
   HomeApp parental_pending_app_ = HomeApp::Notes;
   /** OnboardingDone / Tips pages (0=ready, 1=rotary, 2=side, 3=power). */
   int tips_page_ = 0;
+  /** Settings → Wi‑Fi: 0 = known list, 1 = Add (hotspot / another), 2 = Remove picker. */
+  uint8_t wifi_ui_page_ = 0;
 };
 
 }  // namespace pocket

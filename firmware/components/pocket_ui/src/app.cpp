@@ -42,9 +42,10 @@ void App::boot() {
   // Prefer identity stamped by app_main (kBuildId) when set before boot.
   if (!pending_build_id_.empty()) {
     cfg_.fw_build_id = pending_build_id_;
-    cfg_.fw_version = pending_build_id_;
   }
-  if (cfg_.device_name.empty()) cfg_.device_name = "Pocket";
+  // Consumer-facing version is always the product semver — never a flash marker.
+  cfg_.fw_version = kConsumerVersion;
+  if (cfg_.device_name.empty()) cfg_.device_name = kProductName;
   if (cfg_.device_id.empty()) {
     if (identity_) cfg_.device_id = identity_->device_uuid();
     if (cfg_.device_id.empty()) cfg_.device_id = "00000000-0000-4000-8000-000000000001";
@@ -393,7 +394,8 @@ void App::launch_home_app(HomeApp launch) {
 void App::maybe_cloud_attest() {
   if (!cfg_.onboarding_complete || !cfg_.companion_linked) return;
   if (!wifi_.connected() || cfg_.device_id.empty()) return;
-  if (last_attest_ms_ != 0 && now_ms_ - last_attest_ms_ < 60000u) return;
+  // ~20s so Companion “Online” / rename stay fresh after reconnect.
+  if (last_attest_ms_ != 0 && now_ms_ - last_attest_ms_ < 20000u) return;
   last_attest_ms_ = now_ms_;
   const std::string body = cloud_.device_attest_json(cfg_.device_id);
   if (body.empty()) return;
@@ -453,6 +455,10 @@ void App::maybe_cloud_attest() {
   if (hide_pass >= 0) cfg_.parental_hide_pass_share = hide_pass == 1;
   const int block_conn = json_bool(body, "block_connectors");
   if (block_conn >= 0) cfg_.parental_block_connectors = block_conn == 1;
+  const int force_lock = json_bool(body, "force_lock");
+  if (force_lock == 1 && nav_.current() != ScreenId::Lock && nav_.current() != ScreenId::Pin) {
+    go_lock();
+  }
 
   // Pending Wi‑Fi from Companion (in-app, no SoftAP hop).
   const std::string pending_ssid = json_str(body, "ssid");
@@ -475,6 +481,12 @@ void App::maybe_cloud_attest() {
   }
 
   store_.save(cfg_);
+  mark_status_dirty();
+}
+
+void App::notify_wifi_connected() {
+  last_attest_ms_ = 0;
+  maybe_cloud_attest();
   mark_status_dirty();
 }
 

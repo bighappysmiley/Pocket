@@ -101,7 +101,7 @@ int main() {
     FileConfigStore store("/tmp/pocket-cfg-does-not-exist-xyz");
     DeviceConfig d = store.load();
     CHECK(!d.onboarding_complete);
-    CHECK(d.device_name == "Pocket");
+    CHECK(d.device_name == "Pocket Classic");
   }
 
   if (failures) {

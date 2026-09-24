@@ -139,7 +139,7 @@ export function HomePage() {
             {trialAvailable ? <p className="muted">7 days free</p> : null}
           </div>
           <p className="muted">
-            Pocket Version 1 syncs Notes, Lists, and Music to your phone with Pocket Cloud — plus backup
+            Pocket Classic syncs Notes, Lists, and Music to your phone with Pocket Cloud — plus backup
             and connectors.
           </p>
           <div className="actions">

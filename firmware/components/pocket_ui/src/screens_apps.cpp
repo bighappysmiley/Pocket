@@ -255,6 +255,14 @@ void App::handle_clock(InputEvent e) {
 
 void App::render_pass() {
   if (nav_.current() == ScreenId::PassDetail) {
+    if (cfg_.parental_hide_pass_share) {
+      draw_status_bar();
+      canvas_.draw_text_centered(kCanvasW / 2, 280, "Pass hidden", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_centered(kCanvasW / 2, 330, "Parental controls hide pass sharing.",
+                                 Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_centered(kCanvasW / 2, 760, "Back", Canvas::TextRole::Secondary, Gray::G1);
+      return;
+    }
     // Full-screen QR — status bar hidden
     canvas_.draw_text_centered(kCanvasW / 2, 40, "Pass", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.fill_rect(90, 120, 300, 300, Gray::G0);
@@ -264,6 +272,12 @@ void App::render_pass() {
   }
   draw_status_bar();
   canvas_.draw_text(kSideMargin, kContentTop, "Pass", Canvas::TextRole::ScreenTitle, Gray::G0);
+  if (cfg_.parental_hide_pass_share) {
+    canvas_.draw_text_wrapped(kSideMargin, kContentTop + 64, kContentW, 5,
+                              "Pass sharing is turned off in parental controls from Pocket Companion.",
+                              Canvas::TextRole::Body, Gray::G0);
+    return;
+  }
   if (data_.passes.empty()) {
     canvas_.draw_text_centered(kCanvasW / 2, 280, "No passes yet", Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_centered(kCanvasW / 2, 320, "Add passes from the Pocket companion when available.",
@@ -292,6 +306,7 @@ void App::handle_pass(InputEvent e) {
     }
     return;
   }
+  if (cfg_.parental_hide_pass_share) return;
   if (nav_.current() == ScreenId::PassList && e == InputEvent::Select && !data_.passes.empty()) {
     note_index_ = focus_.index;
     nav_.push(ScreenId::PassDetail);

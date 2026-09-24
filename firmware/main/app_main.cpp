@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v37-home-soft";
+static const char* kBuildId = "POCKET-LIVE-v38-classic";
 
 namespace {
 
@@ -93,12 +93,19 @@ struct EspClock : pocket::PlatformClock {
 
 void sntp_start_once() {
   static bool started = false;
-  if (started) return;
-  started = true;
-  esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-  esp_sntp_setservername(0, "pool.ntp.org");
-  esp_sntp_init();
-  ESP_LOGI(TAG, "SNTP started");
+  if (!started) {
+    started = true;
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "time.cloudflare.com");
+    esp_sntp_setservername(2, "time.google.com");
+    esp_sntp_init();
+    ESP_LOGI(TAG, "SNTP started");
+  } else {
+    // Re-sync after reconnect — first attempt may have failed before DNS.
+    esp_sntp_restart();
+    ESP_LOGI(TAG, "SNTP restarted");
+  }
 }
 
 struct EspDisplay : pocket::PlatformDisplay {
@@ -240,7 +247,11 @@ static void epd_boot_task(void* /*arg*/) {
 }  // namespace
 
 // Called from EspWifi::connect after STA association succeeds.
-extern "C" void pocket_on_wifi_connected(void) { sntp_start_once(); }
+extern "C" void pocket_on_wifi_connected(void) {
+  if (g_boot.app) apply_timezone(g_boot.app->config().tz_id);
+  sntp_start_once();
+  if (g_boot.app) g_boot.app->notify_wifi_connected();
+}
 
 extern "C" void app_main(void) {
   esp_rom_printf("\n*** %s ***\n", kBuildId);

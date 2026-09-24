@@ -383,7 +383,7 @@ void App::render_onboarding() {
       // Multi-page controls tutorial + ready (tips_page_ 0..3).
       if (tips_page_ <= 0) {
         canvas_.draw_text_centered(kCanvasW / 2, 180, "You're ready", Canvas::TextRole::ScreenTitle, Gray::G0);
-        canvas_.draw_text_centered(kCanvasW / 2, 240, "Pocket Version 1", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_centered(kCanvasW / 2, 240, kProductName, Canvas::TextRole::Body, Gray::G0);
         canvas_.draw_text_wrapped(kSideMargin, 280, kWrapW, kLineGap,
                                   "A short tour of the dial, side button, and power — or go Home now.",
                                   Canvas::TextRole::Body, Gray::G0);

@@ -278,7 +278,7 @@ esp_err_t handle_wifi_post(httpd_req_t* req) {
 static const char kPortalHtml[] = R"HTML(<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Pocket Version 1 · Wi‑Fi</title>
+<title>Pocket Classic · Wi‑Fi</title>
 <style>
 body{font-family:system-ui,sans-serif;margin:1.25rem;max-width:28rem;color:#111;background:#f7f5f2}
 h1{font-size:1.35rem;margin:0 0 .35rem}p{color:#555;line-height:1.4}
@@ -292,7 +292,7 @@ button.sec{background:#fff;color:#111;border:1px solid #ccc}
 .hint{font-size:.9rem;color:#666}
 a.back{display:inline-block;margin-top:1rem;color:#111;font-weight:600}
 </style></head><body>
-<h1>Pocket Version 1</h1>
+<h1>Pocket Classic</h1>
 <p id="blurb">Send a network so Pocket can get online.</p>
 <div class="modes">
 <button type="button" id="modeHome" class="sec">Home Wi‑Fi</button>
