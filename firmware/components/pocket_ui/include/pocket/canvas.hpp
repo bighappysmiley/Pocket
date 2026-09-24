@@ -15,6 +15,10 @@ class Canvas {
 
   void fill_rect(int x, int y, int w, int h, Gray g);
   void stroke_rect(int x, int y, int w, int h, Gray g);
+  /** Soft rounded fill for tiles (e-ink). `r` is corner radius in pixels. */
+  void fill_round_rect(int x, int y, int w, int h, int r, Gray g);
+  /** Rounded outline; `thickness` ≥ 1 draws a soft border without a harsh box. */
+  void stroke_round_rect(int x, int y, int w, int h, int r, Gray g, int thickness = 1);
   void hline(int x, int y, int w, Gray g);
   void vline(int x, int y, int h, Gray g);
   void line(int x0, int y0, int x1, int y1, Gray g);

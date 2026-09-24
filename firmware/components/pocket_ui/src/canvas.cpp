@@ -104,6 +104,51 @@ void Canvas::stroke_rect(int x, int y, int w, int h, Gray g) {
   vline(x + w - 1, y, h, g);
 }
 
+void Canvas::fill_round_rect(int x, int y, int w, int h, int r, Gray g) {
+  if (w <= 0 || h <= 0) return;
+  r = std::max(0, std::min({r, w / 2, h / 2}));
+  if (r <= 0) {
+    fill_rect(x, y, w, h, g);
+    return;
+  }
+  // Center + side bands (straight edges).
+  fill_rect(x + r, y, w - 2 * r, h, g);
+  fill_rect(x, y + r, r, h - 2 * r, g);
+  fill_rect(x + w - r, y + r, r, h - 2 * r, g);
+  // Quarter-circle corners.
+  const int r2 = r * r;
+  for (int dy = 0; dy < r; ++dy) {
+    for (int dx = 0; dx < r; ++dx) {
+      const int ox = r - 1 - dx;
+      const int oy = r - 1 - dy;
+      if (ox * ox + oy * oy > r2) continue;
+      set_pixel(x + dx, y + dy, g);
+      set_pixel(x + w - 1 - dx, y + dy, g);
+      set_pixel(x + dx, y + h - 1 - dy, g);
+      set_pixel(x + w - 1 - dx, y + h - 1 - dy, g);
+    }
+  }
+}
+
+void Canvas::stroke_round_rect(int x, int y, int w, int h, int r, Gray g, int thickness) {
+  if (w <= 0 || h <= 0) return;
+  thickness = std::max(1, thickness);
+  r = std::max(0, std::min({r, w / 2, h / 2}));
+  if (r <= 0) {
+    for (int t = 0; t < thickness; ++t) {
+      stroke_rect(x + t, y + t, w - 2 * t, h - 2 * t, g);
+    }
+    return;
+  }
+  // Paint outer round fill, then clear the interior with white (paper).
+  fill_round_rect(x, y, w, h, r, g);
+  const int inset = thickness;
+  if (w > 2 * inset && h > 2 * inset) {
+    const int ir = std::max(0, r - inset);
+    fill_round_rect(x + inset, y + inset, w - 2 * inset, h - 2 * inset, ir, Gray::G3);
+  }
+}
+
 void Canvas::hline(int x, int y, int w, Gray g) {
   for (int i = 0; i < w; ++i) set_pixel(x + i, y, g);
 }

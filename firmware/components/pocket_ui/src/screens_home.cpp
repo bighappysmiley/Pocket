@@ -15,95 +15,69 @@ void stroke_ring(Canvas& c, int cx, int cy, int r, Gray g) {
   c.stroke_rect(cx - r + 1, cy - r + 1, 2 * r - 2, 2 * r - 2, g);
 }
 
-/** Abstract monochrome glyph — thicker strokes for e-ink clarity. */
+/** Abstract monochrome glyph — open, light strokes for a calmer Home. */
 void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
   const int s = size;
   const int x0 = cx - s / 2;
   const int y0 = cy - s / 2;
   switch (app) {
     case HomeApp::Notes: {
-      // Page with folded corner + three lines
-      c.stroke_rect(x0 + 4, y0 + 2, s - 10, s - 4, g);
-      c.stroke_rect(x0 + 5, y0 + 3, s - 12, s - 6, g);
-      c.hline(x0 + s - 10, y0 + 2, 6, g);
-      c.vline(x0 + s - 4, y0 + 2, 6, g);
-      c.hline(x0 + s - 10, y0 + 8, 6, g);
-      c.hline(x0 + 10, y0 + s / 3, s - 20, g);
-      c.hline(x0 + 10, y0 + s / 2, s - 20, g);
-      c.hline(x0 + 10, y0 + (2 * s) / 3, s - 22, g);
+      c.stroke_rect(x0 + 6, y0 + 4, s - 14, s - 8, g);
+      c.hline(x0 + 12, y0 + s / 3, s - 24, g);
+      c.hline(x0 + 12, y0 + s / 2, s - 24, g);
+      c.hline(x0 + 12, y0 + (2 * s) / 3, s - 28, g);
       break;
     }
     case HomeApp::Ledger: {
-      // Three equal ledger bars
-      const int bar_h = std::max(4, s / 7);
-      const int gap = std::max(4, (s - 3 * bar_h) / 4);
+      const int bar_h = std::max(3, s / 9);
+      const int gap = std::max(5, (s - 3 * bar_h) / 4);
       for (int i = 0; i < 3; ++i) {
         const int by = y0 + gap + i * (bar_h + gap);
-        c.fill_rect(x0 + 4, by, s - 8, bar_h, g);
+        c.fill_rect(x0 + 8, by, s - 16, bar_h, g);
       }
       break;
     }
     case HomeApp::Clock: {
-      // Round face + hands
-      const int r = s / 2 - 3;
+      const int r = s / 2 - 4;
       stroke_ring(c, cx, cy, r, g);
-      c.vline(cx, cy - r + 6, r - 4, g);
-      c.vline(cx + 1, cy - r + 6, r - 4, g);
-      c.hline(cx, cy, r / 2 + 2, g);
-      c.hline(cx, cy + 1, r / 2 + 2, g);
+      c.vline(cx, cy - r + 8, r - 6, g);
+      c.hline(cx, cy, r / 2, g);
       break;
     }
     case HomeApp::Pass: {
-      // Ticket / badge with barcode ticks
-      c.stroke_rect(x0 + 3, y0 + 8, s - 6, s - 16, g);
-      c.stroke_rect(x0 + 4, y0 + 9, s - 8, s - 18, g);
-      c.fill_rect(x0 + 10, y0 + 14, s - 20, 8, g);
-      for (int i = 0; i < 4; ++i) {
-        c.vline(x0 + 12 + i * 6, cy + 2, s / 4, g);
+      c.stroke_rect(x0 + 5, y0 + 10, s - 10, s - 20, g);
+      c.hline(x0 + 12, y0 + 18, s - 24, g);
+      for (int i = 0; i < 3; ++i) {
+        c.vline(x0 + 14 + i * 8, cy + 2, s / 5, g);
       }
       break;
     }
     case HomeApp::Weather: {
-      // Sun disk + rays
-      const int r = s / 5;
-      c.fill_rect(cx - r, cy - r, 2 * r, 2 * r, g);
-      c.vline(cx, y0 + 4, 6, g);
-      c.vline(cx, y0 + s - 10, 6, g);
-      c.hline(x0 + 4, cy, 6, g);
-      c.hline(x0 + s - 10, cy, 6, g);
-      c.hline(x0 + 8, y0 + 10, 4, g);
-      c.hline(x0 + s - 12, y0 + s - 14, 4, g);
+      const int r = std::max(4, s / 6);
+      c.stroke_rect(cx - r, cy - r, 2 * r, 2 * r, g);
+      c.vline(cx, y0 + 6, 5, g);
+      c.vline(cx, y0 + s - 11, 5, g);
+      c.hline(x0 + 6, cy, 5, g);
+      c.hline(x0 + s - 11, cy, 5, g);
       break;
     }
     case HomeApp::Music: {
-      // Note: oval head + stem + flag
-      c.fill_rect(cx - 10, cy + 4, 14, 10, g);
-      c.vline(cx + 4, y0 + 6, s - 14, g);
-      c.vline(cx + 5, y0 + 6, s - 14, g);
-      c.hline(cx + 5, y0 + 6, 10, g);
-      c.vline(cx + 14, y0 + 6, 10, g);
+      c.fill_rect(cx - 8, cy + 6, 12, 8, g);
+      c.vline(cx + 3, y0 + 8, s - 16, g);
+      c.hline(cx + 3, y0 + 8, 8, g);
       break;
     }
     case HomeApp::Settings: {
-      // Gear: ring + spokes
-      const int r = s / 2 - 4;
+      const int r = s / 2 - 5;
       stroke_ring(c, cx, cy, r, g);
-      c.fill_rect(cx - 4, cy - 4, 8, 8, g);
-      c.vline(cx, y0 + 4, 6, g);
-      c.vline(cx, y0 + s - 10, 6, g);
-      c.hline(x0 + 4, cy, 6, g);
-      c.hline(x0 + s - 10, cy, 6, g);
+      c.fill_rect(cx - 3, cy - 3, 6, 6, g);
       break;
     }
     case HomeApp::Update: {
-      // Circular arrow: arc + chevron
-      const int r = s / 2 - 4;
+      const int r = s / 2 - 5;
       stroke_ring(c, cx, cy, r, g);
-      // Open the ring at top-right and draw arrowhead
-      c.fill_rect(cx + 2, y0 + 4, r - 2, 8, Gray::G3);
-      c.hline(cx + 2, y0 + 8, 10, g);
-      c.vline(cx + 10, y0 + 4, 10, g);
-      c.hline(cx + 6, y0 + 4, 6, g);
+      c.hline(cx + 2, y0 + 8, 8, g);
+      c.vline(cx + 8, y0 + 5, 8, g);
       break;
     }
     default:
@@ -124,10 +98,11 @@ bool home_tile_rect(const DeviceConfig& cfg, int focus_index, int* out_x, int* o
   }
   if (n_focus <= 0 || focus_index < 0 || focus_index >= n_focus) return false;
   constexpr int kCols = 2;
-  constexpr int kGapX = 16;
-  constexpr int kGapY = 12;
-  constexpr int kGridTop = kContentTop + 48;
-  constexpr int kBottomPad = 20;
+  constexpr int kGapX = 18;
+  constexpr int kGapY = 14;
+  constexpr int kBrandBand = 56;
+  constexpr int kGridTop = kContentTop + kBrandBand;
+  constexpr int kBottomPad = 24;
   const int rows = std::max(1, (n_focus + kCols - 1) / kCols);
   const int tile_w = (kCanvasW - 2 * kSideMargin - kGapX) / kCols;
   const int tile_h = (kCanvasH - kGridTop - kBottomPad - (rows - 1) * kGapY) / rows;
@@ -144,9 +119,11 @@ bool home_tile_rect(const DeviceConfig& cfg, int focus_index, int* out_x, int* o
 
 void App::render_home() {
   draw_status_bar();
+
+  // Brand chrome: product name only — never “Version 1” on Home.
   canvas_.draw_text(kSideMargin, kContentTop, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
-  canvas_.draw_text(kSideMargin + canvas_.text_width("Pocket", Canvas::TextRole::WordMark) + 10,
-                    kContentTop + 6, "Version 1", Canvas::TextRole::Secondary, Gray::G1);
+  const int brand_rule_y = kContentTop + canvas_.text_height(Canvas::TextRole::WordMark) + 8;
+  canvas_.hline(kSideMargin, brand_rule_y, kContentW, Gray::G2);
 
   HomeApp focusable[kHomeGridSlots];
   int n_focus = 0;
@@ -158,16 +135,18 @@ void App::render_home() {
   if (focus_.index >= focus_.count) focus_.index = 0;
   const HomeApp focused = n_focus > 0 ? focusable[focus_.index] : HomeApp::Settings;
 
-  // Pack visible apps into a dense 2-column grid with clearer gaps.
   constexpr int kCols = 2;
-  constexpr int kGapX = 16;
-  constexpr int kGapY = 12;
-  constexpr int kGridTop = kContentTop + 48;
-  constexpr int kBottomPad = 20;
+  constexpr int kGapX = 18;
+  constexpr int kGapY = 14;
+  constexpr int kBrandBand = 56;
+  constexpr int kGridTop = kContentTop + kBrandBand;
+  constexpr int kBottomPad = 24;
+  constexpr int kRadius = 16;
   const int rows = std::max(1, (n_focus + kCols - 1) / kCols);
   const int tile_w = (kCanvasW - 2 * kSideMargin - kGapX) / kCols;
   const int tile_h = (kCanvasH - kGridTop - kBottomPad - (rows - 1) * kGapY) / rows;
-  const int glyph = std::min(56, std::max(30, tile_h - 30));
+  const int glyph = std::min(48, std::max(28, tile_h - 36));
+  const int label_h = canvas_.text_height(Canvas::TextRole::Secondary);
 
   for (int i = 0; i < n_focus; ++i) {
     const int col = i % kCols;
@@ -180,26 +159,30 @@ void App::render_home() {
     const char* label =
         (label_i >= 0 && label_i < kHomeGridSlots) ? kAppLabels[label_i] : "";
 
+    const int glyph_cy = y + (tile_h - label_h - 10) / 2;
+    const int label_y = y + tile_h - label_h - 12;
+
     if (is_focus) {
-      canvas_.fill_rect(x, y, tile_w, tile_h, Gray::G0);
-      draw_app_glyph(canvas_, a, x + tile_w / 2, y + (tile_h - 24) / 2, glyph, Gray::G3);
+      canvas_.fill_round_rect(x, y, tile_w, tile_h, kRadius, Gray::G0);
+      draw_app_glyph(canvas_, a, x + tile_w / 2, glyph_cy, glyph, Gray::G3);
       if (label && *label) {
         const int tw = canvas_.text_width(label, Canvas::TextRole::Secondary);
-        if (tw <= tile_w - 12) {
-          canvas_.draw_text(x + (tile_w - tw) / 2, y + tile_h - 24, label, Canvas::TextRole::Secondary, Gray::G3);
+        if (tw <= tile_w - 16) {
+          canvas_.draw_text(x + (tile_w - tw) / 2, label_y, label, Canvas::TextRole::Secondary, Gray::G3);
         } else {
-          canvas_.draw_text_fit(x + 6, y + tile_h - 24, tile_w - 12, label, Canvas::TextRole::Secondary, Gray::G3);
+          canvas_.draw_text_fit(x + 8, label_y, tile_w - 16, label, Canvas::TextRole::Secondary, Gray::G3);
         }
       }
     } else {
-      canvas_.stroke_rect(x, y, tile_w, tile_h, Gray::G1);
-      draw_app_glyph(canvas_, a, x + tile_w / 2, y + (tile_h - 24) / 2, glyph, Gray::G0);
+      // Soft outline — 2px rounded border, not a hard rectangle.
+      canvas_.stroke_round_rect(x, y, tile_w, tile_h, kRadius, Gray::G1, 2);
+      draw_app_glyph(canvas_, a, x + tile_w / 2, glyph_cy, glyph, Gray::G0);
       if (label && *label) {
         const int tw = canvas_.text_width(label, Canvas::TextRole::Secondary);
-        if (tw <= tile_w - 12) {
-          canvas_.draw_text(x + (tile_w - tw) / 2, y + tile_h - 24, label, Canvas::TextRole::Secondary, Gray::G0);
+        if (tw <= tile_w - 16) {
+          canvas_.draw_text(x + (tile_w - tw) / 2, label_y, label, Canvas::TextRole::Secondary, Gray::G0);
         } else {
-          canvas_.draw_text_fit(x + 6, y + tile_h - 24, tile_w - 12, label, Canvas::TextRole::Secondary, Gray::G0);
+          canvas_.draw_text_fit(x + 8, label_y, tile_w - 16, label, Canvas::TextRole::Secondary, Gray::G0);
         }
       }
     }

@@ -40,27 +40,23 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsAbout) {
     canvas_.draw_text(kSideMargin, kTitleY, "About", Canvas::TextRole::ScreenTitle, Gray::G0);
+    // Consumer product name only — never show POCKET-LIVE / branch flash markers here.
     canvas_.draw_text(kSideMargin, kListTop, "Pocket Version 1", Canvas::TextRole::WordMark, Gray::G0);
-    char ver[64];
-    std::snprintf(ver, sizeof(ver), "Firmware %s", cfg_.fw_version.c_str());
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody, ver, Canvas::TextRole::Body, Gray::G0);
-    if (!cfg_.fw_build_id.empty()) {
-      canvas_.draw_text_fit(kSideMargin, kListTop + kTitleToBody + kBodyLinePitch, kContentW,
-                            cfg_.fw_build_id.c_str(), Canvas::TextRole::Secondary, Gray::G1);
-    }
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 2 * kBodyLinePitch, cfg_.device_name,
-                      Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, "What's new",
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody, "Your Pocket device", Canvas::TextRole::Body,
+                      Gray::G0);
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + kBodyLinePitch, cfg_.device_name,
+                      Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 2 * kBodyLinePitch + 8, "What's new",
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
-        kSideMargin, kListTop + kTitleToBody + 4 * kBodyLinePitch + 8, kContentW, 5,
-        "Faster screen updates · clearer Home icons · clock over Wi‑Fi · in-app Wi‑Fi add · parental PIN gates.",
+        kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, 5,
+        "A softer Home with rounded app tiles · Pocket branding · clearer About and Update.",
         Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 7 * kBodyLinePitch + 16, "Pocket Cloud",
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 8 * kBodyLinePitch + 16,
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 7 * kBodyLinePitch + 16,
                       cfg_.cloud_entitled ? "Subscribed" : "Not subscribed", Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 9 * kBodyLinePitch + 16,
+    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 8 * kBodyLinePitch + 16,
                       cfg_.companion_linked ? "Companion: Linked" : "Companion: Not linked",
                       Canvas::TextRole::Secondary, Gray::G1);
     const char* acts[] = {"Controls tips", "Reset Pocket...", "Back"};
@@ -159,11 +155,12 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsUpdate) {
     canvas_.draw_text(kSideMargin, kTitleY, "Software update", Canvas::TextRole::ScreenTitle, Gray::G0);
-    char ver[64];
-    std::snprintf(ver, sizeof(ver), "%s", cfg_.fw_build_id.empty() ? cfg_.fw_version.c_str() : cfg_.fw_build_id.c_str());
-    canvas_.draw_text_fit(kSideMargin, kListTop, kContentW, ver, Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text(kSideMargin, kListTop, "Pocket Version 1", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + kBodyLinePitch, kContentW, 4,
+                              "Check Pocket Cloud for the latest software for your device.",
+                              Canvas::TextRole::Secondary, Gray::G1);
     const char* rows[] = {"Update Pocket", "Back"};
-    draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 72);
+    draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 72 + kBodyLinePitch);
     return;
   }
 
