@@ -30,7 +30,7 @@ void App::boot() {
   } else {
     nav_.reset(ScreenId::Lock);
   }
-  after_nav(true);
+  after_nav();
 }
 
 void App::after_nav(bool full_refresh) {
@@ -40,15 +40,17 @@ void App::after_nav(bool full_refresh) {
   redraw(full_refresh);
 }
 
+void App::after_nav() { after_nav(screen_requires_full_enter(nav_.current())); }
+
 void App::go_home() {
   nav_.reset(ScreenId::Home);
-  after_nav(true);
+  after_nav();
 }
 
 void App::go_lock() {
   nav_.reset(ScreenId::Lock);
   pin_entry_.clear();
-  after_nav(true);
+  after_nav();
 }
 
 void App::tick(uint32_t now_ms) {
@@ -69,14 +71,14 @@ void App::tick(uint32_t now_ms) {
         cfg_.wifi_ssid = ssid;
         wifi_password_ = pass;
         nav_.replace(ScreenId::OnboardingWifiConnecting);
-        after_nav(true);
+        after_nav();  // connecting: full per Spec
         const bool ok = wifi_.connect(cfg_.wifi_ssid, wifi_password_);
         if (ok) {
           store_.save(cfg_);
           if (cfg_.onboarding_complete) {
             focus_.index = 0;
             nav_.replace(ScreenId::SettingsWifi);
-            after_nav(true);
+            after_nav();
           } else {
             pair_code_ = cloud_.create_pair_session(cfg_.device_id);
             pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
@@ -84,7 +86,7 @@ void App::tick(uint32_t now_ms) {
             last_pair_poll_ms_ = 0;
             focus_.index = 0;
             nav_.replace(ScreenId::OnboardingCompanionQr);
-            after_nav(true);
+            after_nav();  // QR: full
           }
         } else {
           error_msg_ = "Couldn't connect. Check the password on your phone.";
@@ -94,7 +96,7 @@ void App::tick(uint32_t now_ms) {
           wifi_ap_ssid_ = ap;
           focus_.index = 0;
           nav_.replace(ScreenId::OnboardingWifiPassword);
-          after_nav(true);
+          after_nav();
         }
       }
     }
@@ -113,7 +115,14 @@ void App::tick(uint32_t now_ms) {
         pair_status_ = "claimed";
         cfg_.companion_linked = true;
         store_.save(cfg_);
-        dirty_ = true;
+        // Companion required: advance as soon as linked (no Skip path).
+        if (!cfg_.onboarding_complete) {
+          focus_.index = 0;
+          nav_.replace(ScreenId::OnboardingPinLength);
+          after_nav();
+        } else {
+          dirty_ = true;
+        }
       } else if (st == "expired" && pair_status_ != "expired") {
         pair_status_ = "expired";
         dirty_ = true;
@@ -162,6 +171,7 @@ void App::handle(InputEvent e) {
       handle_pin(e);
       break;
     case ScreenId::OnboardingWelcome:
+    case ScreenId::OnboardingCompanionDownload:
     case ScreenId::OnboardingWifiList:
     case ScreenId::OnboardingWifiPassword:
     case ScreenId::OnboardingWifiConnecting:
@@ -217,6 +227,7 @@ void App::render() {
       render_pin();
       break;
     case ScreenId::OnboardingWelcome:
+    case ScreenId::OnboardingCompanionDownload:
     case ScreenId::OnboardingWifiList:
     case ScreenId::OnboardingWifiPassword:
     case ScreenId::OnboardingWifiConnecting:
@@ -288,7 +299,7 @@ void App::handle_lock(InputEvent e) {
   if (e == InputEvent::Select) {
     pin_entry_.clear();
     nav_.push(ScreenId::Pin);
-    after_nav(true);
+    after_nav();
   }
   // Up/Down/Back/Home ignored per Spec
 }
@@ -328,7 +339,7 @@ void App::handle_pin(InputEvent e) {
   if (e == InputEvent::Back) {
     if (pin_entry_.empty()) {
       nav_.pop();
-      after_nav(true);
+      after_nav();
     } else {
       pin_entry_.pop_back();
       dirty_ = true;

@@ -73,7 +73,7 @@ void App::handle_home(InputEvent e) {
         nav_.push(ScreenId::SettingsRoot);
         break;
     }
-    after_nav(true);
+    after_nav();
   } else if (e == InputEvent::Back) {
     // stay on home
   }

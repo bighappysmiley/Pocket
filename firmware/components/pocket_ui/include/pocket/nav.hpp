@@ -11,6 +11,7 @@ enum class ScreenId : uint16_t {
   Lock,
   Pin,
   OnboardingWelcome,
+  OnboardingCompanionDownload,
   OnboardingWifiList,
   OnboardingWifiPassword,
   OnboardingWifiConnecting,
@@ -80,6 +81,7 @@ inline bool long_home_blocked(ScreenId s, bool onboarding_complete) {
   if (!onboarding_complete) {
     switch (s) {
       case ScreenId::OnboardingWelcome:
+      case ScreenId::OnboardingCompanionDownload:
       case ScreenId::OnboardingWifiList:
       case ScreenId::OnboardingWifiPassword:
       case ScreenId::OnboardingWifiConnecting:
@@ -100,27 +102,57 @@ inline bool long_home_blocked(ScreenId s, bool onboarding_complete) {
   return false;
 }
 
-inline int onboarding_step_of(ScreenId s) {
-  // Part B: Step N of 7 (welcome=1 … done=7)
+/** Spec §6: full refresh on major enters; focus/routine UI stays partial. */
+inline bool screen_requires_full_enter(ScreenId s) {
   switch (s) {
+    case ScreenId::Lock:
+    case ScreenId::Home:
+    case ScreenId::Pin:
+    case ScreenId::PassDetail:
+    case ScreenId::SettingsUpdateProgress:
     case ScreenId::OnboardingWelcome:
-      return 1;
-    case ScreenId::OnboardingWifiList:
-    case ScreenId::OnboardingWifiPassword:
+    case ScreenId::OnboardingCompanionDownload:  // QR clarity
+    case ScreenId::OnboardingCompanionQr:        // QR clarity
     case ScreenId::OnboardingWifiConnecting:
-      return 2;
-    case ScreenId::OnboardingCompanionQr:
-      return 3;
     case ScreenId::OnboardingPinLength:
     case ScreenId::OnboardingPinSet:
     case ScreenId::OnboardingPinConfirm:
+    case ScreenId::NotesList:
+    case ScreenId::ListsList:
+    case ScreenId::LedgerComingSoon:
+    case ScreenId::ClockFace:
+    case ScreenId::PassList:
+    case ScreenId::WeatherMain:
+    case ScreenId::SettingsRoot:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline int onboarding_step_of(ScreenId s) {
+  // welcome=1 … done=8 (companion download required after welcome)
+  switch (s) {
+    case ScreenId::OnboardingWelcome:
+      return 1;
+    case ScreenId::OnboardingCompanionDownload:
+      return 2;
+    case ScreenId::OnboardingWifiList:
+    case ScreenId::OnboardingWifiPassword:
+    case ScreenId::OnboardingWifiConnecting:
+      return 3;
+    case ScreenId::OnboardingCompanionQr:
       return 4;
-    case ScreenId::OnboardingTimezone:
+    case ScreenId::OnboardingPinLength:
+    case ScreenId::OnboardingPinSet:
+    case ScreenId::OnboardingPinConfirm:
       return 5;
-    case ScreenId::OnboardingMicTest:
+    case ScreenId::OnboardingTimezone:
       return 6;
-    case ScreenId::OnboardingDone:
+    case ScreenId::OnboardingMicTest:
       return 7;
+    case ScreenId::OnboardingDone:
+      return 8;
     default:
       return 0;
   }

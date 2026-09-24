@@ -74,7 +74,11 @@ int main() {
   CHECK(app.screen() == ScreenId::OnboardingWelcome);
   CHECK(app.config().device_name == "Pocket");
 
-  // Welcome → Wi‑Fi
+  // Welcome → Download companion (required)
+  app.handle(InputEvent::Select);
+  CHECK(app.screen() == ScreenId::OnboardingCompanionDownload);
+
+  // Continue → Wi‑Fi
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::OnboardingWifiList);
 
@@ -87,10 +91,12 @@ int main() {
   app.tick(clock.t);
   CHECK(app.screen() == ScreenId::OnboardingCompanionQr);
 
-  // Skip for now
-  app.handle(InputEvent::Down);
-  app.handle(InputEvent::Select);
+  // Companion required: claim advances to PIN (no Skip)
+  cloud.st = "claimed";
+  clock.t += 3000;
+  app.tick(clock.t);
   CHECK(app.screen() == ScreenId::OnboardingPinLength);
+  CHECK(app.config().companion_linked);
 
   // 4 digits
   app.handle(InputEvent::Select);

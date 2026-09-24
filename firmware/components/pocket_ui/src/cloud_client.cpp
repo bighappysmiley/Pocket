@@ -20,6 +20,10 @@ std::string companion_wifi_setup_url() {
   return url;
 }
 
+std::string companion_download_url() {
+  return POCKET_PWA_ORIGIN;
+}
+
 std::string generate_pair_code() {
   static std::mt19937 rng{static_cast<unsigned>(std::time(nullptr))};
   std::uniform_int_distribution<int> dist(0, 31);  // alphabet length 32
