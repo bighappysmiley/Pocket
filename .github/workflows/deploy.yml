@@ -335,13 +335,23 @@ jobs:
             firmware/flash-mac.sh
           if-no-files-found: error
           retention-days: 30
+      - name: Drop previous firmware-latest release
+        # softprops updates assets in place but leaves published_at stale on the
+        # release page ("Published …" looks unchanged). Delete first so each
+        # Deploy gets a fresh publish date the user can see.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete firmware-latest --yes --cleanup-tag 2>/dev/null || true
       - name: Publish rolling release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: firmware-latest
-          name: Firmware (latest main)
+          name: Firmware (latest main) — ${{ github.sha }}
           body: |
             Prebuilt merge-binary for **Waveshare ESP32-S3-ePaper-3.97** (Mac-friendly).
+
+            **Build:** `${{ github.sha }}` on `main` · published by Deploy on push.
 
             ### MacBook
             1. Download `pocket-merged.bin` and `flash-mac.sh` below.
