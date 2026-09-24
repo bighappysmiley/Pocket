@@ -180,7 +180,7 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kTitleY, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(kSideMargin, kListTop, wifi_.connected() ? cfg_.wifi_ssid : "Not connected",
                       Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + 40, "Password is entered on your phone.",
+    canvas_.draw_text(kSideMargin, kListTop + 40, "Home Wi‑Fi or phone hotspot via this phone.",
                       Canvas::TextRole::Secondary, Gray::G1);
     const char* rows[] = {"Set up with phone…", "Back"};
     draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 100);

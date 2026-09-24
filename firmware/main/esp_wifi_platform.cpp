@@ -284,43 +284,102 @@ body{font-family:system-ui,sans-serif;margin:1.25rem;max-width:28rem;color:#111;
 h1{font-size:1.35rem;margin:0 0 .35rem}p{color:#555;line-height:1.4}
 label{display:block;margin:.85rem 0 .35rem;font-weight:600}
 input,select,button{width:100%;box-sizing:border-box;font:inherit;padding:.7rem .8rem;border-radius:8px;border:1px solid #ccc}
-button{background:#111;color:#fff;border:none;margin-top:1rem;font-weight:600}
+button{background:#111;color:#fff;border:none;margin-top:.75rem;font-weight:600}
+button.sec{background:#fff;color:#111;border:1px solid #ccc}
+.modes{display:flex;gap:.5rem;margin:1rem 0}
+.modes button{margin:0;flex:1}
 .msg{margin-top:1rem;padding:.75rem;border-radius:8px;background:#eee}
+.hint{font-size:.9rem;color:#666}
 </style></head><body>
 <h1>Pocket Wi‑Fi</h1>
-<p>Stay on <strong>Pocket’s Wi‑Fi</strong>. Choose your home network and enter its password here — Pocket joins home Wi‑Fi while this page stays up.</p>
-<label for="ssid">Home network</label>
+<p id="blurb">Stay on <strong>Pocket’s Wi‑Fi</strong>. Choose a network Pocket should join.</p>
+<div class="modes">
+<button type="button" id="modeHome" class="sec">Home Wi‑Fi</button>
+<button type="button" id="modePhone">Use phone data</button>
+</div>
+<p class="hint" id="hint">Home router: pick your usual network. Phone data: use this phone’s Personal Hotspot (cell tether) — not Bluetooth.</p>
+<label for="ssid" id="ssidLabel">Network</label>
 <select id="ssid"></select>
-<label for="password">Password</label>
+<input id="ssidManual" type="text" placeholder="Or type hotspot name" style="display:none;margin-top:.5rem"/>
+<button type="button" id="toggleManual" class="sec">Type name instead</button>
+<label for="password" id="passLabel">Password</label>
 <input id="password" type="password" autocomplete="current-password"/>
 <button id="go" type="button">Connect Pocket</button>
 <div class="msg" id="msg">Looking for networks…</div>
 <script>
 const msg=document.getElementById('msg');
 const sel=document.getElementById('ssid');
+const manual=document.getElementById('ssidManual');
+const params=new URLSearchParams(location.search);
+let phone=params.get('mode')==='phone';
+function looksHot(n){
+  const s=(n||'').toLowerCase();
+  return s.includes('iphone')||s.includes('ipad')||s.includes('android')||s.includes('hotspot')||s.includes('galaxy')||s.includes('pixel');
+}
+function setMode(isPhone){
+  phone=isPhone;
+  document.getElementById('modeHome').className=phone?'sec':'';
+  document.getElementById('modePhone').className=phone?'':'sec';
+  document.getElementById('blurb').innerHTML=phone
+    ?'Stay on <strong>Pocket’s Wi‑Fi</strong>. Choose this phone’s <strong>Personal Hotspot</strong> so Pocket uses cell data.'
+    :'Stay on <strong>Pocket’s Wi‑Fi</strong>. Choose your <strong>home network</strong>.';
+  document.getElementById('hint').textContent=phone
+    ?'After Connect: leave Pocket Wi‑Fi and turn Personal Hotspot back on. iPhone: Maximize Compatibility if shown.'
+    :'Pocket joins the network while this page stays up. Or tap Use phone data for Personal Hotspot.';
+  document.getElementById('ssidLabel').textContent=phone?'Personal Hotspot':'Home network';
+  document.getElementById('passLabel').textContent=phone?'Hotspot password':'Password';
+  sortFill();
+}
+function sortFill(){
+  const nets=window._nets||[];
+  const sorted=[...nets].sort((a,b)=>{
+    const ah=looksHot(a)?0:1,bh=looksHot(b)?0:1;
+    if(phone&&ah!==bh)return ah-bh;
+    if(!phone&&ah!==bh)return bh-ah;
+    return a.localeCompare(b);
+  });
+  sel.innerHTML='';
+  for(const n of sorted){
+    const o=document.createElement('option');o.value=n;o.textContent=n+(looksHot(n)?' · hotspot?':'');
+    if(window._pref&&window._pref===n)o.selected=true;
+    sel.appendChild(o);
+  }
+  if(phone){
+    const hot=sorted.find(looksHot);
+    if(hot)sel.value=hot;
+  }
+}
+document.getElementById('modeHome').onclick=()=>setMode(false);
+document.getElementById('modePhone').onclick=()=>setMode(true);
+document.getElementById('toggleManual').onclick=()=>{
+  const show=manual.style.display==='none';
+  manual.style.display=show?'block':'none';
+  sel.style.display=show?'none':'block';
+  document.getElementById('toggleManual').textContent=show?'Pick from list':'Type name instead';
+};
 async function load(){
   try{
     const st=await fetch('/api/status').then(r=>r.json());
     const sc=await fetch('/api/scan').then(r=>r.json());
-    sel.innerHTML='';
-    const nets=sc.networks||[];
-    if(!nets.length){msg.textContent='No networks found. Move closer to your router, then reload.';return;}
-    for(const n of nets){
-      const o=document.createElement('option');o.value=n;o.textContent=n;
-      if(st.preferred_ssid&&st.preferred_ssid===n)o.selected=true;
-      sel.appendChild(o);
-    }
-    msg.textContent='Enter the home Wi‑Fi password, then Connect Pocket.';
+    window._nets=sc.networks||[];
+    window._pref=st.preferred_ssid||'';
+    if(!window._nets.length){msg.textContent='No networks found. For phone data, type your hotspot name.';manual.style.display='block';sel.style.display='none';return;}
+    setMode(phone);
+    msg.textContent=phone?'Enter hotspot password, then Connect Pocket.':'Enter the Wi‑Fi password, then Connect Pocket.';
   }catch(e){msg.textContent='Could not reach Pocket. Stay joined to the Pocket Wi‑Fi network.';}
 }
 document.getElementById('go').onclick=async()=>{
   msg.textContent='Sending…';
   try{
-    const body={ssid:sel.value,password:document.getElementById('password').value};
+    const ssid=(manual.style.display!=='none'&&manual.value.trim())?manual.value.trim():sel.value;
+    if(!ssid){msg.textContent='Enter a network name.';return;}
+    const body={ssid,password:document.getElementById('password').value};
     const res=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await res.json();
     if(!res.ok){msg.textContent=j.message||'Could not send.';return;}
-    msg.textContent='Connecting… Keep this page open. When Pocket shows a pairing code, open the Pocket app on home Wi‑Fi.';
+    msg.textContent=phone
+      ?'Connecting… Leave Pocket Wi‑Fi, turn Personal Hotspot back on, then open the Pocket app for the pairing code.'
+      :'Connecting… Keep this page open. When Pocket shows a pairing code, open the Pocket app on home Wi‑Fi.';
   }catch(e){msg.textContent='Send failed. Stay on the Pocket Wi‑Fi and try again.';}
 };
 load();
