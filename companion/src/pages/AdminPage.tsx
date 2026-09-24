@@ -179,7 +179,7 @@ export function AdminPage() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to={`/login?return_to=${encodeURIComponent('/admin')}`} replace />
+    return <Navigate to={`/login?return_to=${encodeURIComponent('/admin/')}`} replace />
   }
 
   if (!isAdmin) {
