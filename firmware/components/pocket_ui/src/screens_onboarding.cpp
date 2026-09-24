@@ -25,34 +25,41 @@ void App::render_onboarding() {
 
   switch (s) {
     case ScreenId::OnboardingWelcome: {
-      // Part B §3.2 — intro only, no name field
-      canvas_.draw_text(kSideMargin, 80, "Welcome to Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, 120, "A calm place for notes, lists,", Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text(kSideMargin, 144, "and daily essentials.", Canvas::TextRole::Body, Gray::G0);
-      canvas_.draw_text(kSideMargin, 190, "Next, connect to Wi-Fi.", Canvas::TextRole::Secondary, Gray::G1);
-      canvas_.draw_focus_tile(kSideMargin, 720, kCanvasW - 32, 48, "Continue", Canvas::TextRole::Body);
+      // Part B §3.2 — intro only, no name field. Brand first, then welcome.
+      canvas_.draw_text(kSideMargin, 72, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
+      canvas_.draw_text(kSideMargin, 160, "Welcome", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, 220, "A calm place for notes, lists,", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin, 256, "and daily essentials.", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin, 320, "Next, connect to Wi-Fi.", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_focus_tile(kSideMargin, 700, kCanvasW - 32, 56, "Continue", Canvas::TextRole::Body);
       break;
     }
     case ScreenId::OnboardingWifiList: {
-      canvas_.draw_text(kSideMargin, 80, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, 110, "Pocket needs Wi-Fi to finish setup.", Canvas::TextRole::Secondary,
+      canvas_.draw_text(kSideMargin, 72, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text(kSideMargin, 128, "Pocket needs Wi-Fi to finish setup.", Canvas::TextRole::Secondary,
                         Gray::G1);
+      // Status and list share no Y — empty state used to draw "Looking..." at 200
+      // on top of the Rescan tile at 160.
+      constexpr int kRowH = 56;
+      constexpr int kListTop = 200;
       if (wifi_networks_.empty()) {
-        canvas_.draw_text(kSideMargin, 200, "Looking for networks…", Canvas::TextRole::Body, Gray::G1);
+        canvas_.draw_text(kSideMargin, 176, "No networks found.", Canvas::TextRole::Body, Gray::G1);
       }
       focus_.count = static_cast<int>(wifi_networks_.size()) + 1;
       for (int i = 0; i < static_cast<int>(wifi_networks_.size()); ++i) {
-        const int y = 160 + i * 52;
+        const int y = kListTop + i * kRowH;
         if (i == focus_.index) {
-          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 48, wifi_networks_[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kRowH - 8, wifi_networks_[i],
+                                  Canvas::TextRole::Body);
         } else {
           canvas_.draw_text(kSideMargin + 8, y + 14, wifi_networks_[i], Canvas::TextRole::Body, Gray::G0);
         }
       }
       {
-        const int y = 160 + static_cast<int>(wifi_networks_.size()) * 52;
+        const int y =
+            wifi_networks_.empty() ? 260 : (kListTop + static_cast<int>(wifi_networks_.size()) * kRowH);
         if (focus_.index == static_cast<int>(wifi_networks_.size())) {
-          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, 48, "Rescan", Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kRowH - 8, "Rescan", Canvas::TextRole::Body);
         } else {
           canvas_.draw_text(kSideMargin + 8, y + 14, "Rescan", Canvas::TextRole::Body, Gray::G0);
         }

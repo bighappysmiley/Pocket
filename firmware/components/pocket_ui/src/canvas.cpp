@@ -40,23 +40,25 @@ int glyph_index(char c) {
 }  // namespace
 
 int Canvas::role_px(TextRole r) {
+  // Pixel height ≈ 7 * (role_px/8). Keep Body and ScreenTitle on different scales
+  // so titles read as titles on the 480x800 panel (was both scale-2 before).
   switch (r) {
     case TextRole::StatusBar:
       return 12;
     case TextRole::Secondary:
-      return 14;
+      return 16;
     case TextRole::Body:
-      return 18;
+      return 24;
     case TextRole::ScreenTitle:
-      return 22;
+      return 36;
     case TextRole::WordMark:
-      return 28;
+      return 48;
     case TextRole::PinDigit:
-      return 40;
+      return 48;
     case TextRole::HugeClock:
-      return 64;
+      return 72;
   }
-  return 18;
+  return 24;
 }
 
 void Canvas::clear(Gray g) {
