@@ -16,13 +16,25 @@ static const char* kTimezones[] = {"America/New_York", "America/Chicago", "Ameri
                                    "America/Los_Angeles", "America/Phoenix", "UTC", "Europe/London"};
 
 App::App(ConfigStore& store, PlatformClock& clock, PlatformWifi& wifi, PlatformCloud& cloud,
-         PlatformDisplay& display)
-    : store_(store), clock_(clock), wifi_(wifi), cloud_(cloud), display_(display) {}
+         PlatformDisplay& display, PlatformStorage* storage, PlatformAudio* audio,
+         PlatformIdentity* identity)
+    : store_(store),
+      clock_(clock),
+      wifi_(wifi),
+      cloud_(cloud),
+      display_(display),
+      storage_(storage),
+      audio_(audio),
+      identity_(identity) {}
 
 void App::boot() {
   cfg_ = store_.load();
   if (cfg_.device_name.empty()) cfg_.device_name = "Pocket";
-  if (cfg_.device_id.empty()) cfg_.device_id = "00000000-0000-4000-8000-000000000001";
+  if (cfg_.device_id.empty()) {
+    if (identity_) cfg_.device_id = identity_->device_uuid();
+    if (cfg_.device_id.empty()) cfg_.device_id = "00000000-0000-4000-8000-000000000001";
+    store_.save(cfg_);
+  }
   now_ms_ = clock_.now_ms();
   last_input_ms_ = now_ms_;
   if (!cfg_.onboarding_complete) {
@@ -33,10 +45,65 @@ void App::boot() {
   after_nav();
 }
 
+void App::play_sound(SoundId id) {
+  if (audio_) audio_->play(id);
+}
+
+void App::mark_content_dirty() {
+  dirty_ = true;
+  dirty_kind_ = DirtyKind::ContentBand;
+}
+
+void App::mark_status_dirty() {
+  dirty_ = true;
+  if (dirty_kind_ != DirtyKind::FullCanvas) dirty_kind_ = DirtyKind::StatusBar;
+}
+
+void App::begin_softap_link() {
+  std::string ap;
+  std::string pass;
+  if (!wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
+    error_msg_ = "Couldn't start phone setup.";
+    error_until_ms_ = now_ms_ + 3000;
+    mark_content_dirty();
+    return;
+  }
+  wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
+  wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
+  last_wifi_prov_poll_ms_ = 0;
+  focus_.index = 0;
+  nav_.replace(ScreenId::OnboardingWifiPassword);
+  after_nav();
+}
+
+bool App::mint_pair_session() {
+  // Retry a few times — Cloud must register the code or claim will fail.
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    const std::string code = cloud_.create_pair_session(cfg_.device_id);
+    if (!code.empty()) {
+      pair_code_ = code;
+      pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
+      pair_status_ = "pending";
+      last_pair_poll_ms_ = 0;
+      return true;
+    }
+  }
+  pair_code_.clear();
+  pair_status_ = "expired";
+  error_msg_ = "Couldn't create pairing code. Try again.";
+  error_until_ms_ = now_ms_ + 4000;
+  return false;
+}
+
 void App::after_nav(bool full_refresh) {
   focus_.index = 0;
   dirty_ = true;
+  dirty_kind_ = DirtyKind::FullCanvas;
   if (full_refresh) refresh_.on_screen_enter_full();
+  if (nav_.current() == ScreenId::OnboardingWelcome && !welcome_sound_played_) {
+    welcome_sound_played_ = true;
+    play_sound(SoundId::Welcome);
+  }
   redraw(full_refresh);
 }
 
@@ -79,14 +146,21 @@ void App::tick(uint32_t now_ms) {
             focus_.index = 0;
             nav_.replace(ScreenId::SettingsWifi);
             after_nav();
-          } else {
-            pair_code_ = cloud_.create_pair_session(cfg_.device_id);
-            pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
-            pair_status_ = "pending";
-            last_pair_poll_ms_ = 0;
+          } else if (mint_pair_session()) {
+            play_sound(SoundId::Success);
             focus_.index = 0;
             nav_.replace(ScreenId::OnboardingCompanionQr);
             after_nav();  // QR: full
+          } else {
+            play_sound(SoundId::Attention);
+            std::string ap;
+            std::string pass;
+            wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass);
+            wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
+            wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
+            focus_.index = 0;
+            nav_.replace(ScreenId::OnboardingWifiPassword);
+            after_nav();
           }
         } else {
           error_msg_ = "Couldn't connect. Check the password on your phone.";
@@ -117,31 +191,65 @@ void App::tick(uint32_t now_ms) {
         pair_status_ = "claimed";
         cfg_.companion_linked = true;
         store_.save(cfg_);
+        play_sound(SoundId::Success);
         // Companion required: advance as soon as linked (no Skip path).
         if (!cfg_.onboarding_complete) {
           focus_.index = 0;
           nav_.replace(ScreenId::OnboardingPinLength);
           after_nav();
         } else {
-          dirty_ = true;
+          mark_content_dirty();
         }
       } else if (st == "expired" && pair_status_ != "expired") {
         pair_status_ = "expired";
-        dirty_ = true;
+        mark_content_dirty();
       }
     }
   }
-  if (dirty_) redraw(false);
+  // SD eject wait: poll until card gone, then continue to SoftAP Link
+  if (nav_.current() == ScreenId::OnboardingSdCard && sd_waiting_eject_) {
+    if (now_ms - last_sd_poll_ms_ >= 500) {
+      last_sd_poll_ms_ = now_ms;
+      const bool still = storage_ && storage_->present();
+      if (!still) {
+        sd_waiting_eject_ = false;
+        play_sound(SoundId::Click);
+        begin_softap_link();
+      }
+    }
+  }
+  if (dirty_) {
+    present_canvas(false);
+    dirty_ = false;
+  }
   maybe_tick_home_clock();
 }
 
-void App::redraw(bool full) {
+void App::present_canvas(bool full) {
   canvas_.clear(Gray::G3);
   render();
-  RefreshMode mode = refresh_.plan(!full);
-  if (full) mode = RefreshMode::Full;
-  display_.present(canvas_, mode);
-  refresh_.on_applied(mode);
+  if (full || dirty_kind_ == DirtyKind::FullCanvas) {
+    RefreshMode mode = refresh_.plan(!full);
+    if (full) mode = RefreshMode::Full;
+    display_.present(canvas_, mode);
+    refresh_.on_applied(mode);
+    dirty_kind_ = DirtyKind::FullCanvas;
+    return;
+  }
+  if (dirty_kind_ == DirtyKind::StatusBar) {
+    display_.present_region(canvas_, 0, 0, kCanvasW, kStatusBarH);
+    refresh_.on_applied(RefreshMode::Partial);
+  } else {
+    // Content below status bar — true region partial when one UI piece changes.
+    display_.present_region(canvas_, 0, kStatusBarH, kCanvasW, kCanvasH - kStatusBarH);
+    refresh_.on_applied(RefreshMode::Partial);
+  }
+  dirty_kind_ = DirtyKind::FullCanvas;
+}
+
+void App::redraw(bool full) {
+  dirty_kind_ = DirtyKind::FullCanvas;
+  present_canvas(full);
   dirty_ = false;
 }
 
@@ -178,6 +286,7 @@ void App::handle(InputEvent e) {
       break;
     case ScreenId::OnboardingWelcome:
     case ScreenId::OnboardingCompanionDownload:
+    case ScreenId::OnboardingSdCard:
     case ScreenId::OnboardingWifiList:
     case ScreenId::OnboardingWifiPassword:
     case ScreenId::OnboardingWifiConnecting:
@@ -234,6 +343,7 @@ void App::render() {
       break;
     case ScreenId::OnboardingWelcome:
     case ScreenId::OnboardingCompanionDownload:
+    case ScreenId::OnboardingSdCard:
     case ScreenId::OnboardingWifiList:
     case ScreenId::OnboardingWifiPassword:
     case ScreenId::OnboardingWifiConnecting:

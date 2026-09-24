@@ -7,9 +7,11 @@
 #include "pocket/app.hpp"
 #include "pocket/input.hpp"
 #include "pocket_board/axp.hpp"
+#include "pocket_board/audio.hpp"
 #include "pocket_board/buttons.hpp"
 #include "pocket_board/epd.hpp"
 #include "pocket_board/pins.hpp"
+#include "pocket_board/sdcard.hpp"
 #include "esp_wifi_platform.hpp"
 #include "esp_cloud_platform.hpp"
 
@@ -22,13 +24,14 @@
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
+#include "esp_mac.h"
 #include "esp_system.h"
 #include "esp_sntp.h"
 
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v25-status-chrome";
+static const char* kBuildId = "POCKET-LIVE-v26-sd-pair-audio";
 
 namespace {
 
@@ -109,6 +112,60 @@ struct EspDisplay : pocket::PlatformDisplay {
   }
 };
 
+struct EspStorage : pocket::PlatformStorage {
+  bool probe() override { return pocket::board::sd_probe(); }
+  bool present() override { return pocket::board::sd_present(); }
+  pocket::SdContentKind classify() override {
+    switch (pocket::board::sd_classify()) {
+      case pocket::board::SdContentKind::Absent:
+        return pocket::SdContentKind::Absent;
+      case pocket::board::SdContentKind::Empty:
+        return pocket::SdContentKind::Empty;
+      case pocket::board::SdContentKind::Media:
+        return pocket::SdContentKind::Media;
+      case pocket::board::SdContentKind::FirmwareRisk:
+        return pocket::SdContentKind::FirmwareRisk;
+      default:
+        return pocket::SdContentKind::Unknown;
+    }
+  }
+  bool erase_card() override { return pocket::board::sd_erase(); }
+  void unmount() override { pocket::board::sd_unmount(); }
+};
+
+struct EspAudio : pocket::PlatformAudio {
+  void play(pocket::SoundId id) override {
+    pocket::board::SoundId bid = pocket::board::SoundId::Click;
+    switch (id) {
+      case pocket::SoundId::Welcome:
+        bid = pocket::board::SoundId::Welcome;
+        break;
+      case pocket::SoundId::Success:
+        bid = pocket::board::SoundId::Success;
+        break;
+      case pocket::SoundId::Attention:
+        bid = pocket::board::SoundId::Attention;
+        break;
+      default:
+        bid = pocket::board::SoundId::Click;
+        break;
+    }
+    pocket::board::audio_play(bid);
+  }
+};
+
+struct EspIdentity : pocket::PlatformIdentity {
+  std::string device_uuid() override {
+    uint8_t mac[6] = {};
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    char buf[40];
+    std::snprintf(buf, sizeof(buf), "%02x%02x%02x%02x-%02x%02x-4000-80%02x-%02x%02x%02x%02x%02x%02x",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], mac[0] ^ 0x80, mac[1], mac[2], mac[3],
+                  mac[4], mac[5], static_cast<uint8_t>(mac[0] + mac[5]));
+    return buf;
+  }
+};
+
 struct BootCtx {
   pocket::board::ButtonPoller* buttons = nullptr;
   pocket::board::EpdDisplay* epd = nullptr;
@@ -183,8 +240,13 @@ extern "C" void app_main(void) {
   static EspWifi wifi;
   static EspCloud cloud;
   static EspDisplay display(epd);
+  static EspStorage storage;
+  static EspAudio audio;
+  static EspIdentity identity;
   static pocket::InputMapper mapper;
-  static pocket::App app(store, clock, wifi, cloud, display);
+  static pocket::App app(store, clock, wifi, cloud, display, &storage, &audio, &identity);
+
+  (void)pocket::board::audio_init();
 
   g_boot.buttons = &buttons;
   g_boot.epd = &epd;

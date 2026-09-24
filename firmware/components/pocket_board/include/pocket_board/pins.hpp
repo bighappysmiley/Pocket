@@ -34,4 +34,22 @@ constexpr int kPanelH = 480;
 constexpr int kLogicalW = 480;
 constexpr int kLogicalH = 800;
 
+// --- microSD (SDMMC 4-bit, Waveshare demo pins) ---
+constexpr int kPinSdClk = 16;
+constexpr int kPinSdCmd = 17;
+constexpr int kPinSdD0 = 15;
+constexpr int kPinSdD1 = 7;
+constexpr int kPinSdD2 = 8;
+constexpr int kPinSdD3 = 18;
+
+// --- ES8311 + amp (I2C shared with AXP on 41/42) ---
+constexpr int kPinI2cSda = 41;
+constexpr int kPinI2cScl = 42;
+constexpr int kPinI2sMclk = 13;
+constexpr int kPinI2sBclk = 14;
+constexpr int kPinI2sWs = 47;
+constexpr int kPinI2sDin = 21;
+constexpr int kPinI2sDout = 48;
+constexpr int kPinPaCtrl = 39;  // amp enable, active-high
+
 }  // namespace pocket::board

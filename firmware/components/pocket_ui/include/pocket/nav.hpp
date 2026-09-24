@@ -12,6 +12,7 @@ enum class ScreenId : uint16_t {
   Pin,
   OnboardingWelcome,
   OnboardingCompanionDownload,
+  OnboardingSdCard,
   OnboardingWifiList,
   OnboardingWifiPassword,
   OnboardingWifiConnecting,
@@ -82,6 +83,7 @@ inline bool long_home_blocked(ScreenId s, bool onboarding_complete) {
     switch (s) {
       case ScreenId::OnboardingWelcome:
       case ScreenId::OnboardingCompanionDownload:
+      case ScreenId::OnboardingSdCard:
       case ScreenId::OnboardingWifiList:
       case ScreenId::OnboardingWifiPassword:
       case ScreenId::OnboardingWifiConnecting:
@@ -112,6 +114,7 @@ inline bool screen_requires_full_enter(ScreenId s) {
     case ScreenId::SettingsUpdateProgress:
     case ScreenId::OnboardingWelcome:
     case ScreenId::OnboardingCompanionDownload:  // QR clarity
+    case ScreenId::OnboardingSdCard:
     case ScreenId::OnboardingCompanionQr:        // QR clarity
     case ScreenId::OnboardingWifiPassword:  // SoftAP Link phase — password + QR clarity
     case ScreenId::OnboardingWifiConnecting:
@@ -132,28 +135,30 @@ inline bool screen_requires_full_enter(ScreenId s) {
 }
 
 inline int onboarding_step_of(ScreenId s) {
-  // welcome=1 … done=8 (companion download required after welcome)
+  // welcome=1 … done=9 (SD gate after companion download, before Link)
   switch (s) {
     case ScreenId::OnboardingWelcome:
       return 1;
     case ScreenId::OnboardingCompanionDownload:
       return 2;
+    case ScreenId::OnboardingSdCard:
+      return 3;
     case ScreenId::OnboardingWifiList:
     case ScreenId::OnboardingWifiPassword:
     case ScreenId::OnboardingWifiConnecting:
-      return 3;
-    case ScreenId::OnboardingCompanionQr:
       return 4;
+    case ScreenId::OnboardingCompanionQr:
+      return 5;
     case ScreenId::OnboardingPinLength:
     case ScreenId::OnboardingPinSet:
     case ScreenId::OnboardingPinConfirm:
-      return 5;
-    case ScreenId::OnboardingTimezone:
       return 6;
-    case ScreenId::OnboardingMicTest:
+    case ScreenId::OnboardingTimezone:
       return 7;
-    case ScreenId::OnboardingDone:
+    case ScreenId::OnboardingMicTest:
       return 8;
+    case ScreenId::OnboardingDone:
+      return 9;
     default:
       return 0;
   }

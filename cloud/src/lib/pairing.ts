@@ -37,9 +37,14 @@ export function createPairSession(input: {
     throw Errors.badRequest("That pairing code isn't valid.");
   }
   const now = new Date();
-  const expiresAt = input.expires_at
-    ? new Date(input.expires_at)
-    : new Date(now.getTime() + PAIR_TTL_MS);
+  // Prefer server TTL — ignore client expires_at when missing/invalid/past (unsynced device RTC).
+  let expiresAt = new Date(now.getTime() + PAIR_TTL_MS);
+  if (input.expires_at) {
+    const parsed = new Date(input.expires_at);
+    if (!Number.isNaN(parsed.getTime()) && parsed.getTime() > now.getTime()) {
+      expiresAt = parsed;
+    }
+  }
   // Cap TTL at 10 minutes from now
   const maxExpiry = new Date(now.getTime() + PAIR_TTL_MS);
   const effectiveExpiry = expiresAt > maxExpiry ? maxExpiry : expiresAt;

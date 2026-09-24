@@ -350,10 +350,12 @@ void App::handle_settings(InputEvent e) {
           error_until_ms_ = now_ms_ + 2500;
           dirty_ = true;
         } else {
-          pair_code_ = cloud_.create_pair_session(cfg_.device_id);
-          pair_expires_ms_ = now_ms_ + 10 * 60 * 1000;
-          pair_status_ = "pending";
-          last_pair_poll_ms_ = 0;
+          if (!mint_pair_session()) {
+            error_msg_ = "Couldn't create pairing code.";
+            error_until_ms_ = now_ms_ + 2500;
+            dirty_ = true;
+            return;
+          }
           focus_.index = 0;
           nav_.push(ScreenId::OnboardingCompanionQr);
           after_nav();

@@ -59,13 +59,32 @@ struct TWifi : PlatformWifi {
 };
 struct TCloud : PlatformCloud {
   std::string st = "pending";
-  std::string create_pair_session(const std::string&) override { return "XYZW2345"; }
+  int creates = 0;
+  std::string create_pair_session(const std::string&) override {
+    ++creates;
+    return "XYZW2345";
+  }
   std::string pair_status(const std::string&) override { return st; }
   void refresh_entitlement(DeviceConfig& c) override { c.cloud_entitled = false; }
   std::string stt_transcribe(const std::vector<uint8_t>&) override { return "test"; }
 };
 struct TDisp : PlatformDisplay {
   void present(const Canvas&, RefreshMode) override {}
+};
+struct TStorage : PlatformStorage {
+  SdContentKind kind = SdContentKind::Absent;
+  bool probe() override { return kind != SdContentKind::Absent; }
+  bool present() override { return kind != SdContentKind::Absent; }
+  SdContentKind classify() override { return kind; }
+  bool erase_card() override {
+    kind = SdContentKind::Empty;
+    return true;
+  }
+  void unmount() override { kind = SdContentKind::Absent; }
+};
+struct TAudio : PlatformAudio {
+  int plays = 0;
+  void play(SoundId) override { ++plays; }
 };
 
 int main() {
@@ -74,7 +93,9 @@ int main() {
   TWifi wifi;
   TCloud cloud;
   TDisp disp;
-  App app(store, clock, wifi, cloud, disp);
+  TStorage storage;
+  TAudio audio;
+  App app(store, clock, wifi, cloud, disp, &storage, &audio);
   app.boot();
   CHECK(app.screen() == ScreenId::OnboardingWelcome);
   CHECK(app.config().device_name == "Pocket");
@@ -87,7 +108,12 @@ int main() {
   app.handle(InputEvent::Power);
   CHECK(app.screen() == ScreenId::OnboardingCompanionDownload);
 
-  // Continue → Link SoftAP (unified Wi‑Fi + pair; no separate Wi‑Fi list)
+  // Continue → SD gate
+  app.handle(InputEvent::Select);
+  CHECK(app.screen() == ScreenId::OnboardingSdCard);
+
+  // No card → Continue without card → SoftAP
+  app.handle(InputEvent::Down);
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::OnboardingWifiPassword);
   CHECK(wifi.provisioned);
@@ -98,6 +124,7 @@ int main() {
   clock.t += 500;
   app.tick(clock.t);
   CHECK(app.screen() == ScreenId::OnboardingCompanionQr);
+  CHECK(cloud.creates >= 1);
 
   // Companion required: claim advances to PIN (no Skip)
   cloud.st = "claimed";
@@ -135,6 +162,26 @@ int main() {
 
   // No naming screen ever
   CHECK(app.config().device_name == "Pocket");
+
+  // Firmware-risk card forces erase
+  {
+    MemoryConfigStore store2;
+    TClock clock2;
+    TWifi wifi2;
+    TCloud cloud2;
+    TDisp disp2;
+    TStorage storage2;
+    storage2.kind = SdContentKind::FirmwareRisk;
+    TAudio audio2;
+    App app2(store2, clock2, wifi2, cloud2, disp2, &storage2, &audio2);
+    app2.boot();
+    app2.handle(InputEvent::Select);  // welcome → download
+    app2.handle(InputEvent::Select);  // download → sd
+    CHECK(app2.screen() == ScreenId::OnboardingSdCard);
+    app2.handle(InputEvent::Select);  // erase
+    CHECK(app2.screen() == ScreenId::OnboardingWifiPassword);
+    CHECK(storage2.kind == SdContentKind::Absent);
+  }
 
   if (failures) {
     std::printf("%d failures\n", failures);

@@ -54,6 +54,36 @@ struct PlatformDisplay {
   }
 };
 
+enum class SdContentKind : uint8_t {
+  Absent = 0,
+  Empty,
+  Media,
+  FirmwareRisk,
+  Unknown,
+};
+
+struct PlatformStorage {
+  virtual ~PlatformStorage() = default;
+  virtual bool probe() { return false; }
+  virtual bool present() { return false; }
+  virtual SdContentKind classify() { return SdContentKind::Absent; }
+  virtual bool erase_card() { return false; }
+  virtual void unmount() {}
+};
+
+enum class SoundId : uint8_t { Click = 0, Welcome, Success, Attention };
+
+struct PlatformAudio {
+  virtual ~PlatformAudio() = default;
+  virtual void play(SoundId /*id*/) {}
+};
+
+/** Optional: stable device UUID from MAC (ESP). Empty → App generates placeholder. */
+struct PlatformIdentity {
+  virtual ~PlatformIdentity() = default;
+  virtual std::string device_uuid() { return {}; }
+};
+
 struct Note {
   std::string id;
   std::string title;
@@ -131,7 +161,8 @@ struct FocusModel {
 class App {
  public:
   App(ConfigStore& store, PlatformClock& clock, PlatformWifi& wifi, PlatformCloud& cloud,
-      PlatformDisplay& display);
+      PlatformDisplay& display, PlatformStorage* storage = nullptr, PlatformAudio* audio = nullptr,
+      PlatformIdentity* identity = nullptr);
 
   void boot();
   void tick(uint32_t now_ms);
@@ -146,6 +177,8 @@ class App {
   void redraw(bool full);
 
  private:
+  enum class DirtyKind : uint8_t { FullCanvas, ContentBand, StatusBar };
+
   void render();
   void draw_status_bar();
   void go_home();
@@ -153,6 +186,12 @@ class App {
   void after_nav(bool full_refresh);
   /** Navigate then refresh using Spec §6 (full only for major enters / QR / PIN). */
   void after_nav();
+  void mark_content_dirty();
+  void mark_status_dirty();
+  void present_canvas(bool full);
+  void play_sound(SoundId id);
+  bool mint_pair_session();
+  void begin_softap_link();
 
   // Screen handlers
   void render_lock();
@@ -185,6 +224,9 @@ class App {
   PlatformWifi& wifi_;
   PlatformCloud& cloud_;
   PlatformDisplay& display_;
+  PlatformStorage* storage_ = nullptr;
+  PlatformAudio* audio_ = nullptr;
+  PlatformIdentity* identity_ = nullptr;
 
   DeviceConfig cfg_{};
   AppData data_{};
@@ -193,6 +235,7 @@ class App {
   RefreshPolicy refresh_{};
   InputMapper input_{};  // unused when events injected externally
   bool dirty_ = true;
+  DirtyKind dirty_kind_ = DirtyKind::FullCanvas;
 
   // UI transient state
   FocusModel focus_{};
@@ -223,6 +266,10 @@ class App {
   std::string mic_result_;
   int onboarding_tz_index_ = 0;
   int last_home_clock_minute_ = -1;
+  SdContentKind sd_kind_ = SdContentKind::Absent;
+  bool sd_waiting_eject_ = false;
+  uint32_t last_sd_poll_ms_ = 0;
+  bool welcome_sound_played_ = false;
 };
 
 }  // namespace pocket

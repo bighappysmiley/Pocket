@@ -1,4 +1,5 @@
 #include "pocket_board/axp.hpp"
+#include "pocket_board/i2c_bus.hpp"
 
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
@@ -11,8 +12,6 @@ namespace {
 
 constexpr const char* TAG = "pocket_axp";
 constexpr uint8_t kAxpAddr = 0x34;
-constexpr int kSda = 41;
-constexpr int kScl = 42;
 
 // AXP2101 registers (XPowersLib / Waveshare)
 constexpr uint8_t kRegDcOnOff = 0x80;
@@ -22,7 +21,6 @@ constexpr uint8_t kRegAldo1Vol = 0x92;
 constexpr uint8_t kRegAldo2Vol = 0x93;
 constexpr uint8_t kRegAldo3Vol = 0x94;
 
-i2c_master_bus_handle_t bus_ = nullptr;
 i2c_master_dev_handle_t dev_ = nullptr;
 
 bool wr(uint8_t reg, uint8_t val) {
@@ -46,31 +44,18 @@ bool rd(uint8_t reg, uint8_t* val) {
 
 bool ensure_bus() {
   if (dev_) return true;
-
-  i2c_master_bus_config_t bus_cfg = {};
-  bus_cfg.i2c_port = I2C_NUM_0;
-  bus_cfg.sda_io_num = static_cast<gpio_num_t>(kSda);
-  bus_cfg.scl_io_num = static_cast<gpio_num_t>(kScl);
-  bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
-  bus_cfg.glitch_ignore_cnt = 7;
-  bus_cfg.flags.enable_internal_pullup = true;
-
-  esp_err_t err = i2c_new_master_bus(&bus_cfg, &bus_);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "i2c bus: %s", esp_err_to_name(err));
-    return false;
-  }
-
+  auto bus = i2c_bus();
+  if (!bus) return false;
   i2c_device_config_t dev_cfg = {};
   dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
   dev_cfg.device_address = kAxpAddr;
-  dev_cfg.scl_speed_hz = 400000;
-  err = i2c_master_bus_add_device(bus_, &dev_cfg, &dev_);
+  dev_cfg.scl_speed_hz = 100000;
+  esp_err_t err = i2c_master_bus_add_device(bus, &dev_cfg, &dev_);
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "add axp: %s", esp_err_to_name(err));
+    ESP_LOGW(TAG, "add AXP device failed: %s", esp_err_to_name(err));
+    dev_ = nullptr;
     return false;
   }
-  vTaskDelay(pdMS_TO_TICKS(20));
   return true;
 }
 
