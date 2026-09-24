@@ -133,6 +133,24 @@ export function DeviceDetailPage() {
             </button>
           </form>
 
+          <div className="panel stack">
+            <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Wi‑Fi networks</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Pocket remembers several networks and reconnects after power-off. To add another while it is
+              already online:
+            </p>
+            <ol className="stack-sm" style={{ paddingLeft: '1.2rem', margin: 0 }}>
+              <li>
+                On Pocket: <strong>Settings → Wi‑Fi → Add with phone…</strong>
+              </li>
+              <li>Join the Pocket Wi‑Fi shown on the device (it can stay on the first network).</li>
+              <li>Open Link below and send the new network’s name and password.</li>
+            </ol>
+            <Link className="btn btn-primary btn-block" to="/link?add=1">
+              Add Wi‑Fi network
+            </Link>
+          </div>
+
           {!confirmUnlink ? (
             <button type="button" className="btn btn-danger" onClick={() => setConfirmUnlink(true)}>
               Unlink device

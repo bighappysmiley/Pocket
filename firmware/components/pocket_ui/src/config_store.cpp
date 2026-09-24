@@ -7,9 +7,9 @@ namespace pocket {
 namespace {
 
 constexpr uint32_t kMagic = 0x314B4350u;  // 'PCK1' LE
-constexpr uint16_t kVersion = 2;
+constexpr uint16_t kVersion = 3;
 constexpr size_t kMaxString = 128;
-constexpr size_t kMaxBlob = 4096;
+constexpr size_t kMaxBlob = 8192;
 
 void put_u8(std::vector<uint8_t>& o, uint8_t v) { o.push_back(v); }
 
@@ -90,9 +90,42 @@ bool get_str(const uint8_t* d, size_t len, size_t& off, std::string& out) {
 
 }  // namespace
 
+void wifi_known_upsert(DeviceConfig& cfg, const std::string& ssid, const std::string& password) {
+  if (ssid.empty()) return;
+  WifiKnownNetwork entry{ssid, password};
+  for (auto it = cfg.wifi_known.begin(); it != cfg.wifi_known.end(); ++it) {
+    if (it->ssid == ssid) {
+      cfg.wifi_known.erase(it);
+      break;
+    }
+  }
+  cfg.wifi_known.insert(cfg.wifi_known.begin(), std::move(entry));
+  while (cfg.wifi_known.size() > kMaxKnownWifi) cfg.wifi_known.pop_back();
+  cfg.wifi_ssid = ssid;
+}
+
+void wifi_known_forget(DeviceConfig& cfg, const std::string& ssid) {
+  for (auto it = cfg.wifi_known.begin(); it != cfg.wifi_known.end(); ++it) {
+    if (it->ssid == ssid) {
+      cfg.wifi_known.erase(it);
+      break;
+    }
+  }
+  if (cfg.wifi_ssid == ssid) {
+    cfg.wifi_ssid = cfg.wifi_known.empty() ? std::string{} : cfg.wifi_known.front().ssid;
+  }
+}
+
+const WifiKnownNetwork* wifi_known_find(const DeviceConfig& cfg, const std::string& ssid) {
+  for (const auto& n : cfg.wifi_known) {
+    if (n.ssid == ssid) return &n;
+  }
+  return nullptr;
+}
+
 bool pack_device_config(const DeviceConfig& cfg, std::vector<uint8_t>& out) {
   out.clear();
-  out.reserve(512);
+  out.reserve(1024);
   put_u32(out, kMagic);
   put_u16(out, kVersion);
   put_u16(out, 0);  // flags
@@ -119,6 +152,13 @@ bool pack_device_config(const DeviceConfig& cfg, std::vector<uint8_t>& out) {
   put_str(out, cfg.device_id);
   put_str(out, cfg.device_token);
   put_str(out, cfg.cloud_status);
+  // v3: known Wi‑Fi list
+  const size_t n = cfg.wifi_known.size() > kMaxKnownWifi ? kMaxKnownWifi : cfg.wifi_known.size();
+  put_u8(out, static_cast<uint8_t>(n));
+  for (size_t i = 0; i < n; ++i) {
+    put_str(out, cfg.wifi_known[i].ssid);
+    put_str(out, cfg.wifi_known[i].password);
+  }
   return out.size() <= kMaxBlob;
 }
 
@@ -129,7 +169,7 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
   uint16_t ver = 0;
   uint16_t flags = 0;
   if (!get_u32(data, len, off, magic) || magic != kMagic) return false;
-  if (!get_u16(data, len, off, ver) || ver != kVersion) return false;
+  if (!get_u16(data, len, off, ver) || (ver != 2 && ver != 3)) return false;
   if (!get_u16(data, len, off, flags)) return false;
   (void)flags;
 
@@ -162,6 +202,19 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
   if (!get_str(data, len, off, cfg.device_id)) return false;
   if (!get_str(data, len, off, cfg.device_token)) return false;
   if (!get_str(data, len, off, cfg.cloud_status)) return false;
+
+  cfg.wifi_known.clear();
+  if (ver >= 3) {
+    uint8_t n = 0;
+    if (!get_u8(data, len, off, n)) return false;
+    if (n > kMaxKnownWifi) return false;
+    for (uint8_t i = 0; i < n; ++i) {
+      WifiKnownNetwork net;
+      if (!get_str(data, len, off, net.ssid)) return false;
+      if (!get_str(data, len, off, net.password)) return false;
+      if (!net.ssid.empty()) cfg.wifi_known.push_back(std::move(net));
+    }
+  }
 
   out = std::move(cfg);
   return true;

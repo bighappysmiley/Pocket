@@ -50,12 +50,13 @@ function sortNetworks(nets: string[], preferHotspot: boolean): string[] {
  * (Web Bluetooth cannot do classic PAN from a PWA).
  */
 export function LinkPage() {
-  useDocumentTitle('Link your Pocket')
   const { isAuthenticated, loading: authLoading } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const codeFromQuery = (params.get('code') || '').toUpperCase()
   const modeFromQuery = params.get('mode') === 'phone' ? 'phone' : null
+  const addNetwork = params.get('add') === '1'
+  useDocumentTitle(addNetwork ? 'Add Wi‑Fi' : 'Link your Pocket')
 
   const [wifiPhase, setWifiPhase] = useState<WifiPhase>(codeFromQuery ? 'sent' : 'instructions')
   /** True when user skipped SoftAP because Pocket is already online. */
@@ -157,7 +158,10 @@ export function LinkPage() {
       await sendDeviceWifi(ssid.trim(), wifiPassword)
       setSkipWifi(false)
       setWifiPhase('sent')
-      setOnlineReady(false)
+      setOnlineReady(addNetwork) // adding another network — no pair step required
+      if (addNetwork) {
+        setWifiError(null)
+      }
     } catch (err) {
       setWifiPhase('error')
       setWifiError(err instanceof Error ? err.message : 'Could not send Wi‑Fi to Pocket.')
@@ -242,13 +246,15 @@ export function LinkPage() {
     <div className="page stack" style={{ maxWidth: '28rem', paddingTop: '2rem' }}>
       <WordMark to="/" />
       <div className="stack-sm">
-        <h1>Link your Pocket</h1>
+        <h1>{addNetwork ? 'Add a Wi‑Fi network' : 'Link your Pocket'}</h1>
         <p className="muted">
           {skipWifi || codeFromQuery
             ? 'Enter the pairing code from Pocket to link this account.'
-            : phone
-              ? 'Share this phone’s cell data via Personal Hotspot — no home Wi‑Fi required.'
-              : 'Send a Wi‑Fi password to Pocket (home network or phone hotspot), then enter the pairing code.'}
+            : addNetwork
+              ? 'On Pocket open Settings → Wi‑Fi → Add with phone…, join Pocket Wi‑Fi, then send another network. Pocket keeps the ones it already knows.'
+              : phone
+                ? 'Share this phone’s cell data via Personal Hotspot — no home Wi‑Fi required.'
+                : 'Send a Wi‑Fi password to Pocket (home network or phone hotspot), then enter the pairing code.'}
         </p>
       </div>
 
@@ -330,9 +336,11 @@ export function LinkPage() {
               <button type="button" className="btn btn-block" onClick={() => void tryReachDevice()}>
                 I’ve joined — continue in this app
               </button>
-              <button type="button" className="btn btn-block" onClick={goPairWithoutWifi}>
-                Skip — Pocket is already online
-              </button>
+              {!addNetwork ? (
+                <button type="button" className="btn btn-block" onClick={goPairWithoutWifi}>
+                  Skip — Pocket is already online
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -424,10 +432,18 @@ export function LinkPage() {
           <p>
             {skipWifi || codeFromQuery
               ? 'Enter the pairing code shown on Pocket to finish linking.'
-              : phone
-                ? 'Pocket is joining your Personal Hotspot. Leave Pocket Wi‑Fi, turn the hotspot back on (cell data), wait for the pairing code on Pocket, then link below.'
-                : 'Pocket is joining Wi‑Fi. Rejoin your home network on this phone, wait for the pairing code on Pocket, then link below.'}
+              : addNetwork
+                ? 'Pocket is saving that network and will use it next time it boots. You can leave Pocket Wi‑Fi. No pairing code needed.'
+                : phone
+                  ? 'Pocket is joining your Personal Hotspot. Leave Pocket Wi‑Fi, turn the hotspot back on (cell data), wait for the pairing code on Pocket, then link below.'
+                  : 'Pocket is joining Wi‑Fi. Rejoin your home network on this phone, wait for the pairing code on Pocket, then link below.'}
           </p>
+          {addNetwork && !codeFromQuery ? (
+            <Link className="btn btn-primary btn-block" to="/devices">
+              Done — back to devices
+            </Link>
+          ) : (
+            <>
           {skipWifi && !codeFromQuery ? (
             <button
               type="button"
@@ -488,6 +504,8 @@ export function LinkPage() {
                 {pairBusy ? 'Linking…' : 'Link this Pocket'}
               </button>
             </form>
+          )}
+            </>
           )}
         </div>
       )}

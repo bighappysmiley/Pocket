@@ -168,9 +168,13 @@ void App::render_onboarding() {
       if (wifi_ap_pass_.empty()) wifi_ap_pass_ = wifi_.provision_ap_password();
 
       canvas_.draw_text(kSideMargin, ty, "Link", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 48, kWrapW, kLineGap,
-                                        "On your phone: join Pocket Wi‑Fi, then home Wi‑Fi or phone hotspot.",
-                                        Canvas::TextRole::Secondary, Gray::G1);
+      int y = canvas_.draw_text_wrapped(
+          kSideMargin, ty + 48, kWrapW, kLineGap,
+          cfg_.onboarding_complete
+              ? "Add a network: join Pocket Wi‑Fi on your phone, then send SSID and password."
+              : "On your phone: join Pocket Wi‑Fi, then home Wi‑Fi or phone hotspot.",
+          Canvas::TextRole::Secondary, Gray::G1);
+
 
       canvas_.draw_text(kSideMargin, y + 16, "Pocket Wi‑Fi", Canvas::TextRole::Secondary, Gray::G1);
       if (!wifi_ap_ssid_.empty()) {
