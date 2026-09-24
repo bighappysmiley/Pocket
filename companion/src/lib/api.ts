@@ -114,6 +114,18 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
 export const api = {
   // Auth
+  register(email: string, password: string) {
+    return request<{ ok: true; message: string }>('/v1/auth/register', {
+      method: 'POST',
+      body: { email, password },
+    })
+  },
+  login(email: string, password: string) {
+    return request<{ ok: true; user: { id: string; email: string } }>('/v1/auth/login', {
+      method: 'POST',
+      body: { email, password },
+    })
+  },
   requestMagicLink(email: string) {
     return request<{ ok: true }>('/v1/auth/magic-link', { method: 'POST', body: { email } })
   },

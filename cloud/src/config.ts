@@ -29,6 +29,7 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
   isDev: (process.env.NODE_ENV || "development") !== "production",
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:8787",
+  // Companion origin including path prefix for GitHub project Pages
   pwaOrigin: process.env.PWA_ORIGIN || "http://localhost:5173",
   corsOrigins: Array.from(
     new Set([

@@ -32,7 +32,8 @@ export function setSessionCookie(c: Context<AppEnv>, token: string, expiresAt: s
   );
   setCookie(c, config.sessionCookieName, token, {
     httpOnly: true,
-    sameSite: "Lax",
+    // Cross-origin companion (GitHub Pages) → Cloud API needs None+Secure.
+    sameSite: config.isDev ? "Lax" : "None",
     path: "/",
     secure: !config.isDev,
     maxAge,
