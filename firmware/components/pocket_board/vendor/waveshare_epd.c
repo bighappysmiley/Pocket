@@ -21,18 +21,20 @@ static void epaper_gpio_Init(void)
   gpio_conf.mode = GPIO_MODE_OUTPUT;
   gpio_conf.pin_bit_mask = ((uint64_t)0x01<<EPD_RST_PIN) | ((uint64_t)0x01<<EPD_DC_PIN) | ((uint64_t)0x01<<EPD_CS_PIN);
   gpio_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-  gpio_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+  gpio_conf.pull_up_en = GPIO_PULLUP_DISABLE;
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&gpio_conf));
 
-
+  // BUSY is driven by the panel (HIGH = busy). Do NOT pull-up: a floating/idle
+  // high looks "forever busy" and stacks 15s waits into a WDT reboot loop.
   gpio_conf.intr_type = GPIO_INTR_DISABLE;
   gpio_conf.mode = GPIO_MODE_INPUT;
   gpio_conf.pin_bit_mask = ((uint64_t)0x01<<EPD_BUSY_PIN);
   gpio_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-  gpio_conf.pull_up_en = GPIO_PULLDOWN_ENABLE;
+  gpio_conf.pull_up_en = GPIO_PULLUP_DISABLE;
   ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&gpio_conf));
 
   epaper_rst_1;
+  epaper_cs_1;  // idle high; soft-CS per transaction
 }
 
 void epaper_port_init(void)
@@ -69,33 +71,44 @@ esp_err_t spi_send_data(uint8_t *data, size_t data_size) {
     memset(&t, 0, sizeof(t));
 
     const size_t chunk_size = 1024;
+    epaper_cs_0;
     for (size_t i = 0; i < data_size; i += chunk_size) {
         size_t chunk_len = (i + chunk_size > data_size) ? (data_size - i) : chunk_size;
         t.length = chunk_len * 8;
-        t.tx_buffer = data + i; 
+        t.tx_buffer = data + i;
 
         ret = spi_device_polling_transmit(spi, &t);
         if (ret != ESP_OK) {
+            epaper_cs_1;
             ESP_LOGE(TAG, "SPI transmission failed: %s", esp_err_to_name(ret));
             return ret;
         }
+        if ((i & 0xFFF) == 0) {
+            esp_task_wdt_reset();
+            taskYIELD();
+        }
     }
+    epaper_cs_1;
     return ESP_OK;
 }
 
 static void spi_send_byte(uint8_t cmd)
 {
     esp_err_t ret;
-    spi_transaction_t t; 
-    memset(&t, 0, sizeof(t)); 
-    
-    t.length = 8;      
+    spi_transaction_t t;
+    memset(&t, 0, sizeof(t));
+
+    t.length = 8;
     t.tx_buffer = &cmd;
-    t.rx_buffer = NULL;  
-    t.rxlength = 0; 
-    
+    t.rx_buffer = NULL;
+    t.rxlength = 0;
+
+    epaper_cs_0;
     ret = spi_device_polling_transmit(spi, &t);
-    assert(ret == ESP_OK);
+    epaper_cs_1;
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SPI byte failed: %s", esp_err_to_name(ret));
+    }
 }
 
 /******************************************************************************
@@ -136,28 +149,33 @@ static void EPD_SendData(UBYTE Data)
 
 static void EPD_SendDataBuffer(const UBYTE* buffer, UDOUBLE length)
 {
-    epaper_dc_1; 
-    
+    epaper_dc_1;
+
     esp_err_t ret;
     const size_t chunk_size = 4096;
-    
+
+    epaper_cs_0;
     for (size_t i = 0; i < length; i += chunk_size) {
         esp_task_wdt_reset();
         size_t current_chunk = (i + chunk_size > length) ? (length - i) : chunk_size;
-        
+
         spi_transaction_t t;
         memset(&t, 0, sizeof(t));
-        
+
         t.length = current_chunk * 8;
         t.tx_buffer = buffer + i;
-        
+
         ret = spi_device_polling_transmit(spi, &t);
         if (ret != ESP_OK) {
+            epaper_cs_1;
             ESP_LOGE(TAG, "SPI transmission failed: %s", esp_err_to_name(ret));
             return;
         }
+        // Let idle tasks run so TWDT idle checks cannot fire during long fills.
+        taskYIELD();
     }
-    
+    epaper_cs_1;
+
     ESP_LOGD(TAG, "All %lu bytes transmitted successfully", (unsigned long)length);
 }
 
@@ -172,8 +190,8 @@ static void EPD_ReadBusy(void)
     vTaskDelay(pdMS_TO_TICKS(20));
     while (ReadBusy) {
         esp_task_wdt_reset();
-        if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(15000)) {
-            ESP_LOGW(TAG, "BUSY timeout — continuing anyway");
+        if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(5000)) {
+            ESP_LOGW(TAG, "BUSY timeout (pin=%d) — continuing", ReadBusy);
             break;
         }
         vTaskDelay(pdMS_TO_TICKS(20));

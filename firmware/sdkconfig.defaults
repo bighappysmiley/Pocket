@@ -13,3 +13,8 @@ CONFIG_SPIRAM_USE_MALLOC=y
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 # E-ink refresh + BUSY can be long; avoid WDT reboot loops.
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
+# Idle-task TWDT fires when main spins on SPI without yields — disable idle checks.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+# Interrupt WDT: raise so long polling SPI cannot trip INT_WDT either.
+CONFIG_ESP_INT_WDT_TIMEOUT_MS=800
