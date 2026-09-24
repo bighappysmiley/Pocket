@@ -597,7 +597,7 @@ export function AdminPage() {
             </div>
             <div className="field">
               <label htmlFor="badge-key">Key</label>
-              <input id="badge-key" className="input" value={badgeForm.key} onChange={(e) => setBadgeForm({ ...badgeForm, key: e.target.value })} placeholder="early_adopter" required />
+              <input id="badge-key" className="input" value={badgeForm.key} onChange={(e) => setBadgeForm({ ...badgeForm, key: e.target.value })} placeholder="unique_key" required />
             </div>
             <div className="field">
               <label htmlFor="badge-icon">Icon key</label>

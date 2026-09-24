@@ -59,8 +59,9 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsCloud) {
     canvas_.draw_text(kSideMargin, kTitleY, "Pocket Cloud", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_text_fit(kSideMargin, kListTop, kCanvasW - 32, "Sync Notes to your phone with Pocket Cloud.",
-                          Canvas::TextRole::Secondary, Gray::G1);
+    int sync_y = canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, 6,
+                                           "Sync Notes to your phone with Pocket Cloud.",
+                                           Canvas::TextRole::Secondary, Gray::G1);
     const char* status = "Not subscribed";
     if (cfg_.cloud_status == "trialing")
       status = "Trial";
@@ -68,19 +69,19 @@ void App::render_settings() {
       status = "Subscribed";
     else if (cfg_.cloud_status == "past_due")
       status = "Payment issue";
-    canvas_.draw_text(kSideMargin, kListTop + 48, status, Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text(kSideMargin, sync_y + 16, status, Canvas::TextRole::Body, Gray::G0);
     if (cfg_.companion_linked) {
-      canvas_.draw_text(kSideMargin, kListTop + 84, "Companion: Linked", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, sync_y + 52, "Companion: Linked", Canvas::TextRole::Secondary, Gray::G1);
     } else {
-      canvas_.draw_text(kSideMargin, kListTop + 84, "Companion: Not linked", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, sync_y + 52, "Companion: Not linked", Canvas::TextRole::Secondary, Gray::G1);
     }
     const char* acts[] = {"Start free trial", "Subscribe $3.99/mo", "Link companion app"};
-    draw_focus_rows(canvas_, focus_, acts, 3, kListTop + 140);
-    canvas_.draw_text(kSideMargin, kListTop + 140 + 3 * kRowPitch + 16, "Link opens a QR for the Pocket app.",
-                      Canvas::TextRole::Secondary, Gray::G1);
+    draw_focus_rows(canvas_, focus_, acts, 3, sync_y + 100);
+    canvas_.draw_text_wrapped(kSideMargin, sync_y + 100 + 3 * kRowPitch + 16, kContentW, 6,
+                              "Link opens a QR for the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
     if (now_ms_ < error_until_ms_) {
-      canvas_.draw_text_fit(kSideMargin, kListTop + 140 + 3 * kRowPitch + 52, kCanvasW - 32, error_msg_,
-                            Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_wrapped(kSideMargin, sync_y + 100 + 3 * kRowPitch + 52, kContentW, 6, error_msg_,
+                                Canvas::TextRole::Body, Gray::G0);
     }
     return;
   }
@@ -93,8 +94,9 @@ void App::render_settings() {
                           cfg_.show_batt_pct ? "Show battery %: On" : "Show battery %: Off", "Full refresh: Now",
                           "Ghosting control", "Back"};
     draw_focus_rows(canvas_, focus_, rows, 5, kListTop);
-    canvas_.draw_text(kSideMargin, kListTop + 5 * kRowPitch + 16,
-                      "Pocket refreshes the screen to keep it clear.", Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + 5 * kRowPitch + 16, kContentW, 6,
+                              "Pocket refreshes the screen to keep it clear.", Canvas::TextRole::Secondary,
+                              Gray::G1);
     return;
   }
 

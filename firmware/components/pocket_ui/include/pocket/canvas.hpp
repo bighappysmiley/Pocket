@@ -33,6 +33,9 @@ class Canvas {
   void draw_text(int x, int y, std::string_view text, TextRole role, Gray g);
   void draw_text_centered(int cx, int y, std::string_view text, TextRole role, Gray g);
   void draw_text_fit(int x, int y, int max_w, std::string_view text, TextRole role, Gray g);
+  /** Word-wrap into max_w; returns y just below the last line (for stacking). */
+  int draw_text_wrapped(int x, int y, int max_w, int line_gap, std::string_view text, TextRole role,
+                        Gray g);
   int text_width(std::string_view text, TextRole role) const;
   int text_height(TextRole role) const;
 
