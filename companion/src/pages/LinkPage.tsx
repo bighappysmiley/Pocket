@@ -18,7 +18,7 @@ type WifiPhase = 'instructions' | 'connected' | 'sent' | 'error'
 
 /**
  * Unified Link flow: SoftAP Wi‑Fi credentials, then claim pair code on the same account.
- * Replaces separate /wifi-setup and /pair entry points.
+ * If Pocket is already on home Wi‑Fi, skip SoftAP and enter the pairing code.
  */
 export function LinkPage() {
   useDocumentTitle('Link your Pocket')
@@ -28,6 +28,8 @@ export function LinkPage() {
   const codeFromQuery = (params.get('code') || '').toUpperCase()
 
   const [wifiPhase, setWifiPhase] = useState<WifiPhase>(codeFromQuery ? 'sent' : 'instructions')
+  /** True when user skipped SoftAP because Pocket is already online. */
+  const [skipWifi, setSkipWifi] = useState(Boolean(codeFromQuery))
   const [status, setStatus] = useState<DeviceProvisionStatus | null>(null)
   const [networks, setNetworks] = useState<string[]>([])
   const [ssid, setSsid] = useState('')
@@ -48,6 +50,7 @@ export function LinkPage() {
       setNetworks(sc.networks || [])
       const preferred = st.preferred_ssid || sc.networks?.[0] || ''
       setSsid((prev) => prev || preferred)
+      setSkipWifi(false)
       setWifiPhase('connected')
       setWifiError(null)
       return true
@@ -58,7 +61,7 @@ export function LinkPage() {
   }, [codeFromQuery])
 
   useEffect(() => {
-    if (codeFromQuery) return
+    if (codeFromQuery || skipWifi || wifiPhase === 'sent') return
     let cancelled = false
     const tick = async () => {
       if (cancelled) return
@@ -66,14 +69,20 @@ export function LinkPage() {
     }
     void tick()
     const id = window.setInterval(() => {
-      if (wifiPhase === 'sent') return
       void tick()
     }, 2500)
     return () => {
       cancelled = true
       window.clearInterval(id)
     }
-  }, [tryReachDevice, wifiPhase, codeFromQuery])
+  }, [tryReachDevice, wifiPhase, codeFromQuery, skipWifi])
+
+  function goPairWithoutWifi() {
+    setSkipWifi(true)
+    setWifiError(null)
+    setWifiPhase('sent')
+    setHomeWifiReady(true)
+  }
 
   async function onSendWifi(e: FormEvent) {
     e.preventDefault()
@@ -85,6 +94,7 @@ export function LinkPage() {
     setWifiError(null)
     try {
       await sendDeviceWifi(ssid.trim(), wifiPassword)
+      setSkipWifi(false)
       setWifiPhase('sent')
       setHomeWifiReady(false)
     } catch (err) {
@@ -168,7 +178,9 @@ export function LinkPage() {
       <div className="stack-sm">
         <h1>Link your Pocket</h1>
         <p className="muted">
-          First send your home Wi‑Fi password to Pocket, then enter the pairing code it shows.
+          {skipWifi || codeFromQuery
+            ? 'Enter the pairing code from Pocket to link this account.'
+            : 'First send your home Wi‑Fi password to Pocket, then enter the pairing code — or skip Wi‑Fi if it is already online.'}
         </p>
       </div>
 
@@ -204,6 +216,9 @@ export function LinkPage() {
                 onClick={() => void tryReachDevice()}
               >
                 I’ve joined — continue in this app
+              </button>
+              <button type="button" className="btn btn-block" onClick={goPairWithoutWifi}>
+                Skip — Pocket is already online
               </button>
             </div>
           ) : null}
@@ -252,15 +267,32 @@ export function LinkPage() {
               <button type="submit" className="btn btn-primary btn-block" disabled={wifiBusy}>
                 {wifiBusy ? 'Sending…' : 'Send password & continue'}
               </button>
+              <button type="button" className="btn btn-block" onClick={goPairWithoutWifi}>
+                Skip — Pocket is already online
+              </button>
             </form>
           ) : null}
         </>
       ) : (
         <div className="panel stack">
           <p>
-            Pocket is joining Wi‑Fi. Rejoin your <strong>home network</strong> on this phone, wait for the
-            pairing code on Pocket, then link below.
+            {skipWifi || codeFromQuery
+              ? 'Enter the pairing code shown on Pocket to finish linking.'
+              : 'Pocket is joining Wi‑Fi. Rejoin your home network on this phone, wait for the pairing code on Pocket, then link below.'}
           </p>
+          {skipWifi && !codeFromQuery ? (
+            <button
+              type="button"
+              className="btn btn-block"
+              onClick={() => {
+                setSkipWifi(false)
+                setWifiPhase('instructions')
+                setHomeWifiReady(false)
+              }}
+            >
+              Back to Wi‑Fi setup
+            </button>
+          ) : null}
           {!homeWifiReady ? (
             <button type="button" className="btn btn-primary btn-block" onClick={() => setHomeWifiReady(true)}>
               I’m back on home Wi‑Fi — enter pairing code

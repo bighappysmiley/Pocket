@@ -183,6 +183,28 @@ int main() {
     CHECK(storage2.kind == SdContentKind::Absent);
   }
 
+  // Already online after SD → skip SoftAP straight to pairing code
+  {
+    MemoryConfigStore store3;
+    TClock clock3;
+    TWifi wifi3;
+    wifi3.ok = true;
+    TCloud cloud3;
+    TDisp disp3;
+    TStorage storage3;
+    TAudio audio3;
+    App app3(store3, clock3, wifi3, cloud3, disp3, &storage3, &audio3);
+    app3.boot();
+    app3.handle(InputEvent::Select);  // welcome
+    app3.handle(InputEvent::Select);  // download → sd
+    CHECK(app3.screen() == ScreenId::OnboardingSdCard);
+    app3.handle(InputEvent::Down);
+    app3.handle(InputEvent::Select);  // continue without card
+    CHECK(app3.screen() == ScreenId::OnboardingCompanionQr);
+    CHECK(cloud3.creates >= 1);
+    CHECK(!wifi3.provisioned);
+  }
+
   if (failures) {
     std::printf("%d failures\n", failures);
     return 1;

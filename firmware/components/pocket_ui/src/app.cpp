@@ -60,6 +60,18 @@ void App::mark_status_dirty() {
 }
 
 void App::begin_softap_link() {
+  if (wifi_.connected()) {
+    // Already on home Wi‑Fi — mint pair code; skip SoftAP.
+    if (mint_pair_session()) {
+      play_sound(SoundId::Success);
+      focus_.index = 0;
+      nav_.replace(ScreenId::OnboardingCompanionQr);
+      after_nav();
+      return;
+    }
+    play_sound(SoundId::Attention);
+    // Fall through to SoftAP if mint failed (still need a path forward).
+  }
   std::string ap;
   std::string pass;
   if (!wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {

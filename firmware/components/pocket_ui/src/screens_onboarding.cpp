@@ -192,10 +192,14 @@ void App::render_onboarding() {
       canvas_.draw_text_centered(kCanvasW / 2, 520, "Waiting for Wi-Fi password…", Canvas::TextRole::Secondary,
                                  Gray::G1);
 
-      focus_.count = 2;
-      const char* actions[] = {"Waiting...", "Cancel"};
-      for (int i = 0; i < 2; ++i) {
-        int y = 580 + i * kRowPitch;
+      // SoftAP runs APSTA — STA may already be online; offer skip.
+      const bool already_online = wifi_.connected();
+      focus_.count = already_online ? 3 : 2;
+      const char* actions_online[] = {"Waiting...", "Already online", "Cancel"};
+      const char* actions_wait[] = {"Waiting...", "Cancel"};
+      const char** actions = already_online ? actions_online : actions_wait;
+      for (int i = 0; i < focus_.count; ++i) {
+        int y = 560 + i * kRowPitch;
         if (i == focus_.index)
           canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, actions[i], Canvas::TextRole::Body);
         else
@@ -587,20 +591,39 @@ void App::handle_onboarding(InputEvent e) {
   }
 
   if (s == ScreenId::OnboardingWifiPassword) {
-    focus_.count = 2;
+    const bool already_online = wifi_.connected();
+    focus_.count = already_online ? 3 : 2;
     if (e == InputEvent::Up) {
       focus_.move(-1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Down) {
       focus_.move(1);
-      dirty_ = true;
+      mark_content_dirty();
     } else if (e == InputEvent::Select) {
-      if (focus_.index == 1) {
+      const int cancel_i = already_online ? 2 : 1;
+      const int skip_i = already_online ? 1 : -1;
+      if (focus_.index == skip_i) {
+        play_sound(SoundId::Click);
+        wifi_.stop_provision();
+        if (cfg_.onboarding_complete) {
+          nav_.replace(ScreenId::SettingsWifi);
+          after_nav();
+        } else if (mint_pair_session()) {
+          play_sound(SoundId::Success);
+          focus_.index = 0;
+          nav_.replace(ScreenId::OnboardingCompanionQr);
+          after_nav();
+        } else {
+          play_sound(SoundId::Attention);
+          mark_content_dirty();
+        }
+      } else if (focus_.index == cancel_i) {
+        play_sound(SoundId::Click);
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           nav_.replace(ScreenId::OnboardingWifiList);
         } else {
-          nav_.replace(ScreenId::OnboardingCompanionDownload);
+          nav_.replace(ScreenId::OnboardingSdCard);
         }
         after_nav();
       }
