@@ -316,6 +316,8 @@ void App::tick(uint32_t now_ms) {
     present_canvas(false);
     dirty_ = false;
   }
+  maybe_tick_status_chrome();
+  maybe_tick_clock_face();
   maybe_tick_home_clock();
 }
 
@@ -326,6 +328,14 @@ void App::present_canvas(bool full) {
     RefreshMode mode = refresh_.plan(!full);
     if (full) mode = RefreshMode::Full;
     display_.present(canvas_, mode);
+    refresh_.on_applied(mode);
+    dirty_kind_ = DirtyKind::FullCanvas;
+    return;
+  }
+  // Region / status / content — honor ghosting budget (N partials → full).
+  RefreshMode mode = refresh_.plan(true);
+  if (mode == RefreshMode::Full) {
+    display_.present(canvas_, RefreshMode::Full);
     refresh_.on_applied(mode);
     dirty_kind_ = DirtyKind::FullCanvas;
     return;
@@ -345,7 +355,7 @@ void App::present_canvas(bool full) {
 }
 
 void App::redraw(bool full) {
-  dirty_kind_ = DirtyKind::FullCanvas;
+  if (full) dirty_kind_ = DirtyKind::FullCanvas;
   present_canvas(full);
   dirty_ = false;
 }
@@ -431,7 +441,11 @@ void App::handle(InputEvent e) {
       handle_settings(e);
       break;
   }
-  if (dirty_) redraw(false);
+  if (dirty_) {
+    // Preserve dirty_kind_ (Region / StatusBar) — do not force FullCanvas.
+    present_canvas(false);
+    dirty_ = false;
+  }
 }
 
 void App::render() {
@@ -500,7 +514,11 @@ void App::render_lock() {
   // Calm abstract face — no clock (static art needs no minute refresh).
   canvas_.draw_text_centered(kCanvasW / 2, 56, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
   draw_lock_motif();
-  canvas_.draw_text_centered(kCanvasW / 2, 735, "Battery", Canvas::TextRole::Secondary, Gray::G1);
+  char batt[32];
+  const int pct = clock_.battery_percent();
+  last_lock_battery_ = pct;
+  std::snprintf(batt, sizeof(batt), "Battery %d%%", pct < 0 ? 0 : (pct > 100 ? 100 : pct));
+  canvas_.draw_text_centered(kCanvasW / 2, 735, batt, Canvas::TextRole::Secondary, Gray::G1);
   canvas_.draw_text_centered(kCanvasW / 2, 770, "Press to unlock", Canvas::TextRole::Secondary, Gray::G1);
 }
 
@@ -694,6 +712,91 @@ void App::present_home_clock_partial() {
   constexpr int kClockH = 176;
   display_.present_region(canvas_, kSideMargin, kClockTop, kCanvasW - 32, kClockH);
   refresh_.on_applied(RefreshMode::Partial);
+}
+
+bool App::screen_has_status_bar() const {
+  const ScreenId s = nav_.current();
+  if (s == ScreenId::Lock) return false;
+  if (s == ScreenId::PassDetail) return false;
+  return true;
+}
+
+void App::maybe_tick_status_chrome() {
+  if (!cfg_.onboarding_complete && nav_.current() == ScreenId::OnboardingWelcome) {
+    // Welcome is full-bleed brand; still has status bar in onboarding path.
+  }
+  if (!screen_has_status_bar()) {
+    // Lock: only battery footer can change without a full remount.
+    if (nav_.current() == ScreenId::Lock) {
+      const int pct = clock_.battery_percent();
+      if (last_lock_battery_ >= 0 && pct != last_lock_battery_) {
+        last_lock_battery_ = pct;
+        mark_region_dirty(0, 700, kCanvasW, 100);
+        if (dirty_) {
+          present_canvas(false);
+          dirty_ = false;
+        }
+      } else if (last_lock_battery_ < 0) {
+        last_lock_battery_ = pct;
+      }
+    }
+    return;
+  }
+
+  int h = 0, m = 0, wd = 0, mo = 0, d = 0;
+  clock_.local_hm(h, m, wd, mo, d);
+  const int minute_key = h * 60 + m;
+  const int batt = clock_.battery_percent();
+  const bool wifi_ok = wifi_.connected() || wifi_.provisioning();
+  const bool time_ok = clock_.time_valid();
+
+  if (last_status_minute_ < 0) {
+    last_status_minute_ = minute_key;
+    last_status_battery_ = batt;
+    last_status_wifi_ = wifi_ok;
+    last_status_time_ok_ = time_ok;
+    return;
+  }
+
+  const bool changed = (minute_key != last_status_minute_) || (batt != last_status_battery_) ||
+                       (wifi_ok != last_status_wifi_) || (time_ok != last_status_time_ok_);
+  if (!changed) return;
+
+  last_status_minute_ = minute_key;
+  last_status_battery_ = batt;
+  last_status_wifi_ = wifi_ok;
+  last_status_time_ok_ = time_ok;
+  mark_status_dirty();
+  if (dirty_) {
+    present_canvas(false);
+    dirty_ = false;
+  }
+}
+
+void App::maybe_tick_clock_face() {
+  const ScreenId s = nav_.current();
+  // render_clock draws the huge time on ClockFace, or when clock_tab_==0 on clock roots.
+  const bool on_clock = s == ScreenId::ClockFace || s == ScreenId::ClockAlarms ||
+                        s == ScreenId::ClockTimers || s == ScreenId::ClockAlarmEdit ||
+                        s == ScreenId::ClockTimerRun;
+  if (!on_clock) return;
+  if (s != ScreenId::ClockFace && clock_tab_ != 0) return;
+
+  int h = 0, m = 0, wd = 0, mo = 0, d = 0;
+  clock_.local_hm(h, m, wd, mo, d);
+  const int minute_key = h * 60 + m;
+  if (last_home_clock_minute_ < 0) {
+    last_home_clock_minute_ = minute_key;
+    return;
+  }
+  if (minute_key == last_home_clock_minute_) return;
+  last_home_clock_minute_ = minute_key;
+  // Huge clock band (see render_clock y≈280).
+  mark_region_dirty(0, 220, kCanvasW, 160);
+  if (dirty_) {
+    present_canvas(false);
+    dirty_ = false;
+  }
 }
 
 void App::maybe_tick_home_clock() {
