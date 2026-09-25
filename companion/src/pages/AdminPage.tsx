@@ -52,6 +52,13 @@ type AdminDevice = {
   last_seen_at: string | null
   user_id: string
   user_email: string
+  volume_percent: number
+  brightness_percent: number
+  lock_message: string
+  parental: { pin_gated_apps?: string[]; hide_pass_share?: boolean; block_connectors?: boolean }
+  sd_present: boolean
+  pending_wifi_ssid: string | null
+  pending_wifi_at: string | null
 }
 
 type Badge = {
@@ -116,6 +123,7 @@ export function AdminPage() {
     pair_claims: { id: string; device_id: string; claimed_at: string | null; user_email: string | null }[]
     audits: { id: string; action: string; target_type: string | null; target_id: string | null; created_at: string; actor_email: string | null; detail: string | null }[]
   } | null>(null)
+  const [forceLinkForm, setForceLinkForm] = useState({ device_id: '', user_id: '', device_name: '' })
   const [badgeForm, setBadgeForm] = useState({ name: '', key: '', icon_key: 'star', description: '' })
   const [awardForm, setAwardForm] = useState({ badge_id: '', user_id: '', note: '' })
   const [notice, setNotice] = useState<string | null>(null)
@@ -268,6 +276,131 @@ export function AdminPage() {
       await api.adminUnlinkDevice(id)
       setNotice('Device unlinked.')
       await loadDevices()
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function patchDevice(id: string, body: Record<string, unknown>, okMsg: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.adminPatchDevice(id, body)
+      setNotice(okMsg)
+      await loadDevices()
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setDeviceVolume(d: AdminDevice) {
+    const raw = window.prompt('Volume percent (0–100)', String(d.volume_percent))
+    if (raw == null) return
+    const v = Number(raw)
+    if (!Number.isFinite(v)) return
+    await patchDevice(d.id, { volume_percent: v }, 'Volume pushed to device.')
+  }
+
+  async function setDeviceBrightness(d: AdminDevice) {
+    const raw = window.prompt('Brightness percent (0–100)', String(d.brightness_percent))
+    if (raw == null) return
+    const v = Number(raw)
+    if (!Number.isFinite(v)) return
+    await patchDevice(d.id, { brightness_percent: v }, 'Brightness pushed to device.')
+  }
+
+  async function setLockMessage(d: AdminDevice) {
+    const msg = window.prompt('Lock screen message (up to 40 characters)', d.lock_message)
+    if (msg == null) return
+    await patchDevice(d.id, { lock_message: msg }, 'Lock message pushed to device.')
+  }
+
+  async function pushWifi(d: AdminDevice) {
+    const ssid = window.prompt('Wi-Fi network name to push to this Pocket')
+    if (ssid == null || !ssid.trim()) return
+    const password = window.prompt('Wi-Fi password (leave blank for open networks)') || ''
+    await patchDevice(d.id, { ssid: ssid.trim(), password }, 'Wi-Fi credentials queued for next check-in.')
+  }
+
+  async function toggleParentalLock(d: AdminDevice) {
+    const hasLock = Boolean(
+      d.parental?.hide_pass_share || d.parental?.block_connectors || (d.parental?.pin_gated_apps?.length ?? 0) > 0,
+    )
+    if (!hasLock) {
+      setNotice('No parental locks are set on this device.')
+      return
+    }
+    if (!window.confirm('Unlock/disable all parental restrictions on this device?')) return
+    await patchDevice(d.id, { unlock_parental: true }, 'Parental locks cleared.')
+  }
+
+  async function toggleSdFlag(d: AdminDevice) {
+    await patchDevice(d.id, { sd_present: !d.sd_present }, d.sd_present ? 'Marked microSD as absent.' : 'Marked microSD as present.')
+  }
+
+  async function resetDeviceSettings(d: AdminDevice) {
+    if (!window.confirm(`Wipe/reset all settings on “${d.device_name}” (volume, brightness, lock message, parental locks, queued Wi‑Fi)? This does not unpair it.`)) return
+    await patchDevice(d.id, { reset: true }, 'Device settings wiped to defaults.')
+  }
+
+  async function forceReassignDevice(d: AdminDevice) {
+    const userId = window.prompt('Force-pair: move this device to a different user id', d.user_id)
+    if (userId == null || !userId.trim() || userId.trim() === d.user_id) return
+    await patchDevice(d.id, { user_id: userId.trim() }, 'Device force-paired to that user.')
+  }
+
+  async function onForceLinkDevice(e: FormEvent) {
+    e.preventDefault()
+    if (!forceLinkForm.device_id.trim() || !forceLinkForm.user_id.trim()) {
+      setError('Enter both a device id and a user id.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await api.adminForceLinkDevice({
+        device_id: forceLinkForm.device_id.trim(),
+        user_id: forceLinkForm.user_id.trim(),
+        device_name: forceLinkForm.device_name.trim() || undefined,
+      })
+      setNotice('Device force-linked to that user — it will pick up the account on its next check-in.')
+      setForceLinkForm({ device_id: '', user_id: '', device_name: '' })
+      await loadDevices()
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function forceClaimPairSession(id: string) {
+    const userId = window.prompt('Force-claim this pairing code for user id:')
+    if (userId == null || !userId.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.adminForceClaimPairSession(id, userId.trim())
+      setNotice('Pairing code force-claimed for that user.')
+      await loadPairing()
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function cancelPairSession(id: string) {
+    if (!window.confirm('Cancel/expire this pairing code?')) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.adminCancelPairSession(id)
+      setNotice('Pairing code canceled.')
+      await loadPairing()
     } catch (err) {
       fail(err)
     } finally {
@@ -530,29 +663,111 @@ export function AdminPage() {
       ) : null}
 
       {tab === 'devices' ? (
-        <ul className="list admin-list">
-          {devices.map((d) => (
-            <li key={d.id} className="panel stack-sm">
-              <div className="list-title">{d.device_name || 'Pocket'}</div>
-              <div className="list-meta">
-                {d.user_email} · linked {relativeTime(d.linked_at)}
-                {d.last_seen_at ? ` · seen ${relativeTime(d.last_seen_at)}` : ''}
-              </div>
-              <div className="actions-row">
-                <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void renameDevice(d.id, d.device_name)}>
-                  Rename
-                </button>
-                <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void unlinkDevice(d.id, d.device_name)}>
-                  Unlink
-                </button>
-              </div>
-              <p className="muted" style={{ fontSize: '0.85rem' }}>
-                device <code>{d.device_id}</code>
-              </p>
-            </li>
-          ))}
-          {devices.length === 0 && !busy ? <p className="muted">No linked devices.</p> : null}
-        </ul>
+        <div className="stack">
+          <form className="panel stack" onSubmit={(e) => void onForceLinkDevice(e)}>
+            <h2>Force-pair a device</h2>
+            <p className="muted">
+              Attach a Pocket directly to a user's account by device id — bypasses the phone QR/claim flow entirely.
+              Useful while updates can't ship: the firmware only needs the shared device key + device id, so this
+              takes effect on the device's next check-in.
+            </p>
+            <div className="field">
+              <label htmlFor="force-device-id">Device id</label>
+              <input
+                id="force-device-id"
+                className="input"
+                value={forceLinkForm.device_id}
+                onChange={(e) => setForceLinkForm((f) => ({ ...f, device_id: e.target.value }))}
+                placeholder="Device's device_id (from firmware serial log or a stuck pairing session)"
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="force-user-id">User id</label>
+              <input
+                id="force-user-id"
+                className="input"
+                value={forceLinkForm.user_id}
+                onChange={(e) => setForceLinkForm((f) => ({ ...f, user_id: e.target.value }))}
+                placeholder="Paste user id from Users tab"
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="force-device-name">Label (optional)</label>
+              <input
+                id="force-device-name"
+                className="input"
+                value={forceLinkForm.device_name}
+                onChange={(e) => setForceLinkForm((f) => ({ ...f, device_name: e.target.value }))}
+                placeholder="Pocket"
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              Force-pair
+            </button>
+          </form>
+
+          <ul className="list admin-list">
+            {devices.map((d) => {
+              const hasLock = Boolean(
+                d.parental?.hide_pass_share || d.parental?.block_connectors || (d.parental?.pin_gated_apps?.length ?? 0) > 0,
+              )
+              return (
+                <li key={d.id} className="panel stack-sm">
+                  <div className="list-title">{d.device_name || 'Pocket'}</div>
+                  <div className="list-meta">
+                    {d.user_email} · linked {relativeTime(d.linked_at)}
+                    {d.last_seen_at ? ` · seen ${relativeTime(d.last_seen_at)}` : ''}
+                  </div>
+                  <div className="list-meta">
+                    volume {d.volume_percent}% · brightness {d.brightness_percent}% · microSD{' '}
+                    {d.sd_present ? 'reported present' : 'not reported'}
+                    {hasLock ? ' · parental locks ON' : ''}
+                    {d.lock_message ? ` · lock message “${d.lock_message}”` : ''}
+                    {d.pending_wifi_ssid ? ` · Wi‑Fi “${d.pending_wifi_ssid}” queued` : ''}
+                  </div>
+                  <div className="actions-row" style={{ flexWrap: 'wrap' }}>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void renameDevice(d.id, d.device_name)}>
+                      Rename
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void setDeviceVolume(d)}>
+                      Push volume
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void setDeviceBrightness(d)}>
+                      Push brightness
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void setLockMessage(d)}>
+                      Set lock message
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void pushWifi(d)}>
+                      Push Wi‑Fi
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy || !hasLock} onClick={() => void toggleParentalLock(d)}>
+                      Unlock parental
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void toggleSdFlag(d)}>
+                      {d.sd_present ? 'Clear SD flag' : 'Mark SD present'}
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void forceReassignDevice(d)}>
+                      Force-pair to user…
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void resetDeviceSettings(d)}>
+                      Wipe/reset settings
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void unlinkDevice(d.id, d.device_name)}>
+                      Force-unpair
+                    </button>
+                  </div>
+                  <p className="muted" style={{ fontSize: '0.85rem' }}>
+                    device <code>{d.device_id}</code> · id <code>{d.id}</code>
+                  </p>
+                </li>
+              )
+            })}
+            {devices.length === 0 && !busy ? <p className="muted">No linked devices.</p> : null}
+          </ul>
+        </div>
       ) : null}
 
       {tab === 'pairing' ? (
@@ -582,6 +797,16 @@ export function AdminPage() {
                   device {s.device_id} · created {relativeTime(s.created_at)}
                   {s.claimed_at ? ` · claimed ${relativeTime(s.claimed_at)}` : ''}
                 </div>
+                {s.status === 'pending' ? (
+                  <div className="actions-row">
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void forceClaimPairSession(s.id)}>
+                      Force-claim for user…
+                    </button>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void cancelPairSession(s.id)}>
+                      Cancel code
+                    </button>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>

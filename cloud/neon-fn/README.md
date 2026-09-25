@@ -24,7 +24,7 @@ Env (carried across deploys; set on change):
 - `ADMIN_EMAILS` — comma-separated (default includes owner)
 - `DATABASE_URL` injected by Neon
 
-Health: `{ "ok": true, "build": "scram-api-v10-firmware-ota" }`
+Health: `{ "ok": true, "build": "scram-api-v14-sd-admin" }`
 
 ## Stripe (Admin UI)
 
@@ -39,6 +39,26 @@ Falls back to `STRIPE_*` env vars when Admin has not saved keys; unset secret �
 
 Also on this build: `/v1/notes`, `/v1/lists`, `/v1/music`, `/v1/device/music`, `/v1/books`,
 `/v1/device/books`, `/v1/device/settings` (volume/brightness push), `/v1/connectors`, `/v1/backups`.
+
+### Admin device/pairing bypasses (v14)
+
+`PATCH /v1/admin/devices/:id` now also accepts `volume_percent`, `brightness_percent`,
+`lock_message`, `parental` (object) / `unlock_parental: true`, `sd_present` (bool fix-up),
+`ssid`/`password` (queue Wi‑Fi like the owner's own push), `user_id` (force re-pair to a
+different account), and `reset: true` (wipe volume/brightness/lock message/parental/queued
+Wi‑Fi back to defaults without unpairing). `GET /v1/admin/devices` returns all of these fields
+per device so ops can see current music/library sync flags (`sd_present`) and settings state.
+
+`POST /v1/admin/devices/force-link` `{ device_id, user_id, device_name? }` attaches (or
+reassigns) a device_id straight to a user's account, bypassing the phone QR/claim flow —
+works immediately because the firmware only authenticates with the shared `DEVICE_API_KEY`
+plus `device_id`, not a per-device secret.
+
+`POST /v1/admin/pair-sessions/:id/claim` `{ user_id }` force-completes a pending pairing code
+for a chosen user (same effect as `/v1/pair/claim` but admin-driven, no session cookie needed).
+`DELETE /v1/admin/pair-sessions/:id` cancels/expires a pending code early.
+
+All of the above call `audit()` (visible in Admin → Activity → Admin actions).
 
 ## Deployment mechanism (important)
 

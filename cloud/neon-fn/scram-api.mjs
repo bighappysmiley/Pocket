@@ -482,6 +482,8 @@ async function ensureAdminSchema() {
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS pending_wifi_at TIMESTAMPTZ`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS parental_json TEXT NOT NULL DEFAULT '{}'`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS lock_message TEXT NOT NULL DEFAULT ''`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS volume_percent INTEGER NOT NULL DEFAULT 80`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS brightness_percent INTEGER NOT NULL DEFAULT 50`);
   await query(`CREATE TABLE IF NOT EXISTS badges (
     id TEXT PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
@@ -844,7 +846,7 @@ export default {
     // Health does not depend on DB schema readiness so it stays useful for diagnosing DB-layer issues.
     if (path === "/health" || path === "/" || path === "/v1/health") {
       const sha256 = await getSelfSourceSha256();
-      return json(req, { ok: true, build: "scram-api-v13-reading-books", sourceSha256: sha256 });
+      return json(req, { ok: true, build: "scram-api-v14-sd-admin", sourceSha256: sha256 });
     }
     try {
       await readySchema();
@@ -2042,16 +2044,45 @@ export default {
         });
       }
 
+const ADMIN_DEVICE_COLUMNS = `d.id, d.device_id, d.device_name, d.linked_at, d.last_seen_at, d.user_id, u.email AS user_email,
+          d.volume_percent, d.brightness_percent, d.lock_message, d.parental_json, d.sd_present,
+          d.pending_wifi_ssid, d.pending_wifi_at`;
+
+function shapeAdminDevice(row) {
+  if (!row) return row;
+  let parental = {};
+  try {
+    parental = JSON.parse(row.parental_json || "{}") || {};
+  } catch {
+    parental = {};
+  }
+  return {
+    id: row.id,
+    device_id: row.device_id,
+    device_name: row.device_name,
+    linked_at: row.linked_at,
+    last_seen_at: row.last_seen_at,
+    user_id: row.user_id,
+    user_email: row.user_email,
+    volume_percent: Number(row.volume_percent ?? 80),
+    brightness_percent: Number(row.brightness_percent ?? 50),
+    lock_message: row.lock_message || "",
+    parental,
+    sd_present: Boolean(row.sd_present),
+    pending_wifi_ssid: row.pending_wifi_ssid || null,
+    pending_wifi_at: row.pending_wifi_at || null,
+  };
+}
+
       if (req.method === "GET" && path === "/v1/admin/devices") {
         const gate = await requireAdmin(req);
         if (gate.error) return gate.error;
         const userId = (u.searchParams.get("user_id") || "").trim();
-        let sql = `SELECT d.id, d.device_id, d.device_name, d.linked_at, d.last_seen_at, d.user_id, u.email AS user_email
-          FROM device_links d JOIN users u ON u.id=d.user_id`;
+        let sql = `SELECT ${ADMIN_DEVICE_COLUMNS} FROM device_links d JOIN users u ON u.id=d.user_id`;
         if (userId) sql += ` WHERE d.user_id='${esc(userId)}'`;
         sql += ` ORDER BY d.linked_at DESC LIMIT 200`;
         const devices = await query(sql);
-        return json(req, { devices });
+        return json(req, { devices: devices.map(shapeAdminDevice) });
       }
 
       const deviceMatch = path.match(/^\/v1\/admin\/devices\/([^/]+)$/);
@@ -2060,14 +2091,86 @@ export default {
         if (gate.error) return gate.error;
         const id = decodeURIComponent(deviceMatch[1]);
         const body = await req.json().catch(() => ({}));
-        const name = typeof body.device_name === "string" ? body.device_name.trim() : "";
-        if (!name || name.length > 64) return json(req, { message: "Enter a device label (1–64 characters)." }, 400);
-        const rows = await query(`SELECT id FROM device_links WHERE id='${esc(id)}'`);
-        if (!rows[0]) return json(req, { message: "Device not found." }, 404);
-        await query(`UPDATE device_links SET device_name='${esc(name)}' WHERE id='${esc(id)}'`);
-        await audit(gate.user.id, "rename_device", "device", id, { device_name: name });
-        const devices = await query(`SELECT d.id, d.device_id, d.device_name, d.linked_at, d.last_seen_at, d.user_id, u.email AS user_email FROM device_links d JOIN users u ON u.id=d.user_id WHERE d.id='${esc(id)}'`);
-        return json(req, { device: devices[0] });
+        const rows = await query(`SELECT * FROM device_links WHERE id='${esc(id)}'`);
+        const row = rows[0];
+        if (!row) return json(req, { message: "Device not found." }, 404);
+
+        // Map keyed by column so a client can never send two updates for the same
+        // column in one PATCH (Postgres rejects `SET x=1, x=2` in one statement).
+        const sets = new Map();
+        const changes = {};
+
+        if (body.reset === true) {
+          sets.set("lock_message", `''`);
+          sets.set("volume_percent", "80");
+          sets.set("brightness_percent", "50");
+          sets.set("parental_json", "'{}'");
+          sets.set("pending_wifi_ssid", "NULL");
+          sets.set("pending_wifi_password", "NULL");
+          sets.set("pending_wifi_at", "NULL");
+          changes.reset = true;
+        }
+        if (typeof body.device_name === "string") {
+          const name = body.device_name.trim();
+          if (!name || name.length > 64) return json(req, { message: "Enter a device label (1–64 characters)." }, 400);
+          sets.set("device_name", sqlStr(name));
+          changes.device_name = name;
+        }
+        if (Number.isFinite(body.volume_percent)) {
+          const v = Math.max(0, Math.min(100, Math.round(body.volume_percent)));
+          sets.set("volume_percent", String(v));
+          changes.volume_percent = v;
+        }
+        if (Number.isFinite(body.brightness_percent)) {
+          const v = Math.max(0, Math.min(100, Math.round(body.brightness_percent)));
+          sets.set("brightness_percent", String(v));
+          changes.brightness_percent = v;
+        }
+        if (typeof body.lock_message === "string") {
+          const msg = body.lock_message.trim().slice(0, 40);
+          sets.set("lock_message", sqlStr(msg));
+          changes.lock_message = msg;
+        }
+        if (body.unlock_parental === true) {
+          sets.set("parental_json", "'{}'");
+          changes.parental = "cleared";
+        } else if (body.parental && typeof body.parental === "object") {
+          const pin_gated_apps = Array.isArray(body.parental.pin_gated_apps)
+            ? body.parental.pin_gated_apps.map((a) => String(a).trim().toLowerCase()).filter(Boolean).slice(0, 16)
+            : [];
+          const parental = {
+            pin_gated_apps,
+            hide_pass_share: body.parental.hide_pass_share === true,
+            block_connectors: body.parental.block_connectors === true,
+          };
+          sets.set("parental_json", sqlStr(JSON.stringify(parental)));
+          changes.parental = parental;
+        }
+        if (typeof body.sd_present === "boolean") {
+          sets.set("sd_present", body.sd_present ? "true" : "false");
+          changes.sd_present = body.sd_present;
+        }
+        if (typeof body.ssid === "string" && body.ssid.trim()) {
+          const ssid = body.ssid.trim().slice(0, 32);
+          const password = typeof body.password === "string" ? body.password.slice(0, 64) : "";
+          sets.set("pending_wifi_ssid", sqlStr(ssid));
+          sets.set("pending_wifi_password", sqlStr(password));
+          sets.set("pending_wifi_at", `'${new Date().toISOString()}'`);
+          changes.pending_wifi_ssid = ssid;
+        }
+        if (typeof body.user_id === "string" && body.user_id.trim() && body.user_id.trim() !== row.user_id) {
+          const newOwner = await query(`SELECT id FROM users WHERE id='${esc(body.user_id.trim())}'`);
+          if (!newOwner[0]) return json(req, { message: "Target user not found." }, 404);
+          sets.set("user_id", `'${esc(body.user_id.trim())}'`);
+          changes.reassigned_to_user_id = body.user_id.trim();
+        }
+
+        if (!sets.size) return json(req, { message: "Nothing to update." }, 400);
+        const setClause = [...sets.entries()].map(([col, val]) => `${col}=${val}`).join(", ");
+        await query(`UPDATE device_links SET ${setClause} WHERE id='${esc(id)}'`);
+        await audit(gate.user.id, "edit_device", "device", id, changes);
+        const fresh = await query(`SELECT ${ADMIN_DEVICE_COLUMNS} FROM device_links d JOIN users u ON u.id=d.user_id WHERE d.id='${esc(id)}'`);
+        return json(req, { device: shapeAdminDevice(fresh[0]) });
       }
 
       if (req.method === "DELETE" && deviceMatch) {
@@ -2082,6 +2185,34 @@ export default {
         return json(req, { ok: true });
       }
 
+      // Admin bypass: directly attach a device_id to a user's account without the
+      // phone-scan pairing flow (device only needs the shared device key + device_id
+      // to authenticate, so this takes effect immediately for the firmware).
+      if (req.method === "POST" && path === "/v1/admin/devices/force-link") {
+        const gate = await requireAdmin(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const deviceId = typeof body.device_id === "string" ? body.device_id.trim() : "";
+        const userId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+        const deviceName = typeof body.device_name === "string" && body.device_name.trim() ? body.device_name.trim().slice(0, 20) : "Pocket";
+        if (!deviceId || !userId) return json(req, { message: "device_id and user_id are required." }, 400);
+        const userRows = await query(`SELECT id FROM users WHERE id='${esc(userId)}'`);
+        if (!userRows[0]) return json(req, { message: "Target user not found." }, 404);
+        const now = new Date().toISOString();
+        const existing = await query(`SELECT id FROM device_links WHERE device_id='${esc(deviceId)}'`);
+        let linkId;
+        if (existing[0]) {
+          linkId = existing[0].id;
+          await query(`UPDATE device_links SET user_id='${esc(userId)}', device_name=${sqlStr(deviceName)}, last_seen_at='${now}' WHERE id='${esc(linkId)}'`);
+        } else {
+          linkId = newId();
+          await query(`INSERT INTO device_links (id,user_id,device_id,device_name,linked_at,last_seen_at,device_token_hash) VALUES ('${esc(linkId)}','${esc(userId)}','${esc(deviceId)}',${sqlStr(deviceName)},'${now}','${now}','${esc(sha256Hex(randomToken(32)))}')`);
+        }
+        await audit(gate.user.id, "force_link_device", "device", linkId, { device_id: deviceId, user_id: userId });
+        const fresh = await query(`SELECT ${ADMIN_DEVICE_COLUMNS} FROM device_links d JOIN users u ON u.id=d.user_id WHERE d.id='${esc(linkId)}'`);
+        return json(req, { device: shapeAdminDevice(fresh[0]) }, existing[0] ? 200 : 201);
+      }
+
       if (req.method === "GET" && path === "/v1/admin/pair-sessions") {
         const gate = await requireAdmin(req);
         if (gate.error) return gate.error;
@@ -2093,6 +2224,47 @@ export default {
         sql += ` ORDER BY created_at DESC LIMIT 100`;
         const sessions = await query(sql);
         return json(req, { sessions });
+      }
+
+      // Admin bypass: finish a stuck pairing code for a chosen user without the
+      // phone completing the normal claim (e.g. phone lost network mid-pair).
+      const pairForceClaimMatch = path.match(/^\/v1\/admin\/pair-sessions\/([^/]+)\/claim$/);
+      if (req.method === "POST" && pairForceClaimMatch) {
+        const gate = await requireAdmin(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(pairForceClaimMatch[1]);
+        const body = await req.json().catch(() => ({}));
+        const userId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+        if (!userId) return json(req, { message: "user_id is required." }, 400);
+        const userRows = await query(`SELECT id FROM users WHERE id='${esc(userId)}'`);
+        if (!userRows[0]) return json(req, { message: "Target user not found." }, 404);
+        const rows = await query(`SELECT * FROM pair_sessions WHERE id='${esc(id)}'`);
+        const row = rows[0];
+        if (!row) return json(req, { message: "Pairing session not found." }, 404);
+        const now = new Date().toISOString();
+        const existing = await query(`SELECT id FROM device_links WHERE device_id='${esc(row.device_id)}'`);
+        if (existing[0]) {
+          await query(`UPDATE device_links SET user_id='${esc(userId)}', last_seen_at='${now}' WHERE id='${esc(existing[0].id)}'`);
+        } else {
+          await query(`INSERT INTO device_links (id,user_id,device_id,device_name,linked_at,last_seen_at,device_token_hash) VALUES ('${esc(newId())}','${esc(userId)}','${esc(row.device_id)}','Pocket','${now}','${now}','${esc(sha256Hex(randomToken(32)))}')`);
+        }
+        await query(`UPDATE pair_sessions SET status='claimed', claimed_at='${now}', claimed_by_user_id='${esc(userId)}' WHERE id='${esc(row.id)}'`);
+        await audit(gate.user.id, "force_claim_pairing", "pair_session", id, { device_id: row.device_id, user_id: userId });
+        return json(req, { ok: true });
+      }
+
+      // Admin bypass: cancel/expire a pairing code (e.g. a stale or wrong one on
+      // the shared "period without updates" — frees the code without waiting on TTL).
+      const pairCancelMatch = path.match(/^\/v1\/admin\/pair-sessions\/([^/]+)$/);
+      if (req.method === "DELETE" && pairCancelMatch) {
+        const gate = await requireAdmin(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(pairCancelMatch[1]);
+        const rows = await query(`SELECT id, device_id FROM pair_sessions WHERE id='${esc(id)}'`);
+        if (!rows[0]) return json(req, { message: "Pairing session not found." }, 404);
+        await query(`UPDATE pair_sessions SET status='expired' WHERE id='${esc(id)}'`);
+        await audit(gate.user.id, "cancel_pairing_session", "pair_session", id, { device_id: rows[0].device_id });
+        return json(req, { ok: true });
       }
 
       if (req.method === "GET" && path === "/v1/admin/badges") {
