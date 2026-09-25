@@ -390,10 +390,17 @@ export const api = {
         last_seen_at: string | null
         user_id: string
         user_email: string
+        volume_percent: number
+        brightness_percent: number
+        lock_message: string
+        parental: { pin_gated_apps?: string[]; hide_pass_share?: boolean; block_connectors?: boolean }
+        sd_present: boolean
+        pending_wifi_ssid: string | null
+        pending_wifi_at: string | null
       }>
     }>(`/v1/admin/devices${qs}`)
   },
-  adminPatchDevice(id: string, body: { device_name: string }) {
+  adminPatchDevice(id: string, body: Record<string, unknown>) {
     return request<{ device: unknown }>(`/v1/admin/devices/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body,
@@ -401,6 +408,9 @@ export const api = {
   },
   adminUnlinkDevice(id: string) {
     return request<{ ok: true }>(`/v1/admin/devices/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  adminForceLinkDevice(body: { device_id: string; user_id: string; device_name?: string }) {
+    return request<{ device: unknown }>('/v1/admin/devices/force-link', { method: 'POST', body })
   },
   adminListPairSessions(status?: string) {
     const qs = status ? `?status=${encodeURIComponent(status)}` : ''
@@ -416,6 +426,15 @@ export const api = {
         claimed_by_user_id: string | null
       }>
     }>(`/v1/admin/pair-sessions${qs}`)
+  },
+  adminForceClaimPairSession(id: string, userId: string) {
+    return request<{ ok: true }>(`/v1/admin/pair-sessions/${encodeURIComponent(id)}/claim`, {
+      method: 'POST',
+      body: { user_id: userId },
+    })
+  },
+  adminCancelPairSession(id: string) {
+    return request<{ ok: true }>(`/v1/admin/pair-sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
   adminListBadges() {
     return request<{

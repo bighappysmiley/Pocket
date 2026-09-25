@@ -50,8 +50,7 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, 5,
-        "Reading with eBooks, a working mic + speaker, volume & brightness controls, and bigger "
-        "music uploads with an SD card.",
+        "Faster microSD for Music and Reading, and a smoother insert-anytime card setup.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);

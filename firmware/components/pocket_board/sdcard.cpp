@@ -50,7 +50,7 @@ bool name_is_media(const char* name) {
   return false;
 }
 
-bool mount_internal(bool format_if_failed, int width, esp_err_t* out_err) {
+bool mount_internal(bool format_if_failed, int width, int max_freq_khz, esp_err_t* out_err) {
   if (mounted_) {
     if (out_err) *out_err = ESP_OK;
     return true;
@@ -62,8 +62,12 @@ bool mount_internal(bool format_if_failed, int width, esp_err_t* out_err) {
   mount_config.allocation_unit_size = 16 * 1024;
 
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-  // Start conservative for blank / flaky cards, then IDF negotiates up.
-  host.max_freq_khz = SDMMC_FREQ_PROBING;
+  // SDMMC_FREQ_DEFAULT (20 MHz) for real throughput; try_mount() below falls back
+  // to SDMMC_FREQ_PROBING (400 kHz) only when a card can't handshake at full speed.
+  // Staying pinned at probing speed permanently (the previous behavior here) made
+  // every SD read/write ~50x slower than the bus supports — Music/Reading syncs to
+  // SD could take minutes and looked "stuck" even though the card was fine.
+  host.max_freq_khz = max_freq_khz;
 
   sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
   slot.width = width;
@@ -80,27 +84,34 @@ bool mount_internal(bool format_if_failed, int width, esp_err_t* out_err) {
   esp_err_t ret = esp_vfs_fat_sdmmc_mount(kMount, &host, &slot, &mount_config, &card_);
   if (out_err) *out_err = ret;
   if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "mount failed (width=%d format=%d): %s", width, format_if_failed ? 1 : 0,
-             esp_err_to_name(ret));
+    ESP_LOGW(TAG, "mount failed (width=%d freq=%d format=%d): %s", width, max_freq_khz,
+             format_if_failed ? 1 : 0, esp_err_to_name(ret));
     card_ = nullptr;
     mounted_ = false;
     return false;
   }
   mounted_ = true;
-  ESP_LOGI(TAG, "mounted at %s (width=%d)", kMount, width);
+  ESP_LOGI(TAG, "mounted at %s (width=%d freq=%dkHz)", kMount, width, max_freq_khz);
   return true;
 }
 
 bool try_mount(bool format_if_failed, esp_err_t* out_err) {
   esp_err_t err = ESP_FAIL;
-  // Prefer 4-bit (Waveshare IDF); fall back to 1-bit (Arduino SD_MMC).
-  if (mount_internal(format_if_failed, 4, &err)) {
-    if (out_err) *out_err = ESP_OK;
-    return true;
-  }
-  if (err == ESP_ERR_NOT_FOUND || err == ESP_FAIL) {
-    ESP_LOGW(TAG, "4-bit mount failed; retrying 1-bit");
-    if (mount_internal(format_if_failed, 1, &err)) {
+  // Prefer 4-bit at full default speed (Waveshare IDF demo); fall back to 1-bit
+  // (Arduino SD_MMC) and, only if that also fails, to the slow probing clock for
+  // flaky/no-name cards that can't handshake at 20 MHz. Never stay pinned at
+  // probing speed once a card mounts — that starved real Music/Reading transfers.
+  for (int width : {4, 1}) {
+    if (mount_internal(format_if_failed, width, SDMMC_FREQ_DEFAULT, &err)) {
+      if (out_err) *out_err = ESP_OK;
+      return true;
+    }
+    if (err != ESP_ERR_NOT_FOUND && err != ESP_FAIL && err != ESP_ERR_INVALID_RESPONSE &&
+        err != ESP_ERR_TIMEOUT) {
+      continue;
+    }
+    ESP_LOGW(TAG, "%d-bit mount failed at default speed; retrying at probing speed", width);
+    if (mount_internal(format_if_failed, width, SDMMC_FREQ_PROBING, &err)) {
       if (out_err) *out_err = ESP_OK;
       return true;
     }
