@@ -1,4 +1,4 @@
-import { ApiError, type BackupMeta, type Connector, type ConnectorProvider, type Device, type MeResponse, type MusicTrack, type Note, type PairClaimResult, type PairSession, type PocketList } from './types'
+import { ApiError, type BackupMeta, type Book, type Connector, type ConnectorProvider, type Device, type MeResponse, type MusicTrack, type Note, type PairClaimResult, type PairSession, type PocketList } from './types'
 
 const BUILD_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || ''
 const PROD_DEFAULT = 'https://br-super-hill-b40yvyrj-api.compute.c-6.us-east-2.aws.neon.tech'
@@ -233,7 +233,10 @@ export const api = {
   getDevice(id: string) {
     return request<Device>(`/v1/devices/${id}`)
   },
-  updateDevice(id: string, payload: { device_name?: string; lock_message?: string }) {
+  updateDevice(
+    id: string,
+    payload: { device_name?: string; lock_message?: string; volume_percent?: number; brightness_percent?: number },
+  ) {
     return request<Device>(`/v1/devices/${id}`, { method: 'PATCH', body: payload })
   },
   unlinkDevice(id: string) {
@@ -327,6 +330,17 @@ export const api = {
   },
   deleteMusic(id: string) {
     return request<void>(`/v1/music/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  // Reading — eBooks
+  listBooks() {
+    return request<{ books: Book[] }>('/v1/books')
+  },
+  uploadBook(payload: { title: string; author?: string; filename: string; format?: string; file_b64: string }) {
+    return request<{ book: Book }>('/v1/books', { method: 'POST', body: payload })
+  },
+  deleteBook(id: string) {
+    return request<void>(`/v1/books/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
   // Admin (role=admin or ADMIN_EMAILS)

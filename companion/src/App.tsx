@@ -18,6 +18,7 @@ import { NotesListPage } from './pages/NotesListPage'
 import { LinkPage, PairRedirect, WifiSetupRedirect } from './pages/LinkPage'
 import { PassesPage } from './pages/PassesPage'
 import { MusicPage } from './pages/MusicPage'
+import { BooksPage } from './pages/BooksPage'
 import { UpgradePage } from './pages/UpgradePage'
 import { AdminPage } from './pages/AdminPage'
 
@@ -62,6 +63,7 @@ export default function App() {
                 <Route path="/lists" element={<ListsListPage />} />
                 <Route path="/lists/:id" element={<ListDetailPage />} />
                 <Route path="/music" element={<MusicPage />} />
+                <Route path="/reading" element={<BooksPage />} />
                 <Route path="/connectors" element={<ConnectorsPage />} />
                 <Route path="/backup" element={<BackupPage />} />
               </Route>

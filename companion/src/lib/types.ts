@@ -59,6 +59,10 @@ export interface Device {
   last_seen_at?: string | null
   /** Optional name/message shown at the foot of the lock/sleep face. Empty = none shown. */
   lock_message?: string
+  /** Speaker volume, 0–100. Rotary on-device and Companion both write through. */
+  volume_percent?: number
+  /** e-ink "brightness" — how light/dark midtones render, 0–100. */
+  brightness_percent?: number
 }
 
 export type PairSessionStatus = 'pending' | 'claimed' | 'expired'
@@ -79,6 +83,17 @@ export interface MusicTrack {
   title: string
   filename: string
   mime?: string
+  size?: number
+  size_bytes?: number
+  created_at?: string
+}
+
+export interface Book {
+  id: string
+  title: string
+  author?: string
+  format: 'epub' | 'txt' | string
+  filename: string
   size?: number
   size_bytes?: number
   created_at?: string

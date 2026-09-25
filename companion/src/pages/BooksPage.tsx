@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isNetworkError } from '../lib/api'
-import type { MusicTrack } from '../lib/types'
+import type { Book } from '../lib/types'
 import { relativeTime } from '../lib/utils'
 import { ErrorState } from '../components/ErrorState'
 import { useDocumentTitle } from '../components/useDocumentTitle'
 
-const FALLBACK_INTERNAL = 2 * 1024 * 1024
-const FALLBACK_SD = 80 * 1024 * 1024
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
@@ -25,38 +24,28 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary)
 }
 
-export function MusicPage() {
-  useDocumentTitle('Music')
+function guessFormat(name: string): 'epub' | 'txt' {
+  return /\.epub$/i.test(name) ? 'epub' : 'txt'
+}
+
+export function BooksPage() {
+  useDocumentTitle('Reading')
   const inputRef = useRef<HTMLInputElement>(null)
-  const [tracks, setTracks] = useState<MusicTrack[]>([])
+  const [books, setBooks] = useState<Book[]>([])
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
-  const [maxBytes, setMaxBytes] = useState(FALLBACK_INTERNAL)
-  const [sdPresent, setSdPresent] = useState(false)
-
-  async function loadLimits() {
-    try {
-      const lim = await api.musicLimits()
-      setSdPresent(Boolean(lim.sd_present))
-      setMaxBytes(lim.max_upload_bytes || (lim.sd_present ? FALLBACK_SD : FALLBACK_INTERNAL))
-    } catch {
-      setMaxBytes(FALLBACK_INTERNAL)
-      setSdPresent(false)
-    }
-  }
 
   async function load() {
     setLoading(true)
     setError(null)
     try {
-      await loadLimits()
-      const res = await api.listMusic()
-      setTracks(res.tracks)
+      const res = await api.listBooks()
+      setBooks(res.books)
     } catch (err) {
       if (isNetworkError(err)) setError("You're offline or the server is unreachable.")
-      else setError("Couldn't load music.")
+      else setError("Couldn't load your library.")
     } finally {
       setLoading(false)
     }
@@ -70,34 +59,30 @@ export function MusicPage() {
     if (!file) return
     setMsg(null)
     setError(null)
-    if (file.size > maxBytes) {
-      setError(
-        sdPresent
-          ? `Keep each WAV under ${formatBytes(maxBytes)}.`
-          : `Keep each WAV under ${formatBytes(FALLBACK_INTERNAL)} without an SD card, or insert a microSD in Pocket and Sync once to unlock up to ${formatBytes(FALLBACK_SD)}.`,
-      )
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(`Keep each book under ${formatBytes(MAX_UPLOAD_BYTES)}.`)
       return
     }
-    const name = file.name || 'track.wav'
-    if (!/\.wav$/i.test(name) && file.type && !file.type.includes('wav')) {
-      setError('Only WAV files play on Pocket right now.')
+    const format = guessFormat(file.name)
+    if (!/\.(epub|txt)$/i.test(file.name)) {
+      setError('Upload an EPUB or plain-text (.txt) file.')
       return
     }
     setUploading(true)
     try {
-      const audio_b64 = await fileToBase64(file)
-      await api.uploadMusic({
-        title: name.replace(/\.wav$/i, ''),
-        filename: name.endsWith('.wav') || name.endsWith('.WAV') ? name : `${name}.wav`,
-        mime: file.type || 'audio/wav',
-        audio_b64,
+      const file_b64 = await fileToBase64(file)
+      await api.uploadBook({
+        title: file.name.replace(/\.(epub|txt)$/i, ''),
+        filename: file.name,
+        format,
+        file_b64,
       })
-      setMsg(`Uploaded ${name}. On Pocket: Home → Music → Sync from Companion.`)
+      setMsg(`Uploaded ${file.name}. On Pocket: Home → Reading → Sync from Companion.`)
       await load()
     } catch (err) {
       if (isNetworkError(err)) setError("You're offline or the server is unreachable.")
       else if (err && typeof err === 'object' && 'message' in err) setError(String((err as { message: string }).message))
-      else setError("Couldn't upload that track.")
+      else setError("Couldn't upload that book.")
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''
@@ -108,40 +93,40 @@ export function MusicPage() {
     if (!window.confirm(`Remove “${title}” from your Pocket Cloud library?`)) return
     setError(null)
     try {
-      await api.deleteMusic(id)
+      await api.deleteBook(id)
       setMsg('Removed from Cloud. Re-sync on Pocket to drop the local copy.')
       await load()
     } catch (err) {
       if (isNetworkError(err)) setError("You're offline or the server is unreachable.")
-      else setError("Couldn't delete that track.")
+      else setError("Couldn't delete that book.")
     }
   }
 
   return (
     <div className="page stack">
       <div className="row-between">
-        <h1>Music</h1>
+        <h1>Reading</h1>
         <button
           type="button"
           className="btn btn-primary"
           disabled={uploading}
           onClick={() => inputRef.current?.click()}
         >
-          {uploading ? 'Uploading…' : 'Upload WAV'}
+          {uploading ? 'Uploading…' : 'Upload book'}
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept="audio/wav,.wav"
+          accept=".epub,.txt,application/epub+zip,text/plain"
           hidden
           onChange={(e) => void onPick(e.target.files?.[0] ?? null)}
         />
       </div>
 
       <p className="muted">
-        {sdPresent
-          ? `Pocket has reported a microSD card — uploads up to ${formatBytes(maxBytes)}. Sync saves to the card.`
-          : `Without an SD card, keep tracks under ${formatBytes(FALLBACK_INTERNAL)} (internal storage). Insert a card in Pocket and Sync once to unlock larger uploads (up to ${formatBytes(FALLBACK_SD)}).`}
+        EPUB or plain text, up to {formatBytes(MAX_UPLOAD_BYTES)}. Pocket reads a plain-text
+        version of your EPUBs — pagination stays crisp on e-ink. Large libraries sync best with a
+        microSD card in Pocket.
       </p>
 
       {msg ? <p className="muted">{msg}</p> : null}
@@ -149,23 +134,24 @@ export function MusicPage() {
 
       {loading ? (
         <p className="muted">Loading…</p>
-      ) : tracks.length === 0 && !error ? (
+      ) : books.length === 0 && !error ? (
         <div className="empty panel">
-          <h2>No tracks yet</h2>
-          <p className="muted">Upload a WAV to play through Pocket’s speaker.</p>
+          <h2>No books yet</h2>
+          <p className="muted">Upload an EPUB or TXT to read on Pocket.</p>
         </div>
       ) : (
         <ul className="list">
-          {tracks.map((t) => (
-            <li key={t.id} className="row-between" style={{ alignItems: 'flex-start', gap: '1rem' }}>
+          {books.map((b) => (
+            <li key={b.id} className="row-between" style={{ alignItems: 'flex-start', gap: '1rem' }}>
               <div>
-                <div className="list-title">{t.title || t.filename}</div>
+                <div className="list-title">{b.title || b.filename}</div>
                 <div className="list-meta">
-                  {formatBytes(t.size_bytes || t.size || 0)}
-                  {t.created_at ? ` · ${relativeTime(t.created_at)}` : null}
+                  {b.author ? `${b.author} · ` : ''}
+                  {(b.format || 'txt').toUpperCase()} · {formatBytes(b.size_bytes || b.size || 0)}
+                  {b.created_at ? ` · ${relativeTime(b.created_at)}` : null}
                 </div>
               </div>
-              <button type="button" className="btn" onClick={() => void onDelete(t.id, t.title || t.filename)}>
+              <button type="button" className="btn" onClick={() => void onDelete(b.id, b.title || b.filename)}>
                 Remove
               </button>
             </li>

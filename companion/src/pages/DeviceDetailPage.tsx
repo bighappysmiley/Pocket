@@ -28,6 +28,8 @@ export function DeviceDetailPage() {
   const [device, setDevice] = useState<Device | null>(null)
   const [name, setName] = useState('')
   const [lockMessage, setLockMessage] = useState('')
+  const [volume, setVolume] = useState(80)
+  const [brightness, setBrightness] = useState(50)
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -47,6 +49,8 @@ export function DeviceDetailPage() {
       setDevice(d)
       setName(d.device_name || 'Pocket')
       setLockMessage(d.lock_message || '')
+      setVolume(typeof d.volume_percent === 'number' ? d.volume_percent : 80)
+      setBrightness(typeof d.brightness_percent === 'number' ? d.brightness_percent : 50)
       try {
         const p = await api.getDeviceParental(id)
         setGated(p.parental?.pin_gated_apps || [])
@@ -97,6 +101,24 @@ export function DeviceDetailPage() {
       setDevice({ ...d, last_seen_at: d.last_seen_at ?? device?.last_seen_at ?? null })
       setLockMessage(d.lock_message || '')
       setMsg('Lock message saved. Pocket picks it up on its next check-in.')
+    } catch (err) {
+      if (isNetworkError(err)) setError("You're offline or the server is unreachable.")
+      else setError('Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onSaveVolumeBrightness() {
+    setBusy(true)
+    setError(null)
+    setMsg(null)
+    try {
+      const d = await api.updateDevice(id, { volume_percent: volume, brightness_percent: brightness })
+      setDevice({ ...d, last_seen_at: d.last_seen_at ?? device?.last_seen_at ?? null })
+      setVolume(typeof d.volume_percent === 'number' ? d.volume_percent : volume)
+      setBrightness(typeof d.brightness_percent === 'number' ? d.brightness_percent : brightness)
+      setMsg('Saved. Pocket picks up volume and brightness on its next check-in (or set them on-device in Settings).')
     } catch (err) {
       if (isNetworkError(err)) setError("You're offline or the server is unreachable.")
       else setError('Something went wrong.')
@@ -239,6 +261,43 @@ export function DeviceDetailPage() {
               Save lock message
             </button>
           </form>
+
+          <div className="panel stack">
+            <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Volume &amp; brightness</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Sets the same values as Pocket's rotary Settings — no new buttons on the device.
+            </p>
+            <div className="field">
+              <label htmlFor="volume_percent">Speaker volume — {volume}%</label>
+              <input
+                id="volume_percent"
+                type="range"
+                min={0}
+                max={100}
+                step={10}
+                value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="brightness_percent">Display brightness — {brightness}%</label>
+              <input
+                id="brightness_percent"
+                type="range"
+                min={0}
+                max={100}
+                step={10}
+                value={brightness}
+                onChange={(e) => setBrightness(Number(e.target.value))}
+              />
+              <span className="muted" style={{ fontSize: '0.8rem' }}>
+                Lower reads darker/higher-contrast; higher reads lighter on Pocket's e-ink screen.
+              </span>
+            </div>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onSaveVolumeBrightness()}>
+              Save volume &amp; brightness
+            </button>
+          </div>
 
           <form className="panel stack" onSubmit={(e) => void onQueueWifi(e)}>
             <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Add Wi‑Fi in Companion</h2>
