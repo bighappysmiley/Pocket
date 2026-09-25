@@ -1,5 +1,6 @@
 import { connect } from "tls";
 import { createHash, createHmac, pbkdf2Sync, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
+import { inflateRawSync } from "zlib";
 
 const DEVICE_API_KEY = (process.env.DEVICE_API_KEY || "dev-device-api-key").trim();
 const SESSION_COOKIE = process.env.SESSION_COOKIE_NAME || "pocket_session";
@@ -332,6 +333,19 @@ function serializeList(row) {
   };
 }
 
+function serializeBookMeta(row) {
+  return {
+    id: row.id,
+    title: row.title || "",
+    author: row.author || "",
+    format: row.format || "txt",
+    filename: row.filename || "",
+    size: Number(row.size_bytes || 0),
+    size_bytes: Number(row.size_bytes || 0),
+    created_at: row.created_at,
+  };
+}
+
 function serializeMusicMeta(row) {
   return {
     id: row.id,
@@ -344,9 +358,99 @@ function serializeMusicMeta(row) {
   };
 }
 
-const MUSIC_MAX_INTERNAL_BYTES = 2 * 1024 * 1024; // LittleFS-safe
-const MUSIC_MAX_SD_BYTES = 32 * 1024 * 1024; // when Pocket reports microSD
-const MUSIC_MAX_BYTES = MUSIC_MAX_SD_BYTES; // cloud accepts up to SD ceiling
+// ---- Minimal EPUB (ZIP) reader — no dependency beyond Node's built-in zlib ----
+// EPUB is a ZIP of XHTML files. We don't need general ZIP support: just enough to walk the
+// central directory, inflate each content document, and join the plain text so Pocket's
+// e-ink Reading app can paginate it. Reading order follows the central directory (creation
+// order for nearly every EPUB writer); this is a pragmatic v1, not a full OPF spine parser.
+function listZipEntries(buf) {
+  const EOCD_SIG = 0x06054b50;
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0 && i >= buf.length - 22 - 65557; --i) {
+    if (buf.readUInt32LE(i) === EOCD_SIG) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return [];
+  const total = buf.readUInt16LE(eocd + 10);
+  let off = buf.readUInt32LE(eocd + 16);
+  const entries = [];
+  const CD_SIG = 0x02014b50;
+  for (let i = 0; i < total; ++i) {
+    if (off + 46 > buf.length || buf.readUInt32LE(off) !== CD_SIG) break;
+    const compMethod = buf.readUInt16LE(off + 10);
+    const compSize = buf.readUInt32LE(off + 20);
+    const uncompSize = buf.readUInt32LE(off + 24);
+    const nameLen = buf.readUInt16LE(off + 28);
+    const extraLen = buf.readUInt16LE(off + 30);
+    const commentLen = buf.readUInt16LE(off + 32);
+    const localHeaderOffset = buf.readUInt32LE(off + 42);
+    const name = buf.toString("utf8", off + 46, off + 46 + nameLen);
+    entries.push({ name, compMethod, compSize, uncompSize, localHeaderOffset });
+    off += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+function readZipEntry(buf, entry) {
+  const LFH_SIG = 0x04034b50;
+  const off = entry.localHeaderOffset;
+  if (off + 30 > buf.length || buf.readUInt32LE(off) !== LFH_SIG) return null;
+  const nameLen = buf.readUInt16LE(off + 26);
+  const extraLen = buf.readUInt16LE(off + 28);
+  const dataStart = off + 30 + nameLen + extraLen;
+  const raw = buf.subarray(dataStart, dataStart + entry.compSize);
+  if (entry.compMethod === 0) return Buffer.from(raw);
+  if (entry.compMethod === 8) {
+    try {
+      return inflateRawSync(raw);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function htmlToPlainText(html) {
+  let s = String(html);
+  s = s.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ");
+  s = s.replace(/<(p|div|br|h[1-6]|li|tr)[^>]*>/gi, "\n");
+  s = s.replace(/<\/(p|div|h[1-6]|li|tr)>/gi, "\n");
+  s = s.replace(/<[^>]+>/g, " ");
+  s = s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+  s = s.replace(/[ \t]+/g, " ").replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n");
+  return s.trim();
+}
+
+function extractEpubText(buf) {
+  const entries = listZipEntries(buf);
+  const content = entries.filter((e) => /\.(x?html?|xhtml)$/i.test(e.name));
+  const skip = /nav\.x?html?$|toc\.x?html?$|cover\.x?html?$/i;
+  const ordered = content.filter((e) => !skip.test(e.name)).length ? content.filter((e) => !skip.test(e.name)) : content;
+  const parts = [];
+  for (const entry of ordered) {
+    const data = readZipEntry(buf, entry);
+    if (!data) continue;
+    const text = htmlToPlainText(data.toString("utf8"));
+    if (text) parts.push(text);
+  }
+  return parts.join("\n\n").trim();
+}
+
+const MUSIC_MAX_INTERNAL_BYTES = 2 * 1024 * 1024; // LittleFS-safe, no SD
+const MUSIC_MAX_SD_BYTES = 80 * 1024 * 1024; // when Pocket reports a microSD card
+const MUSIC_MAX_BYTES = MUSIC_MAX_SD_BYTES; // cloud accepts up to the SD ceiling
+
+const BOOK_MAX_BYTES = 20 * 1024 * 1024; // original upload (epub/txt) — text extracted server-side
+const BOOK_MAX_TEXT_BYTES = 4 * 1024 * 1024; // normalized text stored/synced to the device
 
 async function userIdForDeviceKey(req, deviceId) {
   const key = (req.headers.get("x-device-key") || "").trim();
@@ -378,6 +482,8 @@ async function ensureAdminSchema() {
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS pending_wifi_at TIMESTAMPTZ`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS parental_json TEXT NOT NULL DEFAULT '{}'`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS lock_message TEXT NOT NULL DEFAULT ''`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS volume_percent SMALLINT NOT NULL DEFAULT 80`);
+  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS brightness_percent SMALLINT NOT NULL DEFAULT 50`);
   await query(`CREATE TABLE IF NOT EXISTS badges (
     id TEXT PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
@@ -470,6 +576,21 @@ async function ensureAdminSchema() {
     mime TEXT NOT NULL DEFAULT 'audio/wav',
     size_bytes INTEGER NOT NULL DEFAULT 0,
     audio_b64 TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    deleted_at TIMESTAMPTZ
+  )`);
+  // Reading library — device always reads `text_b64` (plain UTF-8, normalized at upload time).
+  // `format` records the original upload (epub|txt) so Companion can show it; original EPUB
+  // bytes are not retained (text is extracted once, up front).
+  await query(`CREATE TABLE IF NOT EXISTS books (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT '',
+    format TEXT NOT NULL DEFAULT 'txt',
+    filename TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    text_b64 TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     deleted_at TIMESTAMPTZ
   )`);
@@ -890,7 +1011,7 @@ export default {
         if (!user) return json(req, { message: "Sign in to continue." }, 401);
         const id = decodeURIComponent(deviceIdMatch[1]);
         const rows = await query(
-          `SELECT id, device_id, device_name, linked_at, last_seen_at, parental_json, lock_message FROM device_links WHERE (id='${esc(id)}' OR device_id='${esc(id)}') AND user_id='${esc(user.id)}' LIMIT 1`,
+          `SELECT id, device_id, device_name, linked_at, last_seen_at, parental_json, lock_message, volume_percent, brightness_percent FROM device_links WHERE (id='${esc(id)}' OR device_id='${esc(id)}') AND user_id='${esc(user.id)}' LIMIT 1`,
         );
         const row = rows[0];
         if (!row) return json(req, { message: "That device wasn't found." }, 404);
@@ -905,12 +1026,16 @@ export default {
             last_seen_at: row.last_seen_at,
             parental,
             lock_message: row.lock_message || "",
+            volume_percent: Number(row.volume_percent ?? 80),
+            brightness_percent: Number(row.brightness_percent ?? 50),
           });
         }
         const body = await req.json().catch(() => ({}));
         const hasName = typeof body.device_name === "string";
         const hasLockMessage = typeof body.lock_message === "string";
-        if (!hasName && !hasLockMessage) {
+        const hasVolume = Number.isFinite(body.volume_percent);
+        const hasBrightness = Number.isFinite(body.brightness_percent);
+        if (!hasName && !hasLockMessage && !hasVolume && !hasBrightness) {
           return json(req, { message: "Nothing to update." }, 400);
         }
         const sets = [];
@@ -929,6 +1054,16 @@ export default {
           lockMessage = body.lock_message.trim().slice(0, 40);
           sets.push(`lock_message=${sqlStr(lockMessage)}`);
         }
+        let volumePercent = Number(row.volume_percent ?? 80);
+        if (hasVolume) {
+          volumePercent = Math.max(0, Math.min(100, Math.round(body.volume_percent)));
+          sets.push(`volume_percent=${volumePercent}`);
+        }
+        let brightnessPercent = Number(row.brightness_percent ?? 50);
+        if (hasBrightness) {
+          brightnessPercent = Math.max(0, Math.min(100, Math.round(body.brightness_percent)));
+          sets.push(`brightness_percent=${brightnessPercent}`);
+        }
         if (sets.length) {
           await query(`UPDATE device_links SET ${sets.join(", ")} WHERE id='${esc(row.id)}'`);
         }
@@ -939,6 +1074,8 @@ export default {
           linked_at: row.linked_at,
           last_seen_at: row.last_seen_at,
           lock_message: lockMessage,
+          volume_percent: volumePercent,
+          brightness_percent: brightnessPercent,
         });
       }
 
@@ -1002,6 +1139,25 @@ export default {
         return json(req, { parental });
       }
 
+      // Device pushes its own rotary-set volume/brightness so Companion mirrors what's on the
+      // device (no PIN/session needed — device key + device_id only, like attest).
+      if (req.method === "PATCH" && path === "/v1/device/settings") {
+        const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
+        const userId = await userIdForDeviceKey(req, deviceId);
+        if (!userId) return json(req, { message: "Sign in to continue." }, 401);
+        const body = await req.json().catch(() => ({}));
+        const sets = [];
+        if (Number.isFinite(body.volume_percent)) {
+          sets.push(`volume_percent=${Math.max(0, Math.min(100, Math.round(body.volume_percent)))}`);
+        }
+        if (Number.isFinite(body.brightness_percent)) {
+          sets.push(`brightness_percent=${Math.max(0, Math.min(100, Math.round(body.brightness_percent)))}`);
+        }
+        if (!sets.length) return json(req, { message: "Nothing to update." }, 400);
+        await query(`UPDATE device_links SET ${sets.join(", ")} WHERE device_id='${esc(deviceId)}'`);
+        return json(req, { ok: true });
+      }
+
       // Device heartbeat + entitlement + pending Wi‑Fi / parental (x-device-key + device_id)
       if (req.method === "GET" && path === "/v1/device/attest") {
         const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
@@ -1009,7 +1165,7 @@ export default {
         if (!userId) return json(req, { message: "Sign in to continue." }, 401);
         const now = new Date().toISOString();
         const links = await query(
-          `SELECT id, device_id, device_name, pending_wifi_ssid, pending_wifi_password, pending_wifi_at, parental_json, lock_message
+          `SELECT id, device_id, device_name, pending_wifi_ssid, pending_wifi_password, pending_wifi_at, parental_json, lock_message, volume_percent, brightness_percent
            FROM device_links WHERE device_id='${esc(deviceId)}' ORDER BY linked_at DESC LIMIT 1`,
         );
         const link = links[0];
@@ -1040,6 +1196,8 @@ export default {
           device_id: link.device_id,
           device_name: link.device_name,
           lock_message: link.lock_message || "",
+          volume_percent: Number(link.volume_percent ?? 80),
+          brightness_percent: Number(link.brightness_percent ?? 50),
           parental,
           pin_gated_apps: Array.isArray(parental.pin_gated_apps) ? parental.pin_gated_apps : [],
           hide_pass_share: parental.hide_pass_share === true,
@@ -1183,6 +1341,131 @@ export default {
           internal_max_bytes: MUSIC_MAX_INTERNAL_BYTES,
           sd_max_bytes: MUSIC_MAX_SD_BYTES,
         });
+      }
+
+      // ---- Reading — eBooks (Companion manage + device pull) ----
+      if (req.method === "GET" && path === "/v1/books") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const rows = await query(
+          `SELECT id, title, author, format, filename, size_bytes, created_at FROM books WHERE user_id='${esc(gate.user.id)}' AND deleted_at IS NULL ORDER BY created_at DESC`,
+        );
+        return json(req, { books: rows.map(serializeBookMeta) });
+      }
+
+      if (req.method === "POST" && path === "/v1/books") {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const title = typeof body.title === "string" ? body.title.trim().slice(0, 160) : "";
+        const author = typeof body.author === "string" ? body.author.trim().slice(0, 120) : "";
+        let filename = typeof body.filename === "string" ? body.filename.trim().slice(0, 180) : "";
+        const fileB64 = typeof body.file_b64 === "string" ? body.file_b64.replace(/\s+/g, "") : "";
+        if (!fileB64) return json(req, { message: "Choose an EPUB or TXT file to upload." }, 400);
+        let decoded;
+        try {
+          decoded = Buffer.from(fileB64, "base64");
+        } catch {
+          return json(req, { message: "Upload data was invalid." }, 400);
+        }
+        if (!decoded.length || decoded.length > BOOK_MAX_BYTES) {
+          return json(req, { message: `Books must be under ${BOOK_MAX_BYTES / (1024 * 1024)} MB.` }, 400);
+        }
+        const isEpub =
+          decoded.length > 4 && decoded[0] === 0x50 && decoded[1] === 0x4b; // "PK" ZIP signature
+        const declaredFormat = typeof body.format === "string" ? body.format.toLowerCase() : "";
+        const format = isEpub || declaredFormat === "epub" ? "epub" : "txt";
+
+        let text = "";
+        if (format === "epub") {
+          text = extractEpubText(decoded);
+          if (!text) {
+            return json(req, { message: "Couldn't read that EPUB — try exporting as plain text." }, 400);
+          }
+        } else {
+          text = decoded.toString("utf8");
+          if (!text.trim()) return json(req, { message: "That file looked empty." }, 400);
+        }
+        if (Buffer.byteLength(text, "utf8") > BOOK_MAX_TEXT_BYTES) {
+          text = Buffer.from(text, "utf8").subarray(0, BOOK_MAX_TEXT_BYTES).toString("utf8");
+        }
+        if (!filename) filename = "book.txt";
+        filename = filename.replace(/\.[^./\\]+$/, "").replace(/[/\\]/g, "_") + ".txt";
+        const id = newId();
+        const now = new Date().toISOString();
+        const safeTitle = title || filename.replace(/\.txt$/i, "");
+        const textB64 = Buffer.from(text, "utf8").toString("base64");
+        await query(
+          `INSERT INTO books (id,user_id,title,author,format,filename,size_bytes,text_b64,created_at,deleted_at) VALUES ('${esc(id)}','${esc(gate.user.id)}',${sqlStr(safeTitle)},${sqlStr(author)},${sqlStr(format)},${sqlStr(filename)},${Buffer.byteLength(text, "utf8")},${sqlStr(textB64)},'${now}',NULL)`,
+        );
+        const rows = await query(
+          `SELECT id, title, author, format, filename, size_bytes, created_at FROM books WHERE id='${esc(id)}'`,
+        );
+        return json(req, { book: serializeBookMeta(rows[0]) }, 201);
+      }
+
+      const bookTextMatch = path.match(/^\/v1\/books\/([^/]+)\/text$/);
+      if (req.method === "GET" && bookTextMatch) {
+        const id = decodeURIComponent(bookTextMatch[1]);
+        let userId = null;
+        const gate = await requireEntitledUser(req);
+        if (!gate.error) {
+          userId = gate.user.id;
+        } else {
+          const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
+          userId = await userIdForDeviceKey(req, deviceId);
+          if (!userId) return gate.error;
+        }
+        const rows = await query(
+          `SELECT text_b64, filename FROM books WHERE id='${esc(id)}' AND user_id='${esc(userId)}' AND deleted_at IS NULL`,
+        );
+        if (!rows[0]) return json(req, { message: "Book not found." }, 404);
+        const bytes = Buffer.from(String(rows[0].text_b64 || ""), "base64");
+        return new Response(bytes, {
+          status: 200,
+          headers: {
+            ...cors(req),
+            "content-type": "text/plain; charset=utf-8",
+            "content-length": String(bytes.length),
+            "content-disposition": `attachment; filename="${String(rows[0].filename || "book.txt").replace(/"/g, "")}"`,
+          },
+        });
+      }
+
+      const bookIdMatch = path.match(/^\/v1\/books\/([^/]+)$/);
+      if (bookIdMatch) {
+        const gate = await requireEntitledUser(req);
+        if (gate.error) return gate.error;
+        const id = decodeURIComponent(bookIdMatch[1]);
+        if (req.method === "DELETE") {
+          const existing = await query(
+            `SELECT id FROM books WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}' AND deleted_at IS NULL`,
+          );
+          if (!existing[0]) return json(req, { message: "Book not found." }, 404);
+          const now = new Date().toISOString();
+          await query(`UPDATE books SET deleted_at='${now}' WHERE id='${esc(id)}'`);
+          return new Response(null, { status: 204, headers: cors(req) });
+        }
+        if (req.method === "GET") {
+          const rows = await query(
+            `SELECT id, title, author, format, filename, size_bytes, created_at FROM books WHERE id='${esc(id)}' AND user_id='${esc(gate.user.id)}' AND deleted_at IS NULL`,
+          );
+          if (!rows[0]) return json(req, { message: "Book not found." }, 404);
+          return json(req, serializeBookMeta(rows[0]));
+        }
+      }
+
+      // Device library pull (x-device-key + device_id)
+      if (req.method === "GET" && path === "/v1/device/books") {
+        const deviceId = u.searchParams.get("device_id") || req.headers.get("x-device-id") || "";
+        const userId = await userIdForDeviceKey(req, deviceId);
+        if (!userId) return json(req, { message: "Sign in to continue." }, 401);
+        const now = new Date().toISOString();
+        await query(`UPDATE device_links SET last_seen_at='${now}' WHERE device_id='${esc(deviceId)}'`);
+        const rows = await query(
+          `SELECT id, title, author, format, filename, size_bytes, created_at FROM books WHERE user_id='${esc(userId)}' AND deleted_at IS NULL ORDER BY created_at DESC`,
+        );
+        return json(req, { books: rows.map(serializeBookMeta) });
       }
 
       // Device OTA discovery — points at firmware-latest app image (A/B OTA, not merged USB bin).
