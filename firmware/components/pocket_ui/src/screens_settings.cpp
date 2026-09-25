@@ -40,7 +40,7 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsAbout) {
     canvas_.draw_text(kSideMargin, kTitleY, "About", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_pocket_wordmark(kSideMargin, kListTop, Gray::G0);
+    canvas_.draw_text(kSideMargin, kListTop, kProductName, Canvas::TextRole::WordMark, Gray::G0);
     char ver[48];
     std::snprintf(ver, sizeof(ver), "Version %s", kConsumerVersion);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody, ver, Canvas::TextRole::Body, Gray::G0);
