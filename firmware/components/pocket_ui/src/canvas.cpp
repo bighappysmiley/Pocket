@@ -326,6 +326,88 @@ void Canvas::draw_focus_tile(int x, int y, int w, int h, std::string_view label,
   draw_text(x + (w - tw) / 2, y + (h - th) / 2, s, role, Gray::G3);
 }
 
+namespace {
+// Geometric wordmark: constructed capitals built from clean rectangles and angled
+// bands only — no arcs, no font hinting, no pixel-stepped "8-bit" chunks. Sized to
+// read clearly at the brand's fixed on-screen scale (Home, Settings, onboarding, lock).
+constexpr int kWmH = 46;   // cap height
+constexpr int kWmT = 9;    // stroke weight
+constexpr int kWmGap = 8;  // space between letters
+constexpr int kWmWP = 30;
+constexpr int kWmWO = 34;
+constexpr int kWmWC = 34;
+constexpr int kWmWK = 30;
+constexpr int kWmWE = 28;
+constexpr int kWmWT = 28;
+constexpr int kWmTotalW =
+    kWmWP + kWmWO + kWmWC + kWmWK + kWmWE + kWmWT + 5 * kWmGap;
+}  // namespace
+
+int Canvas::pocket_wordmark_width() const { return kWmTotalW; }
+int Canvas::pocket_wordmark_height() const { return kWmH; }
+
+void Canvas::draw_pocket_wordmark(int x, int y, Gray g) {
+  int cx = x;
+  const int H = kWmH;
+  const int T = kWmT;
+
+  // P — full-height stem + an open rectangular bowl on the upper half.
+  {
+    constexpr int W = kWmWP;
+    constexpr int Hb = 26;  // bowl height
+    fill_rect(cx, y, T, H, g);
+    stroke_round_rect(cx, y, W, Hb, 0, g, T);
+    cx += W + kWmGap;
+  }
+  // O — a plain constructed ring; square corners keep it architectural, not a circle.
+  {
+    constexpr int W = kWmWO;
+    stroke_round_rect(cx, y, W, H, 0, g, T);
+    cx += W + kWmGap;
+  }
+  // C — same ring as O with a notch cut through the right wall to open the mouth.
+  {
+    constexpr int W = kWmWC;
+    stroke_round_rect(cx, y, W, H, 0, g, T);
+    constexpr int kNotchH = T + 6;
+    fill_rect(cx + W - T - 2, y + H / 2 - kNotchH / 2, T + 4, kNotchH, Gray::G3);
+    cx += W + kWmGap;
+  }
+  // K — stem + two straight angled bands meeting at mid-height (no curves).
+  {
+    constexpr int W = kWmWK;
+    fill_rect(cx, y, T, H, g);
+    const int mid = H / 2;
+    for (int ry = 0; ry <= mid; ++ry) {
+      const double t = static_cast<double>(mid - ry) / std::max(1, mid);
+      const int xx = cx + T + static_cast<int>((W - 2 * T) * t);
+      fill_rect(xx, y + ry, T, 1, g);
+    }
+    for (int ry = mid; ry < H; ++ry) {
+      const double t = static_cast<double>(ry - mid) / std::max(1, H - 1 - mid);
+      const int xx = cx + T + static_cast<int>((W - 2 * T) * t);
+      fill_rect(xx, y + ry, T, 1, g);
+    }
+    cx += W + kWmGap;
+  }
+  // E — stem + three horizontal bars.
+  {
+    constexpr int W = kWmWE;
+    fill_rect(cx, y, T, H, g);
+    fill_rect(cx, y, W, T, g);
+    fill_rect(cx, y + H / 2 - T / 2, W - 4, T, g);
+    fill_rect(cx, y + H - T, W, T, g);
+    cx += W + kWmGap;
+  }
+  // T — top bar + centered stem.
+  {
+    constexpr int W = kWmWT;
+    fill_rect(cx, y, W, T, g);
+    fill_rect(cx + W / 2 - T / 2, y, T, H, g);
+    cx += W + kWmGap;
+  }
+}
+
 bool Canvas::draw_qr(int x, int y, int size, std::string_view payload) {
   uint8_t temp[qrcodegen_BUFFER_LEN_MAX];
   uint8_t qr[qrcodegen_BUFFER_LEN_MAX];

@@ -103,8 +103,8 @@ void App::render_home() {
   draw_status_bar();
 
   // Product brand — no version number on Home.
-  canvas_.draw_text(kSideMargin, kContentTop, kProductName, Canvas::TextRole::WordMark, Gray::G0);
-  const int brand_rule_y = kContentTop + canvas_.text_height(Canvas::TextRole::WordMark) + 6;
+  canvas_.draw_pocket_wordmark(kSideMargin, kContentTop, Gray::G0);
+  const int brand_rule_y = kContentTop + canvas_.pocket_wordmark_height() + 6;
   canvas_.hline(kSideMargin, brand_rule_y, 96, Gray::G1);
 
   HomeApp focusable[kHomeGridSlots];
