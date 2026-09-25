@@ -57,7 +57,7 @@ void EpdDisplay::rotate_canvas_to_mono(const pocket::Canvas& src, uint8_t* dst) 
       for (int b = 0; b < 8; ++b) {
         const int x = (kLogicalW - 1) - py;
         const int y = px + b;
-        if (static_cast<uint8_t>(src.get_pixel(x, y)) >= 2) {
+        if (static_cast<uint8_t>(src.get_pixel(x, y)) >= gray_threshold_) {
           byte |= static_cast<uint8_t>(0x80 >> b);
         }
       }
@@ -153,6 +153,19 @@ void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, in
                       static_cast<UWORD>(px1), static_cast<UWORD>(py1));
   free(region);
   ESP_LOGI(TAG, "region refresh done");
+}
+
+void EpdDisplay::set_brightness(int percent) {
+  if (percent < 0) percent = 0;
+  if (percent > 100) percent = 100;
+  // 3 real steps (Gray has 4 levels, 0..3) — below/around/above the historical default.
+  if (percent < 34) {
+    gray_threshold_ = 1;  // darker: only near-white counts as white
+  } else if (percent < 67) {
+    gray_threshold_ = 2;  // previous fixed behavior
+  } else {
+    gray_threshold_ = 3;  // lighter: only near-black counts as black
+  }
 }
 
 void EpdDisplay::sleep() {

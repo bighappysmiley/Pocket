@@ -120,6 +120,9 @@ export function HomePage() {
             <Link className="btn btn-secondary" to="/music">
               Music
             </Link>
+            <Link className="btn btn-secondary" to="/reading">
+              Reading
+            </Link>
             <Link className="btn btn-secondary" to="/devices">
               Devices
             </Link>
@@ -139,8 +142,8 @@ export function HomePage() {
             {trialAvailable ? <p className="muted">7 days free</p> : null}
           </div>
           <p className="muted">
-            Pocket Classic syncs Notes, Lists, and Music to your phone with Pocket Cloud — plus backup
-            and connectors.
+            Pocket Classic syncs Notes, Lists, Music, and your Reading library to your phone with Pocket
+            Cloud — plus backup and connectors.
           </p>
           <div className="actions">
             {trialAvailable ? (

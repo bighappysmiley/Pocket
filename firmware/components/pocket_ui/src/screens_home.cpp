@@ -6,7 +6,7 @@ namespace {
 
 static const char* kAppLabels[kHomeGridSlots] = {
     "Notes", "Ledger", "Clock", "Pass", "Weather", "Music", "Settings", "Update",
-    "",      "",       "",      "",     "",        "",      "",         "",
+    "Reading", "",     "",      "",     "",        "",      "",         "",
 };
 
 /** Bold geometric strokes (2px) — reads crisply on e-ink at small tile sizes. */
@@ -69,12 +69,22 @@ void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
       c.line(cx - 6, cy - 2, cx, cy - s / 4 + 2, g);
       c.line(cx + 6, cy - 2, cx, cy - s / 4 + 2, g);
       break;
+    case HomeApp::Reading:
+      // Open book — two pages meeting at a bold spine.
+      c.stroke_round_rect(x0 + 4, y0 + 6, s / 2 - 3, s - 12, 3, g, 2);
+      c.stroke_round_rect(cx, y0 + 6, s / 2 - 3, s - 12, 3, g, 2);
+      thick_vline(c, cx, y0 + 6, s - 12, g);
+      break;
     default:
       break;
   }
 }
 
-HomeApp slot_app(int i) { return static_cast<HomeApp>(i); }
+/** Display order: real content apps, then Reading, then the always-on Settings/Update tiles —
+ * keeps the utility tiles last regardless of HomeApp's underlying (bitmask-compatible) index. */
+constexpr int kHomeOrder[kHomeGridSlots] = {0, 1, 2, 3, 4, 5, 8, 6, 7, 9, 10, 11, 12, 13, 14, 15};
+
+HomeApp slot_app(int i) { return static_cast<HomeApp>(kHomeOrder[i]); }
 
 void home_grid_metrics(int n_focus, int* out_grid_top, int* out_tile_w, int* out_tile_h, int* out_gap_x,
                        int* out_gap_y) {

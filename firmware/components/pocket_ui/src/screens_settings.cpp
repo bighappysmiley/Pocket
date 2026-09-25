@@ -50,7 +50,8 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, 5,
-        "Calmer lock screen, quieter icons, optional lock message.",
+        "Reading with eBooks, a working mic + speaker, volume & brightness controls, and bigger "
+        "music uploads with an SD card.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);
@@ -99,11 +100,14 @@ void App::render_settings() {
     std::snprintf(idle, sizeof(idle), "Idle lock: %ds", cfg_.idle_lock_s);
     std::string lockmsg =
         cfg_.lock_message.empty() ? "Lock message: Off" : "Lock message: " + cfg_.lock_message;
+    const char* bright_label = cfg_.brightness_percent < 34 ? "Brightness: Darker"
+                               : cfg_.brightness_percent < 67 ? "Brightness: Normal"
+                                                               : "Brightness: Lighter";
     const char* rows[] = {idle,
                           cfg_.show_batt_pct ? "Show battery %: On" : "Show battery %: Off",
-                          lockmsg.c_str(), "Full refresh: Now", "Ghosting control", "Back"};
-    draw_focus_rows(canvas_, focus_, rows, 6, kListTop);
-    canvas_.draw_text_wrapped(kSideMargin, kListTop + 6 * kRowPitch + 16, kContentW, 6,
+                          lockmsg.c_str(), bright_label, "Full refresh: Now", "Ghosting control", "Back"};
+    draw_focus_rows(canvas_, focus_, rows, 7, kListTop);
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + 7 * kRowPitch + 16, kContentW, 6,
                               "Set a custom lock message in Pocket Companion.",
                               Canvas::TextRole::Secondary, Gray::G1);
     return;
@@ -111,10 +115,20 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsSound) {
     canvas_.draw_text(kSideMargin, kTitleY, "Sound & mic", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop, "Speech recognition: Cloud", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + 40, "Hold the side button in Notes.", Canvas::TextRole::Secondary, Gray::G1);
-    const char* rows[] = {"Mic test", "Back"};
-    draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 100);
+    char vol[24];
+    std::snprintf(vol, sizeof(vol), "Volume: %d%%", cfg_.volume_percent);
+    std::string mic_line;
+    if (ptt_active_) {
+      mic_line = "Listening…";
+    } else if (mic_last_level_ >= 0) {
+      mic_line = mic_last_ok_ ? "Mic OK — picked up sound" : "No sound detected — check mic";
+    } else {
+      mic_line = "Hold the side button to test the mic.";
+    }
+    const char* rows[] = {vol, "Mic test", "Back"};
+    draw_focus_rows(canvas_, focus_, rows, 3, kListTop);
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + 3 * kRowPitch + 16, kContentW, 6, mic_line,
+                              Canvas::TextRole::Secondary, Gray::G1);
     return;
   }
 
@@ -138,15 +152,18 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kTitleY, "Home apps", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text(kSideMargin, kListTop - 8, "Choose what to show on Home.", Canvas::TextRole::Secondary,
                       Gray::G1);
-    // Settings + Update always visible on Home; not toggleable here.
-    const char* names[] = {"Notes", "Ledger", "Clock", "Pass", "Weather", "Music",
-                           "Settings (always on)", "Update (always on)"};
-    focus_.count = 8;
-    for (int i = 0; i < 8; ++i) {
+    // Settings + Update always visible on Home; not toggleable here. Reading (index 8) toggles
+    // alongside the other real apps.
+    static const int kOrder[] = {0, 1, 2, 3, 4, 5, 8, 6, 7};
+    static const char* names[] = {"Notes",   "Ledger",   "Clock",   "Pass",   "Weather",
+                                  "Music",   "Reading",  "Settings (always on)", "Update (always on)"};
+    focus_.count = 9;
+    for (int i = 0; i < 9; ++i) {
       const int y = kListTop + 28 + i * kRowPitch;
-      bool on = home_app_visible(cfg_, static_cast<HomeApp>(i));
+      const HomeApp a = static_cast<HomeApp>(kOrder[i]);
+      bool on = home_app_visible(cfg_, a);
       std::string label = std::string(names[i]);
-      if (i < 6) label += on ? ": On" : ": Off";
+      if (i < 7) label += on ? ": On" : ": Off";
       if (i == focus_.index)
         canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
       else
@@ -351,7 +368,8 @@ void App::handle_settings(InputEvent e) {
   }
 
   if (s == ScreenId::SettingsHomeApps) {
-    focus_.count = 8;
+    static const int kOrder[] = {0, 1, 2, 3, 4, 5, 8, 6, 7};
+    focus_.count = 9;
     if (e == InputEvent::Up) {
       focus_.move(-1);
       mark_content_dirty();
@@ -359,9 +377,9 @@ void App::handle_settings(InputEvent e) {
       focus_.move(1);
       mark_content_dirty();
     } else if (e == InputEvent::Select) {
-      // Settings (6) + Update (7) always on
-      if (focus_.index < 6) {
-        cfg_.home_visible ^= static_cast<uint16_t>(1u << focus_.index);
+      // Settings + Update (last two rows) always on
+      if (focus_.index < 7) {
+        cfg_.home_visible ^= static_cast<uint16_t>(1u << kOrder[focus_.index]);
         store_.save(cfg_);
         mark_content_dirty();
       }
@@ -498,7 +516,7 @@ void App::handle_settings(InputEvent e) {
   }
 
   if (s == ScreenId::SettingsDisplay) {
-    focus_.count = 6;
+    focus_.count = 7;
     if (e == InputEvent::Up) {
       focus_.move(-1);
       mark_content_dirty();
@@ -524,8 +542,63 @@ void App::handle_settings(InputEvent e) {
         store_.save(cfg_);
         mark_content_dirty();
       } else if (focus_.index == 3) {
+        const uint8_t opts[] = {20, 50, 80};
+        int cur = 1;
+        for (int i = 0; i < 3; ++i)
+          if (opts[i] == cfg_.brightness_percent) cur = i;
+        cfg_.brightness_percent = opts[(cur + 1) % 3];
+        display_.set_brightness(cfg_.brightness_percent);
+        store_.save(cfg_);
+        if (cfg_.companion_linked && wifi_.connected()) {
+          cloud_.push_device_settings(cfg_.device_id, cfg_.volume_percent, cfg_.brightness_percent);
+        }
+        redraw(true);  // full refresh so the new contrast is visible immediately
+      } else if (focus_.index == 4) {
         redraw(true);
-      } else if (focus_.index == 5) {
+      } else if (focus_.index == 6) {
+        nav_.replace(ScreenId::SettingsRoot);
+        after_nav();
+      }
+    }
+    return;
+  }
+
+  if (s == ScreenId::SettingsSound) {
+    focus_.count = 3;
+    if (e == InputEvent::PttStart) {
+      ptt_active_ = true;
+      mic_capturing_ = true;
+      if (audio_) audio_->start_capture();
+      mark_content_dirty();
+      return;
+    }
+    if (e == InputEvent::PttStop) {
+      ptt_active_ = false;
+      mic_capturing_ = false;
+      const MicCaptureResult r = audio_ ? audio_->stop_capture() : MicCaptureResult{};
+      mic_last_level_ = r.ok ? r.level_percent : -1;
+      mic_last_ok_ = r.ok && r.level_percent >= 6;
+      mark_content_dirty();
+      return;
+    }
+    if (e == InputEvent::Up) {
+      focus_.move(-1);
+      mark_content_dirty();
+    } else if (e == InputEvent::Down) {
+      focus_.move(1);
+      mark_content_dirty();
+    } else if (e == InputEvent::Select) {
+      if (focus_.index == 0) {
+        int v = cfg_.volume_percent + 10;
+        cfg_.volume_percent = static_cast<uint8_t>(v > 100 ? 0 : v);
+        if (audio_) audio_->set_volume(cfg_.volume_percent);
+        store_.save(cfg_);
+        if (cfg_.companion_linked && wifi_.connected()) {
+          cloud_.push_device_settings(cfg_.device_id, cfg_.volume_percent, cfg_.brightness_percent);
+        }
+        play_sound(SoundId::Click);
+        mark_content_dirty();
+      } else if (focus_.index == 2) {
         nav_.replace(ScreenId::SettingsRoot);
         after_nav();
       }

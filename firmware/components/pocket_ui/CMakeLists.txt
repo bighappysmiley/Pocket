@@ -13,6 +13,7 @@ idf_component_register(
     "src/screens_home.cpp"
     "src/screens_apps.cpp"
     "src/screens_music.cpp"
+    "src/screens_reading.cpp"
     "src/screens_settings.cpp"
     "src/screens_sd.cpp"
     "src/screens_update.cpp"

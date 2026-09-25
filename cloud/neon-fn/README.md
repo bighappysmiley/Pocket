@@ -37,6 +37,21 @@ Admins configure billing at Companion **Admin → Stripe** (`PUT /v1/admin/strip
 
 Falls back to `STRIPE_*` env vars when Admin has not saved keys; unset secret → mock billing.
 
-Also on this build: `/v1/notes`, `/v1/lists`, `/v1/music`, `/v1/device/music`, `/v1/connectors`, `/v1/backups`.
+Also on this build: `/v1/notes`, `/v1/lists`, `/v1/music`, `/v1/device/music`, `/v1/books`,
+`/v1/device/books`, `/v1/device/settings` (volume/brightness push), `/v1/connectors`, `/v1/backups`.
+
+### Reading (eBooks)
+
+EPUB/TXT upload via `POST /v1/books` — EPUB text is extracted server-side (minimal built-in ZIP +
+`zlib.inflateRawSync`, no dependency) and stored as normalized plain text (`text_b64`); the device
+always reads text, never the original EPUB container. `GET /v1/books/:id/text` serves that text to
+the device (device-key + device_id, same pattern as music). Per-upload cap `BOOK_MAX_BYTES` (20 MB
+original); extracted text capped at `BOOK_MAX_TEXT_BYTES` (4 MB).
+
+### Music size limits
+
+`MUSIC_MAX_SD_BYTES` (80 MB) applies once Pocket has reported a microSD card (`device_links.sd_present`,
+set by the device's music/device pull with `x-pocket-sd: 1`); otherwise `MUSIC_MAX_INTERNAL_BYTES`
+(2 MB, LittleFS-safe) applies. `GET /v1/music/limits` reports both to Companion.
 
 `index.ts` / `slim-entry.mjs` are older Hono/`pg` sketches — **do not deploy those** while live runs the SCRAM zip.

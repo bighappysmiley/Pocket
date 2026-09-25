@@ -19,6 +19,7 @@ set(POCKET_UI_SRCS
   ${POCKET_UI}/src/screens_home.cpp
   ${POCKET_UI}/src/screens_apps.cpp
   ${POCKET_UI}/src/screens_music.cpp
+  ${POCKET_UI}/src/screens_reading.cpp
   ${POCKET_UI}/src/screens_settings.cpp
   ${POCKET_UI}/src/screens_sd.cpp
   ${POCKET_UI}/src/screens_update.cpp
@@ -58,3 +59,8 @@ add_executable(test_partial_refresh ../tests/test_partial_refresh.cpp ${POCKET_U
 target_include_directories(test_partial_refresh PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_partial_refresh PRIVATE POCKET_HOST=1)
 add_test(NAME test_partial_refresh COMMAND test_partial_refresh)
+
+add_executable(test_reading ../tests/test_reading.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_reading PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_reading PRIVATE POCKET_HOST=1)
+add_test(NAME test_reading COMMAND test_reading)

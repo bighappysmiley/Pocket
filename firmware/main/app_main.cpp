@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v40-sleep";
+static const char* kBuildId = "POCKET-LIVE-v41-reading";
 
 namespace {
 
@@ -117,6 +117,7 @@ struct EspDisplay : pocket::PlatformDisplay {
   void present_region(const pocket::Canvas& c, int x, int y, int w, int h) override {
     epd.present_region(c, x, y, w, h);
   }
+  void set_brightness(int percent) override { epd.set_brightness(percent); }
 };
 
 struct EspStorage : pocket::PlatformStorage {
@@ -164,6 +165,24 @@ struct EspStorage : pocket::PlatformStorage {
     const std::string root = music_root();
     return root.rfind("/sdcard", 0) == 0;
   }
+
+  std::string book_root() override {
+    if (pocket::board::sd_present()) return "/sdcard/pocket/books";
+    if (pocket::board::littlefs_mounted() || pocket::board::littlefs_mount()) return "/littlefs/books";
+    return {};
+  }
+  bool book_ensure_root() override {
+    std::string root = book_root();
+    if (root.empty()) return false;
+    if (root.rfind("/sdcard", 0) == 0) {
+      mkdir("/sdcard/pocket", 0755);
+      mkdir("/sdcard/pocket/books", 0755);
+    } else {
+      mkdir("/littlefs/books", 0755);
+    }
+    const uint64_t free = free_bytes(root.rfind("/sdcard", 0) == 0 ? "/sdcard" : "/littlefs");
+    return free > 128 * 1024;
+  }
 };
 
 struct EspAudio : pocket::PlatformAudio {
@@ -189,6 +208,20 @@ struct EspAudio : pocket::PlatformAudio {
     return pocket::board::audio_play_wav_file(path.c_str());
   }
   void stop() override { pocket::board::audio_stop(); }
+  void set_volume(int percent) override {
+    pocket::board::audio_set_volume(static_cast<uint8_t>(percent < 0 ? 0 : (percent > 100 ? 100 : percent)));
+  }
+  bool mic_supported() override { return pocket::board::audio_mic_supported(); }
+  void start_capture() override { pocket::board::audio_capture_start(); }
+  void poll_capture() override { pocket::board::audio_capture_poll(); }
+  pocket::MicCaptureResult stop_capture() override {
+    const pocket::board::MicCaptureResult r = pocket::board::audio_capture_stop();
+    pocket::MicCaptureResult out;
+    out.ok = r.ok;
+    out.level_percent = r.level_percent;
+    out.pcm = r.pcm;
+    return out;
+  }
 };
 
 struct EspIdentity : pocket::PlatformIdentity {

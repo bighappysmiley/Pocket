@@ -36,7 +36,13 @@ bool http_request(const char* method, const std::string& url, const char* auth_b
   HttpBuf buf;
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
-  cfg.method = (std::strcmp(method, "POST") == 0) ? HTTP_METHOD_POST : HTTP_METHOD_GET;
+  if (std::strcmp(method, "POST") == 0) {
+    cfg.method = HTTP_METHOD_POST;
+  } else if (std::strcmp(method, "PATCH") == 0) {
+    cfg.method = HTTP_METHOD_PATCH;
+  } else {
+    cfg.method = HTTP_METHOD_GET;
+  }
   cfg.timeout_ms = timeout_ms;
   cfg.event_handler = http_event;
   cfg.user_data = &buf;
@@ -169,6 +175,39 @@ std::vector<uint8_t> EspCloud::music_download(const std::string& device_id, cons
   return out;
 }
 
+std::string EspCloud::books_list_json(const std::string& device_id) {
+  if (device_id.empty()) return "[]";
+  const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/device/books?device_id=" + device_id;
+  int status = 0;
+  std::string resp;
+  if (!http_request("GET", url, POCKET_DEVICE_API_KEY, {}, status, resp, 20000, "application/json",
+                    "x-device-id", device_id.c_str()) ||
+      status != 200) {
+    ESP_LOGW(TAG, "books list HTTP %d", status);
+    return {};
+  }
+  const size_t arr = resp.find('[');
+  if (arr == std::string::npos) return "[]";
+  return resp.substr(arr);
+}
+
+std::vector<uint8_t> EspCloud::book_download(const std::string& device_id, const std::string& book_id) {
+  std::vector<uint8_t> out;
+  if (device_id.empty() || book_id.empty()) return out;
+  const std::string url =
+      std::string(POCKET_CLOUD_BASE) + "/v1/books/" + book_id + "/text?device_id=" + device_id;
+  int status = 0;
+  std::string resp;
+  if (!http_request("GET", url, POCKET_DEVICE_API_KEY, {}, status, resp, 60000, "text/plain,*/*",
+                    "x-device-id", device_id.c_str()) ||
+      status != 200) {
+    ESP_LOGW(TAG, "book download HTTP %d id=%s", status, book_id.c_str());
+    return out;
+  }
+  out.assign(resp.begin(), resp.end());
+  return out;
+}
+
 std::string EspCloud::firmware_latest_json() {
   const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/firmware/latest";
   int status = 0;
@@ -178,6 +217,23 @@ std::string EspCloud::firmware_latest_json() {
     return {};
   }
   return resp;
+}
+
+bool EspCloud::push_device_settings(const std::string& device_id, int volume_percent, int brightness_percent) {
+  if (device_id.empty()) return false;
+  char body[96];
+  std::snprintf(body, sizeof(body), "{\"volume_percent\":%d,\"brightness_percent\":%d}", volume_percent,
+                brightness_percent);
+  const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/device/settings?device_id=" + device_id;
+  int status = 0;
+  std::string resp;
+  if (!http_request("PATCH", url, POCKET_DEVICE_API_KEY, body, status, resp, 10000, "application/json",
+                    "x-device-id", device_id.c_str()) ||
+      (status != 200 && status != 201)) {
+    ESP_LOGW(TAG, "push settings HTTP %d", status);
+    return false;
+  }
+  return true;
 }
 
 std::string EspCloud::device_attest_json(const std::string& device_id) {
