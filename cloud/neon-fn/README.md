@@ -40,6 +40,42 @@ Falls back to `STRIPE_*` env vars when Admin has not saved keys; unset secret �
 Also on this build: `/v1/notes`, `/v1/lists`, `/v1/music`, `/v1/device/music`, `/v1/books`,
 `/v1/device/books`, `/v1/device/settings` (volume/brightness push), `/v1/connectors`, `/v1/backups`.
 
+## Deployment mechanism (important)
+
+The Neon "Deploy Function" tool used by AI cloud agents to push this file's contents has an
+unreliable ceiling on how much text can be transcribed into a single tool call: base64-encoded
+zip payloads beyond roughly 15-20KB have repeatedly arrived corrupted (silently truncated or
+byte-mangled) even though the same content round-trips perfectly through local tooling. Once
+`scram-api.mjs` grew past that size (after the Reading/eBooks + volume/brightness work), direct
+deploys became unreliable and at one point left production serving corrupted code (a mangled
+SQL string literal caused every request, including `/health`, to fail with a Postgres syntax
+error).
+
+The current live deployment of the `api` function is therefore a **tiny bootstrap** file (not
+this file directly). The bootstrap fetches the real, byte-identical `scram-api.mjs` from a pinned
+GitHub commit at cold start, writes it to a temp file, and dynamically `import()`s it:
+
+```js
+const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/<commit-sha>/cloud/neon-fn/scram-api.mjs";
+// ...fetch, write to tmp file, import(), forward fetch(req) to it.
+```
+
+This sidesteps the tool-call transcription limit entirely (the bootstrap itself is <1KB), while
+the actual served logic is always exactly what's committed to `main` at the pinned commit.
+
+**To ship a change to this file:**
+1. Edit `cloud/neon-fn/scram-api.mjs`, commit, and push to `main`.
+2. Update the pinned commit SHA in the deployed bootstrap to the new commit and redeploy the
+   bootstrap (small payload, safe to transcribe directly).
+3. Verify `/health` — it returns `sourceSha256`, a SHA-256 of the exact bytes the running
+   function loaded. Compare it to `sha256sum cloud/neon-fn/scram-api.mjs` locally; they must
+   match before trusting the deploy.
+
+If deploying from a human workstation (e.g. via the Neon console or `neonctl`, not an AI agent's
+tool-call interface), this workaround is unnecessary — uploading the real file directly works
+fine and is simpler. The bootstrap only exists to work around AI-agent tool-call payload
+transcription risk.
+
 ### Reading (eBooks)
 
 EPUB/TXT upload via `POST /v1/books` — EPUB text is extracted server-side (minimal built-in ZIP +
