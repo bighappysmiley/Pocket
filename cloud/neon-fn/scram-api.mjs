@@ -482,8 +482,6 @@ async function ensureAdminSchema() {
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS pending_wifi_at TIMESTAMPTZ`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS parental_json TEXT NOT NULL DEFAULT '{}'`);
   await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS lock_message TEXT NOT NULL DEFAULT ''`);
-  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS volume_percent SMALLINT NOT NULL DEFAULT 80`);
-  await query(`ALTER TABLE device_links ADD COLUMN IF NOT EXISTS brightness_percent SMALLINT NOT NULL DEFAULT 50`);
   await query(`CREATE TABLE IF NOT EXISTS badges (
     id TEXT PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
@@ -579,21 +577,9 @@ async function ensureAdminSchema() {
     created_at TIMESTAMPTZ NOT NULL,
     deleted_at TIMESTAMPTZ
   )`);
-  // Reading library — device always reads `text_b64` (plain UTF-8, normalized at upload time).
-  // `format` records the original upload (epub|txt) so Companion can show it; original EPUB
-  // bytes are not retained (text is extracted once, up front).
-  await query(`CREATE TABLE IF NOT EXISTS books (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title TEXT NOT NULL DEFAULT '',
-    author TEXT NOT NULL DEFAULT '',
-    format TEXT NOT NULL DEFAULT 'txt',
-    filename TEXT NOT NULL DEFAULT '',
-    size_bytes INTEGER NOT NULL DEFAULT 0,
-    text_b64 TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    deleted_at TIMESTAMPTZ
-  )`);
+  // Reading library (`books`) and device_links.volume_percent/brightness_percent were applied
+  // directly against the database once (not re-run here — see cloud/neon-fn/README.md) rather
+  // than added as ALTER/CREATE statements in this function.
 }
 
 const STRIPE_SETTING_KEYS = [
@@ -837,15 +823,31 @@ function readySchema() {
 }
 
 
+let selfSourceSha256 = null;
+async function getSelfSourceSha256() {
+  if (selfSourceSha256) return selfSourceSha256;
+  try {
+    const { readFileSync } = await import("fs");
+    const { fileURLToPath } = await import("url");
+    const bytes = readFileSync(fileURLToPath(import.meta.url));
+    selfSourceSha256 = createHash("sha256").update(bytes).digest("hex");
+  } catch (e) {
+    selfSourceSha256 = "unavailable:" + String(e && e.message || e);
+  }
+  return selfSourceSha256;
+}
+
 export default {
   async fetch(req) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(req) });
     const u = new URL(req.url), path = u.pathname;
+    // Health does not depend on DB schema readiness so it stays useful for diagnosing DB-layer issues.
+    if (path === "/health" || path === "/" || path === "/v1/health") {
+      const sha256 = await getSelfSourceSha256();
+      return json(req, { ok: true, build: "scram-api-v13-reading-books", sourceSha256: sha256 });
+    }
     try {
       await readySchema();
-      if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v13-reading-books" });
-      }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
         const body = await req.json().catch(() => ({}));
