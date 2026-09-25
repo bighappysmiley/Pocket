@@ -842,10 +842,10 @@ void App::render() {
 
 void App::render_lock() {
   // Calm face — no clock, no press hint, no battery %. Static art needs no ticking refresh.
-  const int wm_w = canvas_.pocket_wordmark_width();
+  const int wm_w = canvas_.text_width("Pocket", Canvas::TextRole::WordMark);
   const int wm_cx = kCanvasW / 2 + 18;  // nudge right so the mark balances the wordmark
-  draw_pocket_mark(wm_cx - wm_w / 2 - 14, 56 + canvas_.pocket_wordmark_height() / 2);
-  canvas_.draw_pocket_wordmark(wm_cx - wm_w / 2, 56, Gray::G0);
+  draw_pocket_mark(wm_cx - wm_w / 2 - 14, 56 + canvas_.text_height(Canvas::TextRole::WordMark) / 2);
+  canvas_.draw_text_centered(wm_cx, 56, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
 
   draw_lock_motif();
 
