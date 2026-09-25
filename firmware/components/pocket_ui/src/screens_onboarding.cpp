@@ -31,7 +31,7 @@ void App::render_onboarding() {
 
   switch (s) {
     case ScreenId::OnboardingWelcome: {
-      canvas_.draw_text(kSideMargin, ty, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
+      canvas_.draw_pocket_wordmark(kSideMargin, ty, Gray::G0);
       canvas_.draw_text(kSideMargin, ty + 52, "Welcome", Canvas::TextRole::ScreenTitle, Gray::G0);
       int y = canvas_.draw_text_wrapped(kSideMargin, ty + 108, kWrapW, kLineGap,
                                         "Notes, lists, and daily tools — quiet, focused, always with you.",

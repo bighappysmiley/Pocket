@@ -46,6 +46,12 @@ class Canvas {
   void draw_focus_tile(int x, int y, int w, int h, std::string_view label, TextRole role);
   bool draw_qr(int x, int y, int size, std::string_view payload);
 
+  /** Brand wordmark — constructed geometric capitals (rectangles + angles), drawn as
+   * vector shapes rather than the body/display bitmap font. `x,y` is the top-left. */
+  void draw_pocket_wordmark(int x, int y, Gray g);
+  int pocket_wordmark_width() const;
+  int pocket_wordmark_height() const;
+
   const uint8_t* pixels() const { return buf_; }
   static constexpr size_t kBufBytes = (kCanvasW * kCanvasH) / 4;
 

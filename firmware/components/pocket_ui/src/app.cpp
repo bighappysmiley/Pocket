@@ -804,10 +804,10 @@ void App::render() {
 
 void App::render_lock() {
   // Calm face — no clock, no press hint, no battery %. Static art needs no ticking refresh.
-  const int wm_w = canvas_.text_width("Pocket", Canvas::TextRole::WordMark);
+  const int wm_w = canvas_.pocket_wordmark_width();
   const int wm_cx = kCanvasW / 2 + 18;  // nudge right so the mark balances the wordmark
-  draw_pocket_mark(wm_cx - wm_w / 2 - 14, 56 + canvas_.text_height(Canvas::TextRole::WordMark) / 2);
-  canvas_.draw_text_centered(wm_cx, 56, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
+  draw_pocket_mark(wm_cx - wm_w / 2 - 14, 56 + canvas_.pocket_wordmark_height() / 2);
+  canvas_.draw_pocket_wordmark(wm_cx - wm_w / 2, 56, Gray::G0);
 
   draw_lock_motif();
 
@@ -838,70 +838,61 @@ void App::draw_lock_motif() {
   constexpr int cx = kCanvasW / 2;
   const int motif = ((lock_motif_index_ % kLockMotifCount) + kLockMotifCount) % kLockMotifCount;
 
+  // Each motif below is a fixed composition with a name and a story — not a
+  // randomized abstract pattern. `stroke_circle` is a tiny local helper: circles are
+  // drawn as a per-row left/right edge pair (cheap, crisp on 2bpp e-ink, no font).
+  auto stroke_circle = [this](int ox, int oy, int r, Gray g) {
+    for (int yy = -r; yy <= r; ++yy) {
+      const int half_w = static_cast<int>(std::sqrt(static_cast<double>(r * r - yy * yy)));
+      canvas_.set_pixel(ox - half_w, oy + yy, g);
+      canvas_.set_pixel(ox + half_w, oy + yy, g);
+    }
+  };
+
   switch (motif) {
     case 0: {
-      // Pocket fold — quiet horizontal field converging into a seam.
-      for (int i = 0; i < 9; ++i) {
-        const int y = kTop + i * 48;
-        const int inset = 36 + ((i * 17) % 5) * 22;
-        const Gray g = (i % 3 == 0) ? Gray::G1 : Gray::G2;
-        canvas_.hline(inset, y, kCanvasW - 2 * inset, g);
+      // "Horizon" — a still line where sky meets ground, one quiet marker above it.
+      const int horizon_y = kTop + 260;
+      canvas_.hline(48, horizon_y, kCanvasW - 96, Gray::G0);
+      stroke_circle(cx, horizon_y - 64, 46, Gray::G0);
+      // Reflection — a calm echo of the line below, shorter as it recedes.
+      for (int i = 0; i < 4; ++i) {
+        const int y = horizon_y + 26 + i * 30;
+        const int inset = 90 + i * 34;
+        canvas_.hline(inset, y, kCanvasW - 2 * inset, (i % 2 == 0) ? Gray::G1 : Gray::G2);
       }
-      canvas_.line(48, kTop + 20, cx - 12, kBot - 40, Gray::G1);
-      canvas_.line(kCanvasW - 48, kTop + 20, cx + 12, kBot - 40, Gray::G1);
-      canvas_.line(72, kTop + 80, cx, kBot - 100, Gray::G2);
-      canvas_.line(kCanvasW - 72, kTop + 80, cx, kBot - 100, Gray::G2);
-      canvas_.vline(cx, kTop + 60, kBot - kTop - 120, Gray::G0);
-      canvas_.hline(cx - 90, kBot - 48, 180, Gray::G0);
-      canvas_.hline(cx - 60, kBot - 36, 120, Gray::G1);
       break;
     }
     case 1: {
-      // Terraced dunes — stacked soft arcs, calm and horizonal.
-      const int mid = (kTop + kBot) / 2;
-      for (int i = 0; i < 5; ++i) {
-        const int band_y = kTop + 30 + i * 90;
-        const int amp = 60 - i * 8;
+      // "Tide rings" — ripples settling outward from one still point in the water.
+      const int oy = (kTop + kBot) / 2;
+      constexpr int kRadii[] = {30, 68, 108, 150, 194};
+      for (size_t i = 0; i < 5; ++i) {
         const Gray g = (i % 2 == 0) ? Gray::G1 : Gray::G2;
-        for (int x = 40; x < kCanvasW - 40; x += 4) {
-          const double t = (x - cx) / 220.0;
-          const int y = band_y - static_cast<int>(amp * std::exp(-t * t));
-          canvas_.set_pixel(x, y, g);
-          canvas_.set_pixel(x, y + 1, g);
-        }
+        stroke_circle(cx, oy, kRadii[i], g);
       }
-      canvas_.hline(cx - 70, mid + 150, 140, Gray::G0);
+      canvas_.fill_round_rect(cx - 6, oy - 6, 12, 12, 6, Gray::G0);
       break;
     }
     case 2: {
-      // Facet field — a lattice of quiet triangles, like folded paper.
-      constexpr int kRows = 6;
-      constexpr int kCols = 5;
-      const int band_h = (kBot - kTop) / kRows;
-      const int col_w = (kCanvasW - 80) / kCols;
-      for (int r = 0; r < kRows; ++r) {
-        const int y0 = kTop + r * band_h;
-        const int y1 = y0 + band_h;
-        const Gray g = (r % 2 == 0) ? Gray::G1 : Gray::G2;
-        for (int col = 0; col < kCols; ++col) {
-          const int x0 = 40 + col * col_w;
-          const int x1 = x0 + col_w;
-          const int xm = (x0 + x1) / 2;
-          if ((col + r) % 2 == 0) {
-            canvas_.line(x0, y1, xm, y0, g);
-            canvas_.line(xm, y0, x1, y1, g);
-          } else {
-            canvas_.line(x0, y0, xm, y1, g);
-            canvas_.line(xm, y1, x1, y0, g);
-          }
-        }
-      }
-      canvas_.hline(40, kTop, kCanvasW - 80, Gray::G0);
-      canvas_.hline(40, kBot, kCanvasW - 80, Gray::G0);
+      // "Folded paper plane" — a still, angular fuselage with one raised wing fold.
+      struct Pt { int x, y; };
+      const Pt nose{cx + 90, kTop + 60};
+      const Pt tail{cx - 110, kBot - 60};
+      const Pt wing_l{cx - 170, kBot - 130};
+      const Pt wing_r{cx + 140, kBot - 190};
+      const Pt fold{cx - 10, kBot - 110};
+      canvas_.line(nose.x, nose.y, tail.x, tail.y, Gray::G0);      // spine
+      canvas_.line(nose.x, nose.y, wing_l.x, wing_l.y, Gray::G1);  // left edge
+      canvas_.line(nose.x, nose.y, wing_r.x, wing_r.y, Gray::G1);  // right edge
+      canvas_.line(wing_l.x, wing_l.y, fold.x, fold.y, Gray::G2);  // left wing fold
+      canvas_.line(wing_r.x, wing_r.y, fold.x, fold.y, Gray::G2);  // raised wing fold
+      canvas_.line(fold.x, fold.y, tail.x, tail.y, Gray::G1);
+      canvas_.fill_round_rect(nose.x - 5, nose.y - 5, 10, 10, 5, Gray::G0);
       break;
     }
     case 3: {
-      // Constellation — a quiet scatter of nodes joined by thin lines. No clock hands.
+      // "Quiet constellation" — a scatter of stars joined by thin lines. No clock hands.
       struct Pt { int x, y; };
       const Pt pts[] = {
           {cx - 120, kTop + 60},  {cx + 40, kTop + 30},   {cx + 130, kTop + 140},
@@ -917,8 +908,26 @@ void App::draw_lock_motif() {
       }
       break;
     }
+    case 4: {
+      // "City grid at dusk" — a quiet skyline resting on a still baseline.
+      const int base_y = kBot - 20;
+      canvas_.hline(40, base_y, kCanvasW - 80, Gray::G0);
+      struct Bldg { int x, w, h; };
+      const Bldg blds[] = {
+          {56, 44, 210}, {108, 28, 150}, {144, 52, 270}, {204, 34, 180},
+          {246, 58, 310}, {312, 32, 160}, {352, 48, 230}, {408, 28, 140},
+      };
+      for (const auto& b : blds) {
+        const int y0 = base_y - b.h;
+        canvas_.stroke_rect(b.x, y0, b.w, b.h, Gray::G1);
+        for (int wy = y0 + 22; wy < base_y - 18; wy += 40) {
+          canvas_.fill_round_rect(b.x + b.w / 2 - 4, wy, 8, 8, 2, Gray::G2);
+        }
+      }
+      break;
+    }
     default: {
-      // Nested frames — concentric rounded squares settling toward the center.
+      // "Aperture" — concentric frames closing evenly toward one still point.
       constexpr int kSteps = 6;
       const int max_size = kBot - kTop;
       for (int i = 0; i < kSteps; ++i) {

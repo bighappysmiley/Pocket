@@ -10,8 +10,10 @@
 
 namespace pocket {
 
-/** Number of calm abstract motifs the lock/sleep face rotates through. */
-inline constexpr int kLockMotifCount = 5;
+/** Number of calm, intentionally-themed motifs the lock/sleep face rotates through:
+ * horizon line, tide rings, folded paper plane, quiet constellation, city grid at
+ * dusk, and aperture. Each is a designed composition, not generic abstract lines. */
+inline constexpr int kLockMotifCount = 6;
 
 struct PlatformClock {
   virtual ~PlatformClock() = default;
