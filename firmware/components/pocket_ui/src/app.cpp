@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 
 namespace pocket {
@@ -54,6 +55,8 @@ void App::boot() {
   }
   now_ms_ = clock_.now_ms();
   last_input_ms_ = now_ms_;
+  if (audio_) audio_->set_volume(cfg_.volume_percent);
+  display_.set_brightness(cfg_.brightness_percent);
   if (!cfg_.onboarding_complete) {
     const ScreenId resume = resume_onboarding_screen();
     if (resume == ScreenId::OnboardingWifiPassword || resume == ScreenId::OnboardingCompanionQr) {
@@ -381,6 +384,10 @@ void App::launch_home_app(HomeApp launch) {
       music_index_ = 0;
       nav_.push(ScreenId::MusicList);
       break;
+    case HomeApp::Reading:
+      book_index_ = 0;
+      nav_.push(ScreenId::ReadingList);
+      break;
     case HomeApp::Settings:
       nav_.push(ScreenId::SettingsRoot);
       break;
@@ -439,6 +446,28 @@ void App::maybe_cloud_attest() {
   if (lm_key != std::string::npos) {
     const std::string lmsg = json_str(body, "lock_message");
     if (lmsg != cfg_.lock_message) cfg_.lock_message = lmsg;
+  }
+  // Volume / brightness — either side can change these (rotary on-device, Companion remotely);
+  // whichever changed most recently wins on the next pull since the pusher writes through too.
+  auto json_int = [](const std::string& j, const char* key) -> int {
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t p = j.find(needle);
+    if (p == std::string::npos) return -1;
+    p = j.find(':', p + needle.size());
+    if (p == std::string::npos) return -1;
+    ++p;
+    while (p < j.size() && (j[p] == ' ' || j[p] == '\t')) ++p;
+    return std::atoi(j.c_str() + p);
+  };
+  const int remote_vol = json_int(body, "volume_percent");
+  if (remote_vol >= 0 && remote_vol <= 100 && remote_vol != static_cast<int>(cfg_.volume_percent)) {
+    cfg_.volume_percent = static_cast<uint8_t>(remote_vol);
+    if (audio_) audio_->set_volume(cfg_.volume_percent);
+  }
+  const int remote_bright = json_int(body, "brightness_percent");
+  if (remote_bright >= 0 && remote_bright <= 100 && remote_bright != static_cast<int>(cfg_.brightness_percent)) {
+    cfg_.brightness_percent = static_cast<uint8_t>(remote_bright);
+    display_.set_brightness(cfg_.brightness_percent);
   }
 
   // Parental pin_gated_apps: ["notes","music",...]
@@ -590,6 +619,7 @@ void App::tick(uint32_t now_ms) {
       }
     }
   }
+  if (ptt_active_ && mic_capturing_ && audio_) audio_->poll_capture();
   maybe_poll_sd_hotplug();
   maybe_wifi_auto_reconnect();
   maybe_cloud_attest();
@@ -726,6 +756,10 @@ void App::handle(InputEvent e) {
     case ScreenId::MusicNowPlaying:
       handle_music(e);
       break;
+    case ScreenId::ReadingList:
+    case ScreenId::ReadingBook:
+      handle_reading(e);
+      break;
     default:
       handle_settings(e);
       break;
@@ -793,6 +827,10 @@ void App::render() {
     case ScreenId::MusicList:
     case ScreenId::MusicNowPlaying:
       render_music();
+      break;
+    case ScreenId::ReadingList:
+    case ScreenId::ReadingBook:
+      render_reading();
       break;
     default:
       render_settings();

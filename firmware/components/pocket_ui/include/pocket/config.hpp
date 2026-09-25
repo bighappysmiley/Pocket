@@ -31,14 +31,14 @@ struct DeviceConfig {
   std::string weather_city;
   float weather_lat = 0;
   float weather_lon = 0;
-  uint16_t home_visible = 0x00FF;  // bits 0..7 Notes..Update; Settings+Update always on
+  uint16_t home_visible = 0x01FF;  // bits 0..8 Notes..Reading; Settings+Update always on
   uint16_t idle_lock_s = 60;
   bool show_batt_pct = true;
   bool cloud_entitled = false;
   bool companion_linked = false;
   std::string fw_channel = "stable";
   /** Consumer-facing semver shown in About / Update — never a POCKET-LIVE flash marker. */
-  std::string fw_version = "1.1.2";
+  std::string fw_version = "1.2.0";
   std::string fw_build_id;  // internal OTA id e.g. POCKET-LIVE-v38-… (not shown to users)
   std::string device_id;  // UUID
   std::string device_token;
@@ -52,11 +52,19 @@ struct DeviceConfig {
   /** Optional name/message shown at the foot of the lock/sleep face. Empty = none. Set in
    * Settings → Display or Companion → device; persists across boots and syncs from Companion. */
   std::string lock_message;
+  /** Speaker output level, 0–100. Applied to the DAC on boot and on change. */
+  uint8_t volume_percent = 80;
+  /** Display "brightness" — how aggressively midtone gray rounds to black vs white on this
+   * monochrome e-ink panel. 0–100; 50 matches the previous fixed behavior. */
+  uint8_t brightness_percent = 50;
+  /** Reading: resume the last book at its last page across reboots. */
+  std::string reading_last_book_id;
+  int reading_last_page = 0;
 };
 
 /** Consumer product branding (UI). Flash markers stay in `fw_build_id` only. */
 inline constexpr const char* kProductName = "Pocket Classic";
-inline constexpr const char* kConsumerVersion = "1.1.2";
+inline constexpr const char* kConsumerVersion = "1.2.0";
 
 /** Insert or update SSID; move to front as preferred (`wifi_ssid`). Cap at kMaxKnownWifi. */
 void wifi_known_upsert(DeviceConfig& cfg, const std::string& ssid, const std::string& password);
@@ -73,8 +81,9 @@ enum class HomeApp : uint8_t {
   Music = 5,
   Settings = 6,
   Update = 7,
-  /** Reserved Home grid slots 8..15 (empty until assigned). */
-  Slot8 = 8,
+  /** Reading — eBooks synced via Companion (v1.2). */
+  Reading = 8,
+  /** Reserved Home grid slots 9..15 (empty until assigned). */
   Slot9 = 9,
   Slot10 = 10,
   Slot11 = 11,
@@ -87,7 +96,7 @@ enum class HomeApp : uint8_t {
 inline constexpr int kHomeGridSlots = 16;
 
 inline bool home_app_is_real(HomeApp a) {
-  return static_cast<uint8_t>(a) <= static_cast<uint8_t>(HomeApp::Update);
+  return static_cast<uint8_t>(a) <= static_cast<uint8_t>(HomeApp::Update) || a == HomeApp::Reading;
 }
 
 inline bool home_app_visible(const DeviceConfig& c, HomeApp a) {

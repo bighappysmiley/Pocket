@@ -358,15 +358,14 @@ void App::render_onboarding() {
     }
     case ScreenId::OnboardingMicTest: {
       canvas_.draw_text(kSideMargin, ty, "Voice", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap, "Hold the side button and say something.",
+      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap,
+                                        "Hold the side button and say something to check your mic.",
                                         Canvas::TextRole::Body, Gray::G0);
-      y = canvas_.draw_text_wrapped(kSideMargin, y + 8, kWrapW, kLineGap, "Speech recognition: Cloud",
-                                    Canvas::TextRole::Secondary, Gray::G1);
       if (ptt_active_) {
         canvas_.draw_text(kSideMargin, y + 24, "Listening...", Canvas::TextRole::Body, Gray::G0);
       } else if (!mic_result_.empty()) {
-        std::string line = "Heard: \"" + mic_result_ + "\"";
-        canvas_.draw_text_wrapped(kSideMargin, y + 24, kWrapW, kLineGap, line, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_wrapped(kSideMargin, y + 24, kWrapW, kLineGap, mic_result_, Canvas::TextRole::Body,
+                                  Gray::G0);
       }
       focus_.count = 2;
       const char* acts[] = {"Try again", "Continue"};
@@ -810,12 +809,17 @@ void App::handle_onboarding(InputEvent e) {
   if (s == ScreenId::OnboardingMicTest) {
     if (e == InputEvent::PttStart) {
       ptt_active_ = true;
+      mic_capturing_ = true;
+      if (audio_) audio_->start_capture();
       mark_content_dirty();
     } else if (e == InputEvent::PttStop) {
       ptt_active_ = false;
-      std::vector<uint8_t> fake;
-      mic_result_ = cloud_.stt_transcribe(fake);
-      if (mic_result_.empty()) mic_result_.clear();
+      mic_capturing_ = false;
+      const MicCaptureResult r = audio_ ? audio_->stop_capture() : MicCaptureResult{};
+      mic_last_level_ = r.ok ? r.level_percent : -1;
+      mic_last_ok_ = r.ok && r.level_percent >= 6;
+      mic_result_ = !r.ok ? "Mic needs real hardware to test."
+                          : (mic_last_ok_ ? "Mic OK — picked up sound" : "No sound detected — try again");
       mark_content_dirty();
     } else {
       focus_.count = 2;

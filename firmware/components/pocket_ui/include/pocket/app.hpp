@@ -57,6 +57,13 @@ struct PlatformCloud {
                                               const std::string& /*track_id*/) {
     return {};
   }
+  /** List Reading library metadata JSON (id/title/author/format/filename/size). Empty on failure. */
+  virtual std::string books_list_json(const std::string& /*device_id*/) { return "[]"; }
+  /** Download the normalized plain-text body of a book by id. Empty on failure. */
+  virtual std::vector<uint8_t> book_download(const std::string& /*device_id*/,
+                                             const std::string& /*book_id*/) {
+    return {};
+  }
   /** Latest firmware metadata JSON: build_id, version, url, size. Empty on failure. */
   virtual std::string firmware_latest_json() { return {}; }
   /**
@@ -64,6 +71,11 @@ struct PlatformCloud {
    * Returns raw JSON body; empty on failure.
    */
   virtual std::string device_attest_json(const std::string& /*device_id*/) { return {}; }
+  /** Best-effort mirror of a rotary-set volume/brightness change up to Companion. Fire-and-forget. */
+  virtual bool push_device_settings(const std::string& /*device_id*/, int /*volume_percent*/,
+                                    int /*brightness_percent*/) {
+    return false;
+  }
 };
 
 struct FirmwareUpdateInfo {
@@ -89,6 +101,10 @@ struct PlatformDisplay {
   virtual void present_region(const Canvas& canvas, int /*x*/, int /*y*/, int /*w*/, int /*h*/) {
     present(canvas, RefreshMode::Partial);
   }
+  /** 0–100: how aggressively midtone gray rounds to black vs white on a monochrome panel.
+   * Higher reads lighter/brighter, lower reads darker/higher-contrast. No-op on displays that
+   * don't expose this (e.g. host sim). */
+  virtual void set_brightness(int /*percent*/) {}
 };
 
 enum class SdContentKind : uint8_t {
@@ -112,9 +128,22 @@ struct PlatformStorage {
   virtual uint64_t free_bytes(const std::string& /*root*/) { return 0; }
   /** True when music_root is on the microSD mount (larger tracks OK). */
   virtual bool music_on_sd() { return false; }
+  /** Prefer SD when mounted; else LittleFS internal. Empty if neither usable. */
+  virtual std::string book_root() { return {}; }
+  virtual bool book_ensure_root() { return false; }
 };
 
 enum class SoundId : uint8_t { Click = 0, Welcome, Success, Attention };
+
+/** Result of a PTT-bounded mic capture window (Settings → Sound → Mic test, onboarding Voice step). */
+struct MicCaptureResult {
+  /** True when the board has a working mic path and captured at least one chunk. */
+  bool ok = false;
+  /** 0–100 loudness estimate (RMS) across the whole hold — real signal, not simulated. */
+  int level_percent = 0;
+  /** Raw 16-bit PCM mono samples captured (16 kHz), for optional cloud dictation. */
+  std::vector<uint8_t> pcm;
+};
 
 struct PlatformAudio {
   virtual ~PlatformAudio() = default;
@@ -122,11 +151,33 @@ struct PlatformAudio {
   /** Play a PCM/WAV file from local path (best-effort; may block). */
   virtual bool play_file(const std::string& /*path*/) { return false; }
   virtual void stop() {}
+  /** DAC output level, 0–100. Applied immediately when the codec is ready. */
+  virtual void set_volume(int /*percent*/) {}
+  /** True when this board exposes a real mic capture path (onboard PDM/I2S mic + codec ADC). */
+  virtual bool mic_supported() { return false; }
+  /** Begin a capture window (call on PTT down). Safe no-op if unsupported. */
+  virtual void start_capture() {}
+  /** Non-blocking: pull whatever PCM has accumulated since start/last poll (call from tick). */
+  virtual void poll_capture() {}
+  /** End the capture window (call on PTT up) and return the accumulated result. */
+  virtual MicCaptureResult stop_capture() { return {}; }
 };
 
 struct MusicTrack {
   std::string id;
   std::string title;
+  std::string filename;
+  std::string local_path;
+  int size_bytes = 0;
+};
+
+/** eBook metadata + device-local copy. Device always reads plain text; `format` records the
+ * original upload so Companion/UI can show it (EPUB text is normalized server-side). */
+struct Book {
+  std::string id;
+  std::string title;
+  std::string author;
+  std::string format;  // "epub" | "txt"
   std::string filename;
   std::string local_path;
   int size_bytes = 0;
@@ -295,6 +346,13 @@ class App {
   void render_music();
   void handle_music(InputEvent e);
   void music_sync_from_cloud();
+  void render_reading();
+  void handle_reading(InputEvent e);
+  void reading_sync_from_cloud();
+  /** Load a book's text, compute e-ink page boundaries, resume last page if it matches. */
+  void reading_open_book(int index);
+  /** Recompute `reading_pages_` word-wrap boundaries for `reading_text_` at content width. */
+  void reading_paginate();
   void render_settings();
   void handle_settings(InputEvent e);
   void render_sd_gate();
@@ -371,10 +429,21 @@ class App {
   std::vector<MusicTrack> music_tracks_;
   bool music_playing_ = false;
   std::string music_status_;
+  int book_index_ = 0;
+  std::vector<Book> books_;
+  std::string reading_status_;
+  std::string reading_text_;
+  std::vector<size_t> reading_pages_;
+  int reading_page_ = 0;
   uint32_t last_input_ms_ = 0;
   uint32_t now_ms_ = 0;
   bool ptt_active_ = false;
   std::string mic_result_;
+  /** Last mic-test loudness 0–100, -1 = not yet tested this session. */
+  int mic_last_level_ = -1;
+  bool mic_last_ok_ = false;
+  /** Which screen armed the current PTT hold, so tick() knows whether to poll capture. */
+  bool mic_capturing_ = false;
   int onboarding_tz_index_ = 0;
   int last_home_clock_minute_ = -1;
   int last_status_minute_ = -1;

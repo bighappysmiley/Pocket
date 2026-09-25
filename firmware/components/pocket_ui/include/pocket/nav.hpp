@@ -42,6 +42,8 @@ enum class ScreenId : uint16_t {
   WeatherCitySetup,
   MusicList,
   MusicNowPlaying,
+  ReadingList,
+  ReadingBook,
   SettingsRoot,
   SettingsSecurity,
   SettingsWifi,

@@ -2,6 +2,7 @@
 #include "pocket_board/i2c_bus.hpp"
 #include "pocket_board/pins.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -29,7 +30,11 @@ constexpr int kMclkHz = kSampleRate * 256;
 
 i2c_master_dev_handle_t es_dev_ = nullptr;
 i2s_chan_handle_t tx_ = nullptr;
+i2s_chan_handle_t rx_ = nullptr;
 bool ready_ = false;
+bool capturing_ = false;
+std::vector<uint8_t> capture_buf_;
+constexpr size_t kMaxCaptureBytes = 16000 * 2 * 6;  // ~6 s mono @16 kHz
 
 bool es_wr(uint8_t reg, uint8_t val) {
   if (!es_dev_) return false;
@@ -109,14 +114,21 @@ bool es_init_regs() {
   if (!es_wr(0x32, 0xBF)) return false;
   if (!es_rmw(0x31, 0x60, 0x00)) return false;  // clear mute bits 6|5
 
+  // Mic (ADC) path — REG14 selects analog mic input + PGA gain, REG17 sets ADC volume.
+  // Values match Espressif's es8311 driver defaults for a single-ended analog mic.
+  if (!es_wr(0x14, 0x1A)) return false;  // analog mic1, PGA gain ~+18 dB
+  if (!es_wr(0x17, 0xBF)) return false;  // ADC volume ~0 dB, unmuted
+
   return true;
 }
 
 bool i2s_init() {
   if (tx_) return true;
+  // Duplex channel pair on I2S_NUM_0: tx_ drives the speaker continuously, rx_ (mic ADC data
+  // from the same ES8311) is enabled only during a capture window to save power.
   i2s_chan_config_t chan = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   chan.auto_clear = true;
-  if (i2s_new_channel(&chan, &tx_, nullptr) != ESP_OK) return false;
+  if (i2s_new_channel(&chan, &tx_, &rx_) != ESP_OK) return false;
 
   i2s_std_config_t std = {};
   std.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(kSampleRate);
@@ -127,12 +139,16 @@ bool i2s_init() {
   std.gpio_cfg.bclk = static_cast<gpio_num_t>(kPinI2sBclk);
   std.gpio_cfg.ws = static_cast<gpio_num_t>(kPinI2sWs);
   std.gpio_cfg.dout = static_cast<gpio_num_t>(kPinI2sDout);
-  std.gpio_cfg.din = I2S_GPIO_UNUSED;
+  std.gpio_cfg.din = static_cast<gpio_num_t>(kPinI2sDin);
   std.gpio_cfg.invert_flags.mclk_inv = false;
   std.gpio_cfg.invert_flags.bclk_inv = false;
   std.gpio_cfg.invert_flags.ws_inv = false;
 
   if (i2s_channel_init_std_mode(tx_, &std) != ESP_OK) return false;
+  if (rx_ && i2s_channel_init_std_mode(rx_, &std) != ESP_OK) {
+    ESP_LOGW(TAG, "mic RX channel init failed — playback still works");
+    rx_ = nullptr;
+  }
   if (i2s_channel_enable(tx_) != ESP_OK) return false;
   return true;
 }
@@ -285,5 +301,73 @@ bool audio_play_wav_file(const char* path) {
 }
 
 void audio_stop() {}
+
+void audio_set_volume(uint8_t percent) {
+  if (percent > 100) percent = 100;
+  if (!ready_ && !audio_init()) return;
+  // DAC_REG32 is linear 0..255; keep the same ~0.75 ceiling used at bring-up as "100%" so the
+  // default doesn't clip on the small onboard speaker.
+  const uint8_t reg = static_cast<uint8_t>((static_cast<int>(percent) * 0xBF) / 100);
+  es_wr(0x32, reg);
+}
+
+bool audio_mic_supported() {
+  if (!ready_ && !audio_init()) return false;
+  return rx_ != nullptr;
+}
+
+void audio_capture_start() {
+  if (!audio_mic_supported()) return;
+  if (capturing_) return;
+  capture_buf_.clear();
+  capture_buf_.reserve(std::min(kMaxCaptureBytes, static_cast<size_t>(32000)));
+  if (i2s_channel_enable(rx_) == ESP_OK) {
+    capturing_ = true;
+  }
+}
+
+void audio_capture_poll() {
+  if (!capturing_ || !rx_) return;
+  if (capture_buf_.size() >= kMaxCaptureBytes) return;
+  uint8_t chunk[1024];
+  size_t nread = 0;
+  // Non-blocking best-effort drain; caller (App::tick) polls every ~50 ms.
+  if (i2s_channel_read(rx_, chunk, sizeof(chunk), &nread, 0) == ESP_OK && nread > 0) {
+    const size_t room = kMaxCaptureBytes - capture_buf_.size();
+    const size_t take = std::min(nread, room);
+    capture_buf_.insert(capture_buf_.end(), chunk, chunk + take);
+  }
+}
+
+MicCaptureResult audio_capture_stop() {
+  MicCaptureResult result;
+  if (!capturing_) return result;
+  // One last drain to catch anything still in the DMA buffer.
+  audio_capture_poll();
+  if (rx_) i2s_channel_disable(rx_);
+  capturing_ = false;
+
+  result.ok = !capture_buf_.empty();
+  if (result.ok) {
+    // Stereo interleaved 16-bit; fold to mono by taking the left channel — matches the
+    // stereo-out slot config used for playback so we don't need a second slot layout.
+    const auto* samples = reinterpret_cast<const int16_t*>(capture_buf_.data());
+    const size_t n_frames = capture_buf_.size() / (2 * sizeof(int16_t));
+    std::vector<int16_t> mono(n_frames);
+    double sum_sq = 0.0;
+    for (size_t i = 0; i < n_frames; ++i) {
+      const int16_t s = samples[i * 2];
+      mono[i] = s;
+      sum_sq += static_cast<double>(s) * static_cast<double>(s);
+    }
+    result.pcm.resize(mono.size() * sizeof(int16_t));
+    std::memcpy(result.pcm.data(), mono.data(), result.pcm.size());
+    const double rms = n_frames ? std::sqrt(sum_sq / static_cast<double>(n_frames)) : 0.0;
+    // 32767 full-scale → percent scale tuned so normal speech reads ~15-40%.
+    result.level_percent = static_cast<int>(std::min(100.0, (rms / 32767.0) * 400.0));
+  }
+  capture_buf_.clear();
+  return result;
+}
 
 }  // namespace pocket::board

@@ -102,19 +102,28 @@ void App::handle_notes(InputEvent e) {
   }
   if (e == InputEvent::PttStart) {
     ptt_active_ = true;
+    mic_capturing_ = true;
+    if (audio_) audio_->start_capture();
     mark_content_dirty();
     return;
   }
   if (e == InputEvent::PttStop) {
     ptt_active_ = false;
+    mic_capturing_ = false;
+    const MicCaptureResult cap = audio_ ? audio_->stop_capture() : MicCaptureResult{};
     if (!wifi_.connected() && cfg_.stt_path == 0) {
       error_msg_ = "You're offline. Dictation needs Wi-Fi.";
       error_until_ms_ = now_ms_ + 3000;
       mark_content_dirty();
       return;
     }
-    std::vector<uint8_t> pcm;
-    std::string t = cloud_.stt_transcribe(pcm);
+    if (!cap.ok || cap.pcm.empty()) {
+      error_msg_ = "Couldn't hear anything. Hold closer and try again.";
+      error_until_ms_ = now_ms_ + 3000;
+      mark_content_dirty();
+      return;
+    }
+    std::string t = cloud_.stt_transcribe(cap.pcm);
     if (t.empty()) {
       error_msg_ = "Couldn't reach speech service. Try again.";
       error_until_ms_ = now_ms_ + 3000;

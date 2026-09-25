@@ -7,7 +7,7 @@ namespace pocket {
 namespace {
 
 constexpr uint32_t kMagic = 0x314B4350u;  // 'PCK1' LE
-constexpr uint16_t kVersion = 5;
+constexpr uint16_t kVersion = 7;
 constexpr size_t kMaxString = 128;
 constexpr size_t kMaxBlob = 8192;
 
@@ -167,6 +167,12 @@ bool pack_device_config(const DeviceConfig& cfg, std::vector<uint8_t>& out) {
   put_str(out, cfg.fw_build_id);
   // v5: optional lock/sleep face message
   put_str(out, cfg.lock_message);
+  // v6: speaker volume + Reading resume position
+  put_u8(out, cfg.volume_percent);
+  put_str(out, cfg.reading_last_book_id);
+  put_u32(out, static_cast<uint32_t>(cfg.reading_last_page));
+  // v7: display brightness
+  put_u8(out, cfg.brightness_percent);
   return out.size() <= kMaxBlob;
 }
 
@@ -177,7 +183,10 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
   uint16_t ver = 0;
   uint16_t flags = 0;
   if (!get_u32(data, len, off, magic) || magic != kMagic) return false;
-  if (!get_u16(data, len, off, ver) || (ver != 2 && ver != 3 && ver != 4 && ver != 5)) return false;
+  if (!get_u16(data, len, off, ver) ||
+      (ver != 2 && ver != 3 && ver != 4 && ver != 5 && ver != 6 && ver != 7)) {
+    return false;
+  }
   if (!get_u16(data, len, off, flags)) return false;
   (void)flags;
 
@@ -236,6 +245,18 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
 
   if (ver >= 5) {
     if (!get_str(data, len, off, cfg.lock_message)) return false;
+  }
+
+  if (ver >= 6) {
+    if (!get_u8(data, len, off, cfg.volume_percent)) return false;
+    if (!get_str(data, len, off, cfg.reading_last_book_id)) return false;
+    uint32_t page = 0;
+    if (!get_u32(data, len, off, page)) return false;
+    cfg.reading_last_page = static_cast<int>(page);
+  }
+
+  if (ver >= 7) {
+    if (!get_u8(data, len, off, cfg.brightness_percent)) return false;
   }
 
   out = std::move(cfg);
