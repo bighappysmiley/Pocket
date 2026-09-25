@@ -844,7 +844,7 @@ export default {
     try {
       await readySchema();
       if (path === "/health" || path === "/" || path === "/v1/health") {
-        return json(req, { ok: true, build: "scram-api-v12-lock-icons" });
+        return json(req, { ok: true, build: "scram-api-v13-reading-books" });
       }
 
       if (req.method === "POST" && path === "/v1/auth/register") {
