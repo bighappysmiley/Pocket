@@ -2,8 +2,8 @@ import { writeFileSync, mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/3cfad281c5ef29d8dc839b913e7ca13e3ac47d65/cloud/neon-fn/scram-api.mjs?cb=v16stt";
-const PIN = "3cfad281c5ef29d8dc839b913e7ca13e3ac47d65";
+const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/7062439f81550fe8f37b655362d549ca48a78b37/cloud/neon-fn/scram-api.mjs?cb=v16stt2";
+const PIN = "7062439f81550fe8f37b655362d549ca48a78b37";
 
 let modPromise = null;
 async function load() {
@@ -28,7 +28,7 @@ export default {
     const u = new URL(req.url);
     if (u.pathname === "/v1/bootstrap") {
       return new Response(JSON.stringify({ ok: true, pin: PIN, src: SRC_URL }), {
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
       });
     }
     try {
