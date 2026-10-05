@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v50-layout-all";
+static const char* kBuildId = "POCKET-LIVE-v51-icons";
 
 namespace {
 
