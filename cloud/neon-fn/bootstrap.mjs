@@ -2,8 +2,8 @@ import { writeFileSync, mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/029a9a0943f6e93b89aafbbfc29e6fd530261268/cloud/neon-fn/scram-api.mjs?cb=v16stt2";
-const PIN = "029a9a0943f6e93b89aafbbfc29e6fd530261268";
+const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/9c0f689a4f54bba185703c8e6cbe69556f38d1bc/cloud/neon-fn/scram-api.mjs?cb=v16stt3";
+const PIN = "9c0f689a4f54bba185703c8e6cbe69556f38d1bc";
 
 let modPromise = null;
 async function load() {
