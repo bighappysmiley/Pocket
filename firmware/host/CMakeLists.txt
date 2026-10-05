@@ -64,3 +64,8 @@ add_executable(test_reading ../tests/test_reading.cpp ${POCKET_UI_SRCS})
 target_include_directories(test_reading PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_reading PRIVATE POCKET_HOST=1)
 add_test(NAME test_reading COMMAND test_reading)
+
+add_executable(test_refresh_thrash ../tests/test_refresh_thrash.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_refresh_thrash PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_refresh_thrash PRIVATE POCKET_HOST=1)
+add_test(NAME test_refresh_thrash COMMAND test_refresh_thrash)

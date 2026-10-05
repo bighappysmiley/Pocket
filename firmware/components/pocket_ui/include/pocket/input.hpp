@@ -19,6 +19,17 @@ enum class InputEvent : uint8_t {
 struct InputThresholds {
   static constexpr uint32_t kFunctionLongMs = 800;
   static constexpr uint32_t kPttArmMs = 200;
+  /**
+   * Minimum time between accepted raw edges per control. The Waveshare 3-way
+   * rocker and side buttons are read with zero hardware debounce (see
+   * ButtonPoller::poll); mechanical bounce on a single physical press can
+   * otherwise surface as a burst of rapid press/release edges, each one
+   * turning into its own InputEvent — e.g. several extra Up/Down or Select
+   * events — which in turn each drive a full present_canvas()/EPD refresh.
+   * Debouncing here (platform-independent, host-testable) collapses a bounce
+   * burst from one physical press into exactly one logical edge.
+   */
+  static constexpr uint32_t kDebounceMs = 60;
 };
 
 /**
@@ -53,6 +64,21 @@ class InputMapper {
   bool ptt_armed_ = false;
 
   bool pwr_edge_armed_ = true;
+
+  /** Debounce bookkeeping — one last-accepted-edge timestamp per control. */
+  bool up_seen_ = false;
+  uint32_t last_up_ms_ = 0;
+  bool down_seen_ = false;
+  uint32_t last_down_ms_ = 0;
+  bool fn_seen_ = false;
+  uint32_t last_fn_ms_ = 0;
+  bool boot_seen_ = false;
+  uint32_t last_boot_ms_ = 0;
+  bool pwr_seen_ = false;
+  uint32_t last_pwr_ms_ = 0;
+
+  /** True and records the edge if this control hasn't fired within the debounce window. */
+  static bool debounce(bool& seen, uint32_t& last_ms, uint32_t now_ms);
 };
 
 }  // namespace pocket

@@ -16,15 +16,27 @@ InputEvent InputMapper::poll() {
   return e;
 }
 
-void InputMapper::on_button_up(bool pressed, uint32_t /*now_ms*/) {
-  if (pressed) push(InputEvent::Up);
+bool InputMapper::debounce(bool& seen, uint32_t& last_ms, uint32_t now_ms) {
+  if (seen && (now_ms - last_ms) < InputThresholds::kDebounceMs) return false;
+  seen = true;
+  last_ms = now_ms;
+  return true;
 }
 
-void InputMapper::on_button_down(bool pressed, uint32_t /*now_ms*/) {
-  if (pressed) push(InputEvent::Down);
+void InputMapper::on_button_up(bool pressed, uint32_t now_ms) {
+  if (!pressed) return;
+  if (!debounce(up_seen_, last_up_ms_, now_ms)) return;
+  push(InputEvent::Up);
+}
+
+void InputMapper::on_button_down(bool pressed, uint32_t now_ms) {
+  if (!pressed) return;
+  if (!debounce(down_seen_, last_down_ms_, now_ms)) return;
+  push(InputEvent::Down);
 }
 
 void InputMapper::on_button_function(bool pressed, uint32_t now_ms) {
+  if (!debounce(fn_seen_, last_fn_ms_, now_ms)) return;
   if (pressed) {
     if (!fn_down_) {
       fn_down_ = true;
@@ -40,6 +52,7 @@ void InputMapper::on_button_function(bool pressed, uint32_t now_ms) {
 }
 
 void InputMapper::on_boot(bool pressed, uint32_t now_ms) {
+  if (!debounce(boot_seen_, last_boot_ms_, now_ms)) return;
   if (pressed) {
     if (!boot_down_) {
       boot_down_ = true;
@@ -58,7 +71,8 @@ void InputMapper::on_boot(bool pressed, uint32_t now_ms) {
   push(InputEvent::Back);
 }
 
-void InputMapper::on_pwr(bool pressed, uint32_t /*now_ms*/) {
+void InputMapper::on_pwr(bool pressed, uint32_t now_ms) {
+  if (!debounce(pwr_seen_, last_pwr_ms_, now_ms)) return;
   if (pressed) {
     if (pwr_edge_armed_) {
       push(InputEvent::Power);

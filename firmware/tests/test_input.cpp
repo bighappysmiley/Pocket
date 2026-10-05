@@ -48,6 +48,36 @@ int main() {
   CHECK(m.poll() == InputEvent::Up);
   CHECK(m.poll() == InputEvent::Down);
 
+  // Mechanical bounce: a single physical Up press chatters several raw
+  // press/release edges in quick succession (no hardware debounce on this
+  // board). That must collapse to exactly one Up event, not one per edge —
+  // otherwise every bounce turns into its own screen refresh ("refreshes
+  // 500 times instead of once").
+  m.on_button_up(true, 7000);
+  m.on_button_up(false, 7004);
+  m.on_button_up(true, 7009);
+  m.on_button_up(false, 7015);
+  m.on_button_up(true, 7022);
+  CHECK(m.poll() == InputEvent::Up);
+  CHECK(m.poll() == InputEvent::None);
+  // Once the bounce settles and the debounce window elapses, the next real
+  // press is accepted normally.
+  m.on_button_up(true, 7200);
+  CHECK(m.poll() == InputEvent::Up);
+  CHECK(m.poll() == InputEvent::None);
+
+  // Same for the Function (Select) button: bounce right after the press must
+  // not be mistaken for the release (each would push a full-screen
+  // navigation/refresh). Chatter inside the debounce window is dropped; the
+  // real release outside that window still fires exactly one Select.
+  m.on_button_function(true, 8000);
+  m.on_button_function(false, 8005);
+  m.on_button_function(true, 8010);
+  m.on_button_function(false, 8016);
+  m.on_button_function(false, 8100);  // real release, well past the debounce window
+  CHECK(m.poll() == InputEvent::Select);
+  CHECK(m.poll() == InputEvent::None);
+
   if (failures) {
     std::printf("%d failures\n", failures);
     return 1;
