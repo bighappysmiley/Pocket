@@ -233,7 +233,7 @@ void App::render_reading() {
     if (book_index_ < 0 || book_index_ >= static_cast<int>(books_.size()) || reading_pages_.empty()) {
       canvas_.draw_text(kSideMargin, kContentTop, "Reading", Canvas::TextRole::ScreenTitle, Gray::G0);
       focus_.count = 1;
-      canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "Back",
+      canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Back",
                               Canvas::TextRole::Body);
       return;
     }
@@ -245,7 +245,7 @@ void App::render_reading() {
                             ? reading_pages_[static_cast<size_t>(reading_page_) + 1]
                             : reading_text_.size();
     const std::string page_text = reading_text_.substr(start, stop - start);
-    canvas_.draw_text_wrapped(kSideMargin, kContentTop + kTitleToBody, kContentW, 8, page_text,
+    canvas_.draw_text_wrapped(kSideMargin, kContentTop + kTitleToBody, kContentW, kWrapGap, page_text,
                               Canvas::TextRole::Body, Gray::G0);
     char pg[48];
     std::snprintf(pg, sizeof(pg), "Page %d of %d", reading_page_ + 1, static_cast<int>(reading_pages_.size()));
@@ -256,19 +256,19 @@ void App::render_reading() {
     for (int i = 0; i < 3; ++i) {
       const int y = kBottomCtaY - (2 - i) * kRowPitch;
       if (i == focus_.index)
-        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, acts[i], Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + 12, acts[i], Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, acts[i], Canvas::TextRole::Body, Gray::G0);
     }
     return;
   }
 
   canvas_.draw_text(kSideMargin, kContentTop, "Reading", Canvas::TextRole::ScreenTitle, Gray::G0);
   if (!reading_status_.empty()) {
-    canvas_.draw_text_fit(kSideMargin, kContentTop + 48, kContentW, reading_status_, Canvas::TextRole::Secondary,
+    canvas_.draw_text_fit(kSideMargin, below_title(kContentTop) - 16, kContentW, reading_status_, Canvas::TextRole::Secondary,
                           Gray::G1);
   }
-  const int list_top = kContentTop + 88;
+  const int list_top = kListTopWithMeta;
   const int n = static_cast<int>(books_.size());
   focus_.count = n + 2;  // books + Sync + Back
   for (int i = 0; i < n && i < 8; ++i) {
@@ -276,22 +276,22 @@ void App::render_reading() {
     std::string label = books_[i].title;
     if (!books_[i].format.empty()) label += " · " + books_[i].format;
     if (i == focus_.index)
-      canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, label, Canvas::TextRole::Body);
     else
-      canvas_.draw_text_fit(kSideMargin + 8, y + 12, kCanvasW - 48, label, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_fit(kSideMargin + kRowLabelInset, y + kRowTextPad, kRowLabelW, label, Canvas::TextRole::Body, Gray::G0);
   }
   {
     const int y = list_top + std::min(n, 8) * kRowPitch;
     if (focus_.index == n)
-      canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, "Sync from Companion",
+      canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, "Sync from Companion",
                               Canvas::TextRole::Body);
     else
-      canvas_.draw_text(kSideMargin + 8, y + 12, "Sync from Companion", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, "Sync from Companion", Canvas::TextRole::Body, Gray::G0);
     const int y2 = y + kRowPitch;
     if (focus_.index == n + 1)
-      canvas_.draw_focus_tile(kSideMargin, y2, kCanvasW - 32, kFocusRowH, "Back", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, y2, kFocusRowW, kFocusRowH, "Back", Canvas::TextRole::Body);
     else
-      canvas_.draw_text(kSideMargin + 8, y2 + 12, "Back", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + kRowLabelInset, y2 + 12, "Back", Canvas::TextRole::Body, Gray::G0);
   }
 }
 

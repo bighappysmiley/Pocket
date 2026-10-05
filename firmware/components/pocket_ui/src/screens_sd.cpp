@@ -60,27 +60,27 @@ void App::render_sd_gate() {
   canvas_.draw_text(kSideMargin, ty, "microSD card", Canvas::TextRole::ScreenTitle, Gray::G0);
 
   if (sd_waiting_eject_) {
-    int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kContentW, 6, "Remove the card to continue.",
+    int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kContentW, kWrapGap, "Remove the card to continue.",
                                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text(kSideMargin, y + 12, "Waiting for eject…", Canvas::TextRole::Secondary, Gray::G1);
     focus_.count = 1;
-    canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "Checking…",
+    canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Checking…",
                             Canvas::TextRole::Body);
     return;
   }
 
-  int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kContentW, 6, "A microSD card was detected.",
+  int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kContentW, kWrapGap, "A microSD card was detected.",
                                     Canvas::TextRole::Body, Gray::G0);
   if (sd_kind_ == SdContentKind::FirmwareRisk) {
-    y = canvas_.draw_text_wrapped(kSideMargin, y + 10, kContentW, 6,
+    y = canvas_.draw_text_wrapped(kSideMargin, y + 10, kContentW, kWrapGap,
                                   "It looks modified. Reformat before Pocket uses it, or eject to keep files.",
                                   Canvas::TextRole::Secondary, Gray::G1);
   } else if (sd_kind_ == SdContentKind::Media) {
-    y = canvas_.draw_text_wrapped(kSideMargin, y + 10, kContentW, 6,
+    y = canvas_.draw_text_wrapped(kSideMargin, y + 10, kContentW, kWrapGap,
                                   "Reformat clears the card for Pocket. Eject keeps your files.",
                                   Canvas::TextRole::Secondary, Gray::G1);
   } else {
-    y = canvas_.draw_text_wrapped(kSideMargin, y + 10, kContentW, 6,
+    y = canvas_.draw_text_wrapped(kSideMargin, y + 10, kContentW, kWrapGap,
                                   "Reformat prepares the card for music and files. Eject leaves it unused.",
                                   Canvas::TextRole::Secondary, Gray::G1);
   }
@@ -90,9 +90,9 @@ void App::render_sd_gate() {
   for (int i = 0; i < 2; ++i) {
     const int row_y = y + 28 + i * kRowPitch;
     if (i == focus_.index)
-      canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, acts[i], Canvas::TextRole::Body);
     else
-      canvas_.draw_text(kSideMargin + 8, row_y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, acts[i], Canvas::TextRole::Body, Gray::G0);
   }
 }
 

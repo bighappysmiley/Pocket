@@ -7,18 +7,16 @@ namespace pocket {
 namespace {
 
 constexpr int kTitleY = kContentTop;
-constexpr int kListTop = kContentTop + kTitleToBody;
-constexpr int kRowTextPad = 12;
 
 void draw_focus_rows(Canvas& c, FocusModel& focus, const char* const* rows, int count, int top_y) {
   focus.count = count;
   for (int i = 0; i < count; ++i) {
-    const int y = top_y + i * kRowPitch;
+    const int y = row_y(top_y, i);
     if (i == focus.index)
-      c.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, rows[i], Canvas::TextRole::Body);
+      c.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, rows[i], Canvas::TextRole::Body);
     else
-      c.draw_text_fit(kSideMargin + 8, y + kRowTextPad, kCanvasW - 48, rows[i], Canvas::TextRole::Body,
-                      Gray::G0);
+      c.draw_text_fit(kSideMargin + kRowLabelInset, y + kRowTextPad, kRowLabelW, rows[i],
+                      Canvas::TextRole::Body, Gray::G0);
   }
 }
 
@@ -50,7 +48,7 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 2 * kBodyLinePitch + 8, "What's new",
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
-        kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, 5,
+        kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, kWrapGap,
         "A refreshed Home screen, clearer wording throughout, and a ghosting control for the display.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
@@ -67,7 +65,7 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsCloud) {
     canvas_.draw_text(kSideMargin, kTitleY, "Pocket Cloud", Canvas::TextRole::ScreenTitle, Gray::G0);
-    int sync_y = canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, 6,
+    int sync_y = canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, kWrapGap,
                                            "Sync Notes to your phone with Pocket Cloud.",
                                            Canvas::TextRole::Secondary, Gray::G1);
     const char* status = "Not subscribed";
@@ -85,10 +83,10 @@ void App::render_settings() {
     }
     const char* acts[] = {"Start free trial", "Subscribe $3.99/mo", "Link companion app"};
     draw_focus_rows(canvas_, focus_, acts, 3, sync_y + 100);
-    canvas_.draw_text_wrapped(kSideMargin, sync_y + 100 + 3 * kRowPitch + 16, kContentW, 6,
+    canvas_.draw_text_wrapped(kSideMargin, sync_y + 100 + 3 * kRowPitch + 16, kContentW, kWrapGap,
                               "Link opens a QR for the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
     if (now_ms_ < error_until_ms_) {
-      canvas_.draw_text_wrapped(kSideMargin, sync_y + 100 + 3 * kRowPitch + 52, kContentW, 6, error_msg_,
+      canvas_.draw_text_wrapped(kSideMargin, sync_y + 100 + 3 * kRowPitch + 52, kContentW, kWrapGap, error_msg_,
                                 Canvas::TextRole::Body, Gray::G0);
     }
     return;
@@ -109,7 +107,7 @@ void App::render_settings() {
                           cfg_.show_batt_pct ? "Show battery %: On" : "Show battery %: Off",
                           lockmsg.c_str(), bright_label, "Full refresh: Now", ghost_label, "Back"};
     draw_focus_rows(canvas_, focus_, rows, 7, kListTop);
-    canvas_.draw_text_wrapped(kSideMargin, kListTop + 7 * kRowPitch + 16, kContentW, 6,
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + 7 * kRowPitch + 16, kContentW, kWrapGap,
                               "Set a custom lock message in Pocket Companion.",
                               Canvas::TextRole::Secondary, Gray::G1);
     return;
@@ -129,7 +127,7 @@ void App::render_settings() {
     }
     const char* rows[] = {vol, "Mic test", "Back"};
     draw_focus_rows(canvas_, focus_, rows, 3, kListTop);
-    canvas_.draw_text_wrapped(kSideMargin, kListTop + 3 * kRowPitch + 16, kContentW, 6, mic_line,
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + 3 * kRowPitch + 16, kContentW, kWrapGap, mic_line,
                               Canvas::TextRole::Secondary, Gray::G1);
     return;
   }
@@ -142,9 +140,9 @@ void App::render_settings() {
       const int y = kListTop + i * kRowPitch;
       bool sel = (cfg_.weather_units == i);
       if (i == focus_.index)
-        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, rows[i], Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, rows[i], Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, rows[i], Canvas::TextRole::Body,
+        canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, rows[i], Canvas::TextRole::Body,
                           sel ? Gray::G0 : Gray::G1);
     }
     return;
@@ -167,9 +165,9 @@ void App::render_settings() {
       std::string label = std::string(names[i]);
       if (i < 7) label += on ? ": On" : ": Off";
       if (i == focus_.index)
-        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, label, Canvas::TextRole::Body);
       else
-        canvas_.draw_text_fit(kSideMargin + 8, y + kRowTextPad, kCanvasW - 48, label, Canvas::TextRole::Body,
+        canvas_.draw_text_fit(kSideMargin + kRowLabelInset, y + kRowTextPad, kRowLabelW, label, Canvas::TextRole::Body,
                               Gray::G0);
     }
     return;
@@ -181,7 +179,7 @@ void App::render_settings() {
     char ver[48];
     std::snprintf(ver, sizeof(ver), "Version %s", kConsumerVersion);
     canvas_.draw_text(kSideMargin, kListTop + kBodyLinePitch, ver, Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text_wrapped(kSideMargin, kListTop + 2 * kBodyLinePitch, kContentW, 4,
+    canvas_.draw_text_wrapped(kSideMargin, kListTop + 2 * kBodyLinePitch, kContentW, kWrapGap,
                               "Check Pocket Cloud for the latest software.",
                               Canvas::TextRole::Secondary, Gray::G1);
     const char* rows[] = {"Update Pocket", "Back"};
@@ -191,7 +189,7 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsUpdateProgress) {
     canvas_.draw_text(kSideMargin, kTitleY, "Updating", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, 6,
+    canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, kWrapGap,
                               ota_status_.empty() ? "Working…" : ota_status_, Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text(kSideMargin, kBottomCtaY, "Keep Pocket plugged in", Canvas::TextRole::Secondary, Gray::G1);
     return;
@@ -199,10 +197,10 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsUpdateResult) {
     canvas_.draw_text(kSideMargin, kTitleY, "Update", Canvas::TextRole::ScreenTitle, Gray::G0);
-    canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, 6,
+    canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, kWrapGap,
                               ota_status_.empty() ? "Done." : ota_status_, Canvas::TextRole::Body, Gray::G0);
     focus_.count = 1;
-    canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "OK", Canvas::TextRole::Body);
+    canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "OK", Canvas::TextRole::Body);
     return;
   }
 
@@ -211,16 +209,16 @@ void App::render_settings() {
 
     if (wifi_ui_page_ == 1) {
       // Add network — finish in Companion (hotspot or another Wi‑Fi).
-      canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, 5,
+      canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, kWrapGap,
                                 "Add a network in Pocket Companion. Choose Personal Hotspot or another Wi‑Fi.",
                                 Canvas::TextRole::Body, Gray::G0);
       const bool online = wifi_.connected();
       if (online) {
-        canvas_.draw_text_wrapped(kSideMargin, kListTop + 120, kContentW, 4,
+        canvas_.draw_text_wrapped(kSideMargin, kListTop + 120, kContentW, kWrapGap,
                                   "Phone: Devices → this Pocket → Add Wi‑Fi. Pocket stays online — no setup hop.",
                                   Canvas::TextRole::Secondary, Gray::G1);
       } else {
-        canvas_.draw_text_wrapped(kSideMargin, kListTop + 120, kContentW, 5,
+        canvas_.draw_text_wrapped(kSideMargin, kListTop + 120, kContentW, kWrapGap,
                                   "Pocket will open a short setup network so Companion can send the password.",
                                   Canvas::TextRole::Secondary, Gray::G1);
       }
@@ -234,20 +232,20 @@ void App::render_settings() {
       canvas_.draw_text(kSideMargin, kListTop, "Remove a saved network", Canvas::TextRole::Body, Gray::G0);
       const int n_known = static_cast<int>(cfg_.wifi_known.size());
       focus_.count = std::max(1, n_known + 1);
-      int y = kListTop + 56;
+      int y = below_title(kListTop) - 8;
       for (int i = 0; i < n_known; ++i) {
         const auto& net = cfg_.wifi_known[static_cast<size_t>(i)];
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, net.ssid, Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, net.ssid, Canvas::TextRole::Body);
         else
-          canvas_.draw_text_fit(kSideMargin + 8, y + kRowTextPad, kCanvasW - 48, net.ssid,
+          canvas_.draw_text_fit(kSideMargin + kRowLabelInset, y + kRowTextPad, kRowLabelW, net.ssid,
                                 Canvas::TextRole::Body, Gray::G0);
         y += kRowPitch;
       }
       if (focus_.index == n_known)
-        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, "Back", Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, "Back", Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, "Back", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, "Back", Canvas::TextRole::Body, Gray::G0);
       return;
     }
 
@@ -266,7 +264,7 @@ void App::render_settings() {
     const int n_known = static_cast<int>(cfg_.wifi_known.size());
     const int n_actions = n_known > 0 ? 3 : 2;  // Add · [Remove] · Back
     focus_.count = std::max(1, n_known + n_actions);
-    int y = kListTop + 56;
+    int y = below_title(kListTop) - 8;
     if (n_known == 0) {
       canvas_.draw_text(kSideMargin, y, "No saved networks yet", Canvas::TextRole::Secondary, Gray::G1);
       y += kRowPitch;
@@ -276,9 +274,9 @@ void App::render_settings() {
       std::string label = net.ssid;
       if (online && net.ssid == cfg_.wifi_ssid) label += " · now";
       if (i == focus_.index)
-        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, label, Canvas::TextRole::Body);
       else
-        canvas_.draw_text_fit(kSideMargin + 8, y + kRowTextPad, kCanvasW - 48, label, Canvas::TextRole::Body,
+        canvas_.draw_text_fit(kSideMargin + kRowLabelInset, y + kRowTextPad, kRowLabelW, label, Canvas::TextRole::Body,
                               Gray::G0);
       y += kRowPitch;
     }
@@ -286,25 +284,25 @@ void App::render_settings() {
     const char* rem_label = "Remove network…";
     int a0 = n_known;
     if (a0 == focus_.index)
-      canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, add_label, Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, add_label, Canvas::TextRole::Body);
     else
-      canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, add_label, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, add_label, Canvas::TextRole::Body, Gray::G0);
     y += kRowPitch;
     if (n_known > 0) {
       if (a0 + 1 == focus_.index)
-        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, rem_label, Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, rem_label, Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, rem_label, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, rem_label, Canvas::TextRole::Body, Gray::G0);
       y += kRowPitch;
     }
     const int back_i = n_known + n_actions - 1;
     if (back_i == focus_.index)
-      canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, "Back", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, "Back", Canvas::TextRole::Body);
     else
-      canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, "Back", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, "Back", Canvas::TextRole::Body, Gray::G0);
 
     if (now_ms_ < error_until_ms_ && !error_msg_.empty()) {
-      canvas_.draw_text_wrapped(kSideMargin, y + kRowPitch + 8, kContentW, 4, error_msg_,
+      canvas_.draw_text_wrapped(kSideMargin, y + kRowPitch + 8, kContentW, kWrapGap, error_msg_,
                                 Canvas::TextRole::Secondary, Gray::G0);
     }
     return;

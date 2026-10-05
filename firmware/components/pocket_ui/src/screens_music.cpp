@@ -143,7 +143,7 @@ void App::render_music() {
     canvas_.draw_text(kSideMargin, kContentTop, "Now playing", Canvas::TextRole::ScreenTitle, Gray::G0);
     if (music_index_ >= 0 && music_index_ < static_cast<int>(music_tracks_.size())) {
       const auto& t = music_tracks_[music_index_];
-      canvas_.draw_text_wrapped(kSideMargin, kContentTop + kTitleToBody, kContentW, 6, t.title,
+      canvas_.draw_text_wrapped(kSideMargin, kContentTop + kTitleToBody, kContentW, kWrapGap, t.title,
                                 Canvas::TextRole::Body, Gray::G0);
       canvas_.draw_text(kSideMargin, kContentTop + kTitleToBody + 2 * kBodyLinePitch,
                         music_playing_ ? "Playing…" : "Stopped", Canvas::TextRole::Secondary, Gray::G1);
@@ -153,41 +153,41 @@ void App::render_music() {
     for (int i = 0; i < 2; ++i) {
       const int y = kBottomCtaY - (1 - i) * kRowPitch;
       if (i == focus_.index)
-        canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, acts[i], Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + 12, acts[i], Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, acts[i], Canvas::TextRole::Body, Gray::G0);
     }
     return;
   }
 
   canvas_.draw_text(kSideMargin, kContentTop, "Music", Canvas::TextRole::ScreenTitle, Gray::G0);
   if (!music_status_.empty()) {
-    canvas_.draw_text_fit(kSideMargin, kContentTop + 48, kContentW, music_status_, Canvas::TextRole::Secondary,
+    canvas_.draw_text_fit(kSideMargin, below_title(kContentTop) - 16, kContentW, music_status_, Canvas::TextRole::Secondary,
                           Gray::G1);
   }
-  const int list_top = kContentTop + 88;
+  const int list_top = kListTopWithMeta;
   const int n = static_cast<int>(music_tracks_.size());
   focus_.count = n + 2;  // tracks + Sync + Back
   for (int i = 0; i < n && i < 8; ++i) {
     const int y = list_top + i * kRowPitch;
     const char* label = music_tracks_[i].title.c_str();
     if (i == focus_.index)
-      canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, label, Canvas::TextRole::Body);
     else
-      canvas_.draw_text_fit(kSideMargin + 8, y + 12, kCanvasW - 48, label, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_fit(kSideMargin + kRowLabelInset, y + kRowTextPad, kRowLabelW, label, Canvas::TextRole::Body, Gray::G0);
   }
   {
     const int y = list_top + std::min(n, 8) * kRowPitch;
     if (focus_.index == n)
-      canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, "Sync from Companion",
+      canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, "Sync from Companion",
                               Canvas::TextRole::Body);
     else
-      canvas_.draw_text(kSideMargin + 8, y + 12, "Sync from Companion", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, "Sync from Companion", Canvas::TextRole::Body, Gray::G0);
     const int y2 = y + kRowPitch;
     if (focus_.index == n + 1)
-      canvas_.draw_focus_tile(kSideMargin, y2, kCanvasW - 32, kFocusRowH, "Back", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, y2, kFocusRowW, kFocusRowH, "Back", Canvas::TextRole::Body);
     else
-      canvas_.draw_text(kSideMargin + 8, y2 + 12, "Back", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + kRowLabelInset, y2 + 12, "Back", Canvas::TextRole::Body, Gray::G0);
   }
 }
 

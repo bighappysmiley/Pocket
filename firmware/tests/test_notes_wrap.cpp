@@ -107,7 +107,7 @@ int main() {
   // Body starts at kContentTop+52; Body line height is text_height+line_gap. A
   // single unwrapped line would only paint the first band below the title —
   // the wrapped body must also reach well past it.
-  const int body_top = kContentTop + 52;
+  const int body_top = below_title(kContentTop);
   CHECK(row_band_has_ink(c, body_top, body_top + 30));        // line 1
   CHECK(row_band_has_ink(c, body_top + 120, body_top + 150)); // a later wrapped line
   CHECK(row_band_has_ink(c, body_top + 200, body_top + 230)); // further still

@@ -27,25 +27,25 @@ void App::render_onboarding() {
   if (step > 0) draw_step(canvas_, step);
   const int ty = title_y(step);
   constexpr int kWrapW = kContentW;
-  constexpr int kLineGap = 6;
+  constexpr int kLineGap = kWrapGap;
 
   switch (s) {
     case ScreenId::OnboardingWelcome: {
       canvas_.draw_text(kSideMargin, ty, "Pocket", Canvas::TextRole::WordMark, Gray::G0);
-      canvas_.draw_text(kSideMargin, ty + 52, "Welcome", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 108, kWrapW, kLineGap,
+      canvas_.draw_text(kSideMargin, below_title(ty), "Welcome", Canvas::TextRole::ScreenTitle, Gray::G0);
+      int y = canvas_.draw_text_wrapped(kSideMargin, below_title(below_title(ty)), kWrapW, kLineGap,
                                         "Notes, lists, and daily tools — quiet, focused, always with you.",
                                         Canvas::TextRole::Body, Gray::G0);
       canvas_.draw_text_wrapped(kSideMargin, y + 12, kWrapW, kLineGap,
                                 "A short setup with the Pocket app gets you online and linked.",
                                 Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = 1;
-      canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "Begin setup", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Begin setup", Canvas::TextRole::Body);
       break;
     }
     case ScreenId::OnboardingCompanionDownload: {
       canvas_.draw_text(kSideMargin, ty, "Get the Pocket app", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap,
+      int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kWrapW, kLineGap,
                                         "Scan to open Pocket on your phone.", Canvas::TextRole::Secondary, Gray::G1);
 
       const int qr_size = 168;
@@ -63,21 +63,21 @@ void App::render_onboarding() {
       canvas_.draw_text_centered(kCanvasW / 2, qr_y + qr_size + 100, "Required to finish setup",
                                  Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = 1;
-      canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "Continue", Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Continue", Canvas::TextRole::Body);
       break;
     }
     case ScreenId::OnboardingSdCard: {
       canvas_.draw_text(kSideMargin, ty, "microSD card", Canvas::TextRole::ScreenTitle, Gray::G0);
       if (sd_waiting_eject_) {
-        int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap, "Remove the card to continue.",
+        int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kWrapW, kLineGap, "Remove the card to continue.",
                                           Canvas::TextRole::Body, Gray::G0);
         canvas_.draw_text(kSideMargin, y + 8, "Waiting for eject…", Canvas::TextRole::Secondary, Gray::G1);
         focus_.count = 1;
-        canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kCanvasW - 32, kFocusRowH, "Checking…", Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Checking…", Canvas::TextRole::Body);
         break;
       }
       if (sd_kind_ == SdContentKind::Absent) {
-        int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap, "No card detected.",
+        int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kWrapW, kLineGap, "No card detected.",
                                           Canvas::TextRole::Body, Gray::G0);
         y = canvas_.draw_text_wrapped(kSideMargin, y + 8, kWrapW, kLineGap,
                                       "Insert a card for storage, or continue.", Canvas::TextRole::Secondary,
@@ -87,13 +87,13 @@ void App::render_onboarding() {
         for (int i = 0; i < 2; ++i) {
           const int row_y = y + 24 + i * kRowPitch;
           if (i == focus_.index)
-            canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+            canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, acts[i], Canvas::TextRole::Body);
           else
-            canvas_.draw_text(kSideMargin + 8, row_y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
+            canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, acts[i], Canvas::TextRole::Body, Gray::G0);
         }
         break;
       }
-      int body_y = ty + 52;
+      int body_y = below_title(ty);
       if (sd_kind_ == SdContentKind::FirmwareRisk) {
         body_y = canvas_.draw_text_wrapped(kSideMargin, body_y, kWrapW, kLineGap, "This card looks modified.",
                                            Canvas::TextRole::Body, Gray::G0);
@@ -124,15 +124,15 @@ void App::render_onboarding() {
       for (int i = 0; i < 2; ++i) {
         const int row_y = body_y + 24 + i * kRowPitch;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, acts[i], Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, row_y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, acts[i], Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
     case ScreenId::OnboardingWifiList: {
       canvas_.draw_text(kSideMargin, ty, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap, "Choose your network.",
+      int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kWrapW, kLineGap, "Choose your network.",
                                         Canvas::TextRole::Secondary, Gray::G1);
       y = canvas_.draw_text_wrapped(kSideMargin, y + 4, kWrapW, kLineGap,
                                     "Enter the password in the Pocket app.", Canvas::TextRole::Secondary, Gray::G1);
@@ -146,19 +146,19 @@ void App::render_onboarding() {
       for (int i = 0; i < shown; ++i) {
         const int row_y = kListTop + i * kRowPitch;
         if (i == focus_.index) {
-          canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, wifi_networks_[i],
+          canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, wifi_networks_[i],
                                   Canvas::TextRole::Body);
         } else {
-          canvas_.draw_text_fit(kSideMargin + 8, row_y + 10, kCanvasW - 48, wifi_networks_[i], Canvas::TextRole::Body,
+          canvas_.draw_text_fit(kSideMargin + kRowLabelInset, row_y + kRowTextPad, kRowLabelW, wifi_networks_[i], Canvas::TextRole::Body,
                                 Gray::G0);
         }
       }
       {
         const int row_y = wifi_networks_.empty() ? (kListTop + 40) : (kListTop + shown * kRowPitch);
         if (focus_.index == shown) {
-          canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, "Rescan", Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, "Rescan", Canvas::TextRole::Body);
         } else {
-          canvas_.draw_text(kSideMargin + 8, row_y + 10, "Rescan", Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, "Rescan", Canvas::TextRole::Body, Gray::G0);
         }
       }
       break;
@@ -213,9 +213,9 @@ void App::render_onboarding() {
       for (int i = 0; i < focus_.count; ++i) {
         int row_y = actions_top + i * kRowPitch;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, actions[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, actions[i], Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, row_y + 10, actions[i], Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, actions[i], Canvas::TextRole::Body, Gray::G0);
       }
       if (now_ms_ < error_until_ms_) {
         canvas_.draw_text_wrapped(kSideMargin, kBottomCtaY, kWrapW, kLineGap, error_msg_, Canvas::TextRole::Body, Gray::G0);
@@ -241,7 +241,7 @@ void App::render_onboarding() {
       }
 
       canvas_.draw_text(kSideMargin, ty, "Link Pocket", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap,
+      int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kWrapW, kLineGap,
                                         "Scan with the Pocket app to finish linking.", Canvas::TextRole::Secondary,
                                         Gray::G1);
 
@@ -282,15 +282,15 @@ void App::render_onboarding() {
       for (int i = 0; i < 2; ++i) {
         int row_y = actions_top + i * kRowPitch;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, acts[i], Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, row_y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, acts[i], Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
     case ScreenId::OnboardingPinLength: {
       canvas_.draw_text(kSideMargin, ty, "Choose a PIN", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap,
+      int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kWrapW, kLineGap,
                                         "Unlock Pocket with a short code. You can change it later in Settings.",
                                         Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = 2;
@@ -298,9 +298,9 @@ void App::render_onboarding() {
       for (int i = 0; i < 2; ++i) {
         int row_y = y + 28 + i * kRowPitch;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, opts[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, opts[i], Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, row_y + 10, opts[i], Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, opts[i], Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
@@ -326,39 +326,39 @@ void App::render_onboarding() {
     }
     case ScreenId::OnboardingTimezone: {
       canvas_.draw_text(kSideMargin, ty, "Clock", Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, ty + 52, "Time zone", Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text(kSideMargin, below_title(ty), "Time zone", Canvas::TextRole::Secondary, Gray::G1);
       focus_.count = kTzCount + 3;
       constexpr int kTzRowH = 44;
       const int kTzTop = ty + 88;
       for (int i = 0; i < kTzCount; ++i) {
         int row_y = kTzTop + i * kTzRowH;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kTzRowH - 4, kTimezones[i],
+          canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kTzRowH - 4, kTimezones[i],
                                   Canvas::TextRole::Secondary);
         else
-          canvas_.draw_text(kSideMargin + 8, row_y + 8, kTimezones[i], Canvas::TextRole::Secondary,
+          canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + 8, kTimezones[i], Canvas::TextRole::Secondary,
                             i == onboarding_tz_index_ ? Gray::G0 : Gray::G1);
       }
       int row_y = kTzTop + kTzCount * kTzRowH + 16;
       if (focus_.index == kTzCount)
-        canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, "12-hour", Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, "12-hour", Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, row_y + 10, "12-hour", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, "12-hour", Canvas::TextRole::Body, Gray::G0);
       row_y += kRowPitch;
       if (focus_.index == kTzCount + 1)
-        canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, "24-hour", Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, "24-hour", Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, row_y + 10, "24-hour", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, "24-hour", Canvas::TextRole::Body, Gray::G0);
       row_y += kRowPitch;
       if (focus_.index == kTzCount + 2)
-        canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, "Continue", Canvas::TextRole::Body);
+        canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, "Continue", Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, row_y + 10, "Continue", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, "Continue", Canvas::TextRole::Body, Gray::G0);
       break;
     }
     case ScreenId::OnboardingMicTest: {
       canvas_.draw_text(kSideMargin, ty, "Voice", Canvas::TextRole::ScreenTitle, Gray::G0);
-      int y = canvas_.draw_text_wrapped(kSideMargin, ty + 52, kWrapW, kLineGap,
+      int y = canvas_.draw_text_wrapped(kSideMargin, below_title(ty), kWrapW, kLineGap,
                                         "Hold the side button and say something to check your mic.",
                                         Canvas::TextRole::Body, Gray::G0);
       if (ptt_active_) {
@@ -372,9 +372,9 @@ void App::render_onboarding() {
       for (int i = 0; i < 2; ++i) {
         int row_y = 420 + i * kRowPitch;
         if (i == focus_.index)
-          canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+          canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, acts[i], Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, row_y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, acts[i], Canvas::TextRole::Body, Gray::G0);
       }
       break;
     }
@@ -391,9 +391,9 @@ void App::render_onboarding() {
         for (int i = 0; i < 2; ++i) {
           const int row_y = 400 + i * kRowPitch;
           if (i == focus_.index)
-            canvas_.draw_focus_tile(kSideMargin, row_y, kCanvasW - 32, kFocusRowH, acts[i], Canvas::TextRole::Body);
+            canvas_.draw_focus_tile(kSideMargin, row_y, kFocusRowW, kFocusRowH, acts[i], Canvas::TextRole::Body);
           else
-            canvas_.draw_text(kSideMargin + 8, row_y + 10, acts[i], Canvas::TextRole::Body, Gray::G0);
+            canvas_.draw_text(kSideMargin + kRowLabelInset, row_y + kRowTextPad, acts[i], Canvas::TextRole::Body, Gray::G0);
         }
       } else if (tips_page_ == 1) {
         canvas_.draw_text(kSideMargin, ty, "Rotary dial", Canvas::TextRole::ScreenTitle, Gray::G0);

@@ -200,10 +200,11 @@ constexpr int kHomeOrder[kHomeGridSlots] = {0, 1, 2, 3, 4, 5, 8, 6, 7, 9, 10, 11
 HomeApp slot_app(int i) { return static_cast<HomeApp>(kHomeOrder[i]); }
 
 constexpr int kHomeCols = 2;
-constexpr int kHomeGapX = 16;
+constexpr int kHomeGapX = kSideMargin;
 constexpr int kHomeGapY = 14;
-constexpr int kHomeBrandBand = 50;
-constexpr int kHomeBottomPad = 20;
+/** WordMark (49) + hairline rule + air before the grid — must clear the brand. */
+constexpr int kHomeBrandBand = 72;
+constexpr int kHomeBottomPad = 24;
 constexpr int kHomeMinTileH = 92;
 
 /** Full-bleed metrics: tile height is derived from however many rows are
@@ -281,8 +282,8 @@ void App::render_home() {
 
   // Product brand — no version number on Home. Wordmark stays the bitmap font.
   canvas_.draw_text(kSideMargin, kContentTop, kProductName, Canvas::TextRole::WordMark, Gray::G0);
-  const int brand_rule_y = kContentTop + canvas_.text_height(Canvas::TextRole::WordMark) + 6;
-  canvas_.hline(kSideMargin, brand_rule_y, 96, Gray::G1);
+  const int brand_rule_y = kContentTop + canvas_.text_height(Canvas::TextRole::WordMark) + 8;
+  canvas_.hline(kSideMargin, brand_rule_y, 112, Gray::G1);
 
   HomeApp focusable[kHomeGridSlots];
   int n_focus = 0;

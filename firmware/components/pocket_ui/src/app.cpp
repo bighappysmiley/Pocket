@@ -853,7 +853,7 @@ void App::render_lock() {
 
   // Optional custom message — set in Settings → Display or Companion. Empty by default.
   if (!cfg_.lock_message.empty()) {
-    canvas_.draw_text_fit(kSideMargin, 762, kContentW, cfg_.lock_message, Canvas::TextRole::Secondary,
+    canvas_.draw_text_fit(kSideMargin, kFooterY, kContentW, cfg_.lock_message, Canvas::TextRole::Secondary,
                           Gray::G1);
   }
 }
@@ -1137,7 +1137,7 @@ void App::draw_home_clock() {
   }
   constexpr int kClockTop = kContentTop + 40;
   constexpr int kClockH = 176;
-  canvas_.fill_rect(kSideMargin, kClockTop, kCanvasW - 32, kClockH, Gray::G3);
+  canvas_.fill_rect(kSideMargin, kClockTop, kFocusRowW, kClockH, Gray::G3);
   canvas_.draw_text_centered(kCanvasW / 2, kClockTop + 4, tbuf, Canvas::TextRole::HugeClock, Gray::G0);
   char dbuf[48];
   std::snprintf(dbuf, sizeof(dbuf), "%s, %s %d", kWeekdays[wd % 7], kMonths[mo % 12], d);
@@ -1149,7 +1149,7 @@ void App::present_home_clock_partial() {
   draw_home_clock();
   constexpr int kClockTop = kContentTop + 40;
   constexpr int kClockH = 176;
-  display_.present_region(canvas_, kSideMargin, kClockTop, kCanvasW - 32, kClockH);
+  display_.present_region(canvas_, kSideMargin, kClockTop, kFocusRowW, kClockH);
   refresh_.on_applied(RefreshMode::Partial);
 }
 
