@@ -12,7 +12,7 @@ import { writeFileSync, mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/f5fcde2ff84d8e6519959e3bd6556a6750960755/cloud/neon-fn/scram-api.mjs";
+const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/3cfad281c5ef29d8dc839b913e7ca13e3ac47d65/cloud/neon-fn/scram-api.mjs";
 
 let modPromise = null;
 async function load() {
