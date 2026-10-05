@@ -5,9 +5,12 @@ import { BottomNav, DesktopNav } from './Nav'
 import { WordMark } from './WordMark'
 
 export function AppLayout({ bare = false }: { bare?: boolean }) {
+  const { pathname } = useLocation()
+  const isMarketing = bare && (pathname === '/' || pathname === '')
+
   return (
     <div className={bare ? 'app-shell app-shell--bare' : 'app-shell'}>
-      <A2HSBanner />
+      {!isMarketing ? <A2HSBanner /> : null}
       {!bare ? (
         <header className="page" style={{ paddingBottom: 0 }}>
           <div className="topbar" style={{ marginBottom: 0 }}>
