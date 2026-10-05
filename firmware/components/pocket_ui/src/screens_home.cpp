@@ -1,5 +1,6 @@
 #include "pocket/app.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace pocket {
 namespace {
@@ -18,62 +19,140 @@ void thick_vline(Canvas& c, int x, int y, int h, Gray g) {
   c.vline(x, y, h, g);
   c.vline(x + 1, y, h, g);
 }
+/** Filled disc via rounded-rect with r == w/2 (square-cropped circle). */
+void dot(Canvas& c, int cx, int cy, int d, Gray g) {
+  c.fill_round_rect(cx - d / 2, cy - d / 2, d, d, d / 2, g);
+}
+/** Outline color `g` implies the surface it sits on: a white (G3) stroke means
+ * we're drawing over a filled-black focus tile, so the hole must clear to G0. */
+Gray surface_for(Gray g) { return g == Gray::G3 ? Gray::G0 : Gray::G3; }
+void ring(Canvas& c, int cx, int cy, int d, Gray g, int thickness = 2) {
+  c.stroke_round_rect(cx - d / 2, cy - d / 2, d, d, d / 2, g, thickness, surface_for(g));
+}
+void thick_line(Canvas& c, int x0, int y0, int x1, int y1, Gray g) {
+  c.line(x0, y0, x1, y1, g);
+  c.line(x0 + 1, y0, x1 + 1, y1, g);
+}
+/** Thick circular arc from angle a0 to a1 (radians, screen coords: 0 = east, +PI/2 = south). */
+void arc(Canvas& c, int cx, int cy, int r, double a0, double a1, Gray g, int thickness) {
+  const int steps = std::max(8, static_cast<int>(std::abs(a1 - a0) * r));
+  for (int i = 0; i <= steps; ++i) {
+    const double a = a0 + (a1 - a0) * i / steps;
+    const double ca = std::cos(a), sa = std::sin(a);
+    for (int t = 0; t < thickness; ++t) {
+      const double rr = r - t;
+      c.set_pixel(cx + static_cast<int>(std::lround(rr * ca)),
+                  cy + static_cast<int>(std::lround(rr * sa)), g);
+    }
+  }
+}
+constexpr double kPi = 3.14159265358979323846;
 
-/** Calm monochrome glyphs — bold single-weight strokes, minimal fills, e-ink friendly. */
+/**
+ * Professional, calm monochrome glyphs — bold single-weight strokes, deliberate
+ * fills, no decorative clutter. Each icon reads clearly at 32px on e-ink.
+ */
 void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
   const int s = size;
   const int x0 = cx - s / 2;
   const int y0 = cy - s / 2;
   switch (app) {
     case HomeApp::Notes:
-      c.stroke_round_rect(x0 + 5, y0 + 3, s - 10, s - 6, 4, g, 2);
-      thick_hline(c, x0 + 11, y0 + s / 3, s - 22, g);
-      thick_hline(c, x0 + 11, y0 + s / 2, s - 22, g);
-      thick_hline(c, x0 + 11, y0 + (2 * s) / 3, s - 26, g);
+      // Lined notepad — rounded card with three bold rule lines.
+      c.stroke_round_rect(x0 + 5, y0 + 2, s - 11, s - 4, 3, g, 2, surface_for(g));
+      thick_hline(c, x0 + 10, y0 + s / 3 + 1, s - 20, g);
+      thick_hline(c, x0 + 10, y0 + s / 2 + 2, s - 20, g);
+      thick_hline(c, x0 + 10, y0 + (2 * s) / 3 + 3, s - 24, g);
       break;
     case HomeApp::Ledger:
-      c.fill_rect(x0 + 7, y0 + s / 4 - 1, s - 14, 3, g);
-      c.fill_rect(x0 + 7, y0 + s / 2 - 1, s - 14, 3, g);
-      c.fill_rect(x0 + 7, y0 + (3 * s) / 4 - 1, s - 14, 3, g);
-      c.fill_round_rect(x0 + 3, y0 + s / 4 - 4, 5, 5, 2, g);
-      c.fill_round_rect(x0 + 3, y0 + s / 2 - 4, 5, 5, 2, g);
-      c.fill_round_rect(x0 + 3, y0 + (3 * s) / 4 - 4, 5, 5, 2, g);
+      // Columnar balance sheet: a ruled card with a right-hand numbers column.
+      c.stroke_round_rect(x0 + 5, y0 + 2, s - 10, s - 4, 3, g, 2, surface_for(g));
+      thick_vline(c, x0 + s - 13, y0 + 5, s - 10, g);
+      c.hline(x0 + 9, y0 + 9, s - 24, g);
+      c.hline(x0 + 9, y0 + 15, s - 24, g);
+      c.hline(x0 + 9, y0 + 21, s - 24, g);
+      dot(c, x0 + s - 9, y0 + 10, 3, g);
+      dot(c, x0 + s - 9, y0 + 16, 3, g);
+      dot(c, x0 + s - 9, y0 + 22, 3, g);
       break;
     case HomeApp::Clock:
-      c.stroke_round_rect(cx - s / 2 + 3, cy - s / 2 + 3, s - 6, s - 6, (s - 6) / 2, g, 2);
-      thick_vline(c, cx, cy - s / 4, s / 4, g);
-      thick_hline(c, cx, cy, s / 5, g);
+      // Clean clock face, hour ticks at 12/3/6/9, hands pointing to ~10:10.
+      ring(c, cx, cy, s - 6, g);
+      dot(c, cx, y0 + 5, 3, g);
+      dot(c, cx, y0 + s - 5, 3, g);
+      dot(c, x0 + 5, cy, 3, g);
+      dot(c, x0 + s - 5, cy, 3, g);
+      thick_line(c, cx, cy, cx - s / 5, cy - s / 6, g);
+      thick_line(c, cx, cy, cx + s / 5, cy - s / 10, g);
+      dot(c, cx, cy, 4, g);
       break;
     case HomeApp::Pass:
-      c.stroke_round_rect(x0 + 3, y0 + 9, s - 6, s - 18, 5, g, 2);
-      thick_hline(c, x0 + 11, cy - 3, s - 22, g);
-      c.fill_round_rect(x0 + 11, cy + 6, 8, 8, 4, g);
+      // Boarding-pass stub: wide rounded card, a divider rule, barcode ticks below.
+      c.stroke_round_rect(x0 + 1, y0 + 6, s - 2, s - 13, 6, g, 2, surface_for(g));
+      thick_hline(c, x0 + 4, cy - 1, s - 8, g);
+      c.vline(cx - 9, cy + 4, 6, g);
+      c.vline(cx - 5, cy + 4, 6, g);
+      c.vline(cx - 1, cy + 4, 6, g);
+      c.vline(cx + 3, cy + 4, 6, g);
+      c.vline(cx + 7, cy + 4, 6, g);
       break;
-    case HomeApp::Weather:
-      c.fill_round_rect(cx - 3, y0 + 4, 6, 6, 3, g);
-      c.stroke_round_rect(cx - 11, cy - 6, 22, 15, 7, g, 2);
+    case HomeApp::Weather: {
+      // Flat, minimal pairing that reads clearly at 32px: a solid sun disc peeking
+      // from behind a wide puffy cloud (three bumps + a base band), no fussy rays.
+      dot(c, x0 + s - 11, y0 + 7, 11, g);
+      const int ccy = y0 + s - 11;
+      dot(c, x0 + 7, ccy, 9, g);
+      dot(c, x0 + 14, ccy - 4, 13, g);
+      dot(c, x0 + 21, ccy, 9, g);
+      c.fill_round_rect(x0 + 2, ccy, s - 6, 8, 4, g);
       break;
+    }
     case HomeApp::Music:
-      thick_vline(c, cx + 4, y0 + 6, s - 14, g);
-      c.line(cx + 4, y0 + 6, cx + 4 + s / 3, y0 + 3, g);
-      c.line(cx + 5, y0 + 6, cx + 5 + s / 3, y0 + 3, g);
-      c.fill_round_rect(cx - 9, cy + 6, 11, 9, 4, g);
+      // Two eighth-notes: filled note-heads, straight stems, beamed flag.
+      dot(c, x0 + 7, y0 + s - 9, 7, g);
+      thick_vline(c, x0 + 10, y0 + 6, s - 15, g);
+      dot(c, x0 + s / 2 + 3, y0 + s - 11, 7, g);
+      thick_vline(c, x0 + s / 2 + 6, y0 + 3, s - 14, g);
+      thick_hline(c, x0 + 10, y0 + 6, s / 2 - 4, g);
+      thick_hline(c, x0 + 10, y0 + 9, s / 2 - 7, g);
       break;
     case HomeApp::Settings:
-      c.stroke_round_rect(cx - s / 3, cy - s / 3, (2 * s) / 3, (2 * s) / 3, 6, g, 2);
-      c.fill_round_rect(cx - 4, cy - 4, 8, 8, 4, g);
+      // 8-tooth gear ring around a hollow hub — unmistakably "settings".
+      {
+        const int r_out = s / 2 - 1;
+        const int r_tooth = s / 10;
+        constexpr int kTeeth = 8;
+        for (int k = 0; k < kTeeth; ++k) {
+          const double ang = k * 2.0 * 3.14159265 / kTeeth;
+          const int tx = cx + static_cast<int>(r_out * std::cos(ang));
+          const int ty = cy + static_cast<int>(r_out * std::sin(ang));
+          dot(c, tx, ty, 2 * r_tooth, g);
+        }
+        dot(c, cx, cy, s - 10, g);
+        dot(c, cx, cy, s - 20, surface_for(g));
+      }
       break;
     case HomeApp::Update:
-      c.stroke_round_rect(cx - s / 2 + 4, cy - s / 2 + 4, s - 8, s - 8, (s - 8) / 2, g, 2);
-      thick_vline(c, cx, cy - s / 4 + 2, s / 2 - 6, g);
-      c.line(cx - 6, cy - 2, cx, cy - s / 4 + 2, g);
-      c.line(cx + 6, cy - 2, cx, cy - s / 4 + 2, g);
+      // Circular-arrow refresh glyph: a 3/4 ring (clockwise) with a solid arrowhead
+      // at the open end, pointing in the direction of travel.
+      {
+        const int r = s / 2 - 4;
+        const double a0 = -kPi / 2.0 - 0.35;  // just before north, going clockwise
+        const double a1 = kPi * 0.95;          // sweeps through east/south to near west
+        arc(c, cx, cy, r, a0, a1, g, 3);
+        const int hx = cx + static_cast<int>(std::lround(r * std::cos(a0)));
+        const int hy = cy + static_cast<int>(std::lround(r * std::sin(a0)));
+        thick_line(c, hx - 7, hy + 1, hx + 1, hy - 4, g);
+        thick_line(c, hx - 1, hy + 7, hx + 1, hy - 4, g);
+      }
       break;
     case HomeApp::Reading:
-      // Open book — two pages meeting at a bold spine.
-      c.stroke_round_rect(x0 + 4, y0 + 6, s / 2 - 3, s - 12, 3, g, 2);
-      c.stroke_round_rect(cx, y0 + 6, s / 2 - 3, s - 12, 3, g, 2);
-      thick_vline(c, cx, y0 + 6, s - 12, g);
+      // Open book — two pages on a bold spine, each with a short text rule.
+      c.stroke_round_rect(x0 + 3, y0 + 5, s / 2 - 2, s - 10, 3, g, 2, surface_for(g));
+      c.stroke_round_rect(cx + 1, y0 + 5, s / 2 - 2, s - 10, 3, g, 2, surface_for(g));
+      thick_vline(c, cx, y0 + 5, s - 10, g);
+      c.hline(x0 + 8, cy, s / 2 - 11, g);
+      c.hline(cx + 6, cy, s / 2 - 11, g);
       break;
     default:
       break;

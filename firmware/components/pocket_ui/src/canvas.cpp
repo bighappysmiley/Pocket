@@ -130,7 +130,7 @@ void Canvas::fill_round_rect(int x, int y, int w, int h, int r, Gray g) {
   }
 }
 
-void Canvas::stroke_round_rect(int x, int y, int w, int h, int r, Gray g, int thickness) {
+void Canvas::stroke_round_rect(int x, int y, int w, int h, int r, Gray g, int thickness, Gray bg) {
   if (w <= 0 || h <= 0) return;
   thickness = std::max(1, thickness);
   r = std::max(0, std::min({r, w / 2, h / 2}));
@@ -140,12 +140,12 @@ void Canvas::stroke_round_rect(int x, int y, int w, int h, int r, Gray g, int th
     }
     return;
   }
-  // Paint outer round fill, then clear the interior with white (paper).
+  // Paint outer round fill, then clear the interior back to the surrounding surface.
   fill_round_rect(x, y, w, h, r, g);
   const int inset = thickness;
   if (w > 2 * inset && h > 2 * inset) {
     const int ir = std::max(0, r - inset);
-    fill_round_rect(x + inset, y + inset, w - 2 * inset, h - 2 * inset, ir, Gray::G3);
+    fill_round_rect(x + inset, y + inset, w - 2 * inset, h - 2 * inset, ir, bg);
   }
 }
 

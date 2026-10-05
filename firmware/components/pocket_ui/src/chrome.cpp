@@ -10,8 +10,8 @@ namespace {
 
 /**
  * Wi‑Fi status glyph sized for StatusBar type (~28px tall): three ascending signal
- * bars, solid blocks for crisp e-ink rendering (no thin-arc anti-aliasing). Slash
- * through the bars when offline.
+ * bars with soft rounded caps (not harsh square blocks) for a more polished e-ink
+ * look. Slash through the bars when offline.
  */
 void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
   const Gray g_on = Gray::G0;
@@ -23,7 +23,7 @@ void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
   for (int i = 0; i < 3; ++i) {
     const int bx = x + i * (kBarW + kGap);
     const int bh = heights[i];
-    c.fill_rect(bx, y + kBaseY - bh, kBarW, bh, active ? g_on : g_off);
+    c.fill_round_rect(bx, y + kBaseY - bh, kBarW, bh, 2, active ? g_on : g_off);
   }
   if (!active) {
     c.line(x - 1, y + 21, x + 21, y - 1, Gray::G0);
@@ -32,16 +32,16 @@ void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
 }
 
 /**
- * Battery gauge sized for StatusBar type: rounded body + terminal nub, filled with
- * distinct segments (not a continuous sweep) so charge level reads clearly at a
- * glance on e-ink.
+ * Battery gauge sized for StatusBar type: rounded body + rounded terminal nub,
+ * filled with distinct segments (not a continuous sweep) so charge level reads
+ * clearly at a glance on e-ink.
  */
 void draw_battery_icon(Canvas& c, int x, int y, int pct) {
   constexpr int kW = 28;
   constexpr int kH = 16;
   constexpr int kSegs = 4;
-  c.stroke_round_rect(x, y, kW, kH, 3, Gray::G0, 2);
-  c.fill_rect(x + kW, y + 4, 3, 8, Gray::G0);
+  c.stroke_round_rect(x, y, kW, kH, 4, Gray::G0, 2);
+  c.fill_round_rect(x + kW, y + 4, 4, 8, 2, Gray::G0);
 
   const int pad = 3;
   const int inner_w = kW - 2 * pad;
@@ -52,7 +52,7 @@ void draw_battery_icon(Canvas& c, int x, int y, int pct) {
   for (int i = 0; i < kSegs; ++i) {
     if (i >= lit) continue;
     const int sx = x + pad + i * (seg_w + seg_gap);
-    c.fill_rect(sx, y + pad, seg_w, kH - 2 * pad, fill_g);
+    c.fill_round_rect(sx, y + pad, seg_w, kH - 2 * pad, 1, fill_g);
   }
 }
 
