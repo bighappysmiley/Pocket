@@ -86,7 +86,7 @@
   justify-self: end;
 }
 
-.landing-nav__cta {
+.landing-nav__cta.landing-btn {
   display: none;
 }
 
@@ -559,7 +559,7 @@
     justify-self: center;
   }
 
-  .landing-nav__cta {
+  .landing-nav__cta.landing-btn {
     display: inline-flex;
   }
 
