@@ -865,13 +865,17 @@ const STT_SETTING_KEYS = ["stt_openai_api_key", "stt_groq_api_key"];
 async function loadSttSecrets() {
   let openai = (process.env.OPENAI_API_KEY || process.env.STT_API_KEY || "").trim();
   let groq = (process.env.GROQ_API_KEY || "").trim();
+  let proxy = (process.env.STT_PROXY_URL || "").trim();
+  let proxyKey = (process.env.STT_PROXY_KEY || "").trim();
   try {
     if (!openai) openai = String(await getAppSetting("stt_openai_api_key") || "").trim();
     if (!groq) groq = String(await getAppSetting("stt_groq_api_key") || "").trim();
+    if (!proxy) proxy = String(await getAppSetting("stt_proxy_url") || "").trim();
+    if (!proxyKey) proxyKey = String(await getAppSetting("stt_proxy_key") || "").trim();
   } catch {
     /* schema may not be ready in health probes; ignore */
   }
-  return { openai, groq };
+  return { openai, groq, proxy, proxyKey };
 }
 
 function extractChatTranscript(parsed) {
@@ -902,7 +906,7 @@ function extractChatTranscript(parsed) {
 async function transcribePcmS16le(pcm, sampleRate) {
   const wav = pcmS16leToWav(pcm, sampleRate);
   const wavB64 = wav.toString("base64");
-  const { openai: openaiKey, groq: groqKey } = await loadSttSecrets();
+  const { openai: openaiKey, groq: groqKey, proxy, proxyKey } = await loadSttSecrets();
   const errors = [];
 
   async function tryWhisperForm(url, key, model) {
@@ -948,11 +952,10 @@ async function transcribePcmS16le(pcm, sampleRate) {
     }
   }
 
-  const proxyUrl = (process.env.STT_PROXY_URL || "").trim().replace(/\/$/, "");
+  const proxyUrl = (proxy || "").trim().replace(/\/$/, "");
   if (proxyUrl) {
     try {
       const headers = { "content-type": "application/octet-stream", accept: "application/json" };
-      const proxyKey = (process.env.STT_PROXY_KEY || "").trim();
       if (proxyKey) headers["x-stt-key"] = proxyKey;
       const r = await fetch(proxyUrl, { method: "POST", headers, body: wav });
       const bodyText = await r.text();
@@ -1737,7 +1740,7 @@ export default {
           providers: {
             openai: Boolean(secrets.openai),
             groq: Boolean(secrets.groq),
-            stt_proxy: Boolean((process.env.STT_PROXY_URL || "").trim()),
+            stt_proxy: Boolean(secrets.proxy),
             cloudflare_ai: Boolean(
               (process.env.CLOUDFLARE_ACCOUNT_ID || "").trim() &&
                 (process.env.CLOUDFLARE_API_TOKEN || "").trim(),
