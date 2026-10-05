@@ -14,8 +14,9 @@ export function LoginPage() {
   useDocumentTitle('Sign in')
   const { isAuthenticated, loading, offline, error: authError, refresh } = useAuth()
   const [params] = useSearchParams()
-  const returnTo = params.get('return_to') || '/'
-  const [mode, setMode] = useState<Mode>('signin')
+  const returnTo = params.get('return_to') || '/home'
+  const modeParam = params.get('mode')
+  const [mode, setMode] = useState<Mode>(modeParam === 'signup' ? 'signup' : 'signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [state, setState] = useState<State>('idle')
@@ -63,7 +64,7 @@ export function LoginPage() {
 
   return (
     <div className="page stack" style={{ maxWidth: '24rem', paddingTop: '3rem' }}>
-      <WordMark to="/login" />
+      <WordMark to="/" />
       <div className="stack-sm">
         <h1>{mode === 'signup' ? 'Create your account' : 'Sign in to Pocket'}</h1>
         <p className="muted">

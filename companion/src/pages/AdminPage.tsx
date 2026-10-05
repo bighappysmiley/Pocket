@@ -229,7 +229,7 @@ export function AdminPage() {
       <div className="page stack">
         <h1>Pocket Cloud Admin</h1>
         <p className="muted">This area is only for Pocket Cloud admins.</p>
-        <Link className="btn btn-secondary" to="/">
+        <Link className="btn btn-secondary" to="/home">
           Back home
         </Link>
       </div>

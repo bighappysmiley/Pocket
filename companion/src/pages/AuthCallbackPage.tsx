@@ -12,7 +12,7 @@ export function AuthCallbackPage() {
   const { refresh } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const token = params.get('token')
-  const returnTo = params.get('return_to') || '/'
+  const returnTo = params.get('return_to') || '/home'
 
   useEffect(() => {
     if (!token) {

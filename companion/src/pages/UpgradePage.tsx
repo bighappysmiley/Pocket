@@ -49,7 +49,7 @@ export function UpgradePage() {
           <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void openPortal()}>
             Update payment
           </button>
-          <Link to="/" className="btn btn-ghost">
+          <Link to="/home" className="btn btn-ghost">
             Home
           </Link>
         </div>

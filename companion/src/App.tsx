@@ -10,6 +10,7 @@ import { DeviceDetailPage } from './pages/DeviceDetailPage'
 import { DeviceSetupPage } from './pages/DeviceSetupPage'
 import { DevicesPage } from './pages/DevicesPage'
 import { HomePage } from './pages/HomePage'
+import { LandingPage } from './pages/LandingPage'
 import { ListDetailPage } from './pages/ListDetailPage'
 import { ListsListPage } from './pages/ListsListPage'
 import { LoginPage } from './pages/LoginPage'
@@ -34,6 +35,7 @@ export default function App() {
       <BrowserRouter basename={routerBasename}>
         <Routes>
           <Route element={<AppLayout bare />}>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
             <Route path="/wifi-setup" element={<WifiSetupRedirect />} />
@@ -42,7 +44,7 @@ export default function App() {
 
           <Route element={<RequireAuth />}>
             <Route element={<AppLayout />}>
-              <Route path="/" element={<HomePage />} />
+              <Route path="/home" element={<HomePage />} />
               <Route path="/passes" element={<PassesPage />} />
               <Route path="/devices" element={<DevicesPage />} />
               <Route path="/devices/:id" element={<DeviceDetailPage />} />
