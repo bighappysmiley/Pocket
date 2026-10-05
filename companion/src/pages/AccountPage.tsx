@@ -42,6 +42,9 @@ export function AccountPage() {
         <Link className="btn btn-ghost" to="/backup">
           Backup
         </Link>
+        <Link className="btn btn-ghost" to="/developer">
+          Developer
+        </Link>
         {user?.is_admin || user?.role === 'admin' ? (
           <Link className="btn btn-secondary" to="/admin/">
             Pocket Cloud Admin

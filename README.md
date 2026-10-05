@@ -1,8 +1,19 @@
-# Pocket Version 1
+# Pocket
 
-Greenfield monorepo for **Pocket Version 1** device firmware, **Pocket Cloud** backend, and the companion PWA.
+Greenfield monorepo for **Pocket** device firmware, **Pocket Cloud** backend, and the phone **Companion** PWA.
 
 Authoritative Spec: Project docs `pocket-firmware-and-companion-spec.md` (Parts A–E). Part B (onboarding) and Part C (hardware) override Part A where they conflict.
+
+## Platform
+
+Pocket is **source-available with a closed platform**:
+
+- Buy and use the device as shipped.
+- Casual alternate OSes / unrestricted custom firmware are out of scope.
+- Tweaks and extensions go through an approved **developer** path (Companion `/developer` describes the model; submission UI coming).
+- Official firmware updates and owner recovery remain via `firmware-latest` / OTA — not marketed as an open modding playground.
+
+Companion is **phone-only**. The marketing site may be browsed on a computer; the Companion app routes are blocked on desktop.
 
 ## Packages
 
@@ -10,7 +21,7 @@ Authoritative Spec: Project docs `pocket-firmware-and-companion-spec.md` (Parts 
 | --- | --- |
 | [`firmware/`](firmware/) | ESP32-S3-ePaper firmware + host UI simulator |
 | [`cloud/`](cloud/) | Pocket Cloud API (auth, pairing, sync, billing) |
-| [`companion/`](companion/) | Companion PWA (`app.getpocket.device`) |
+| [`companion/`](companion/) | Marketing site + Companion PWA (`app.getpocket.device`) |
 | [`packages/shared/`](packages/shared/) | Shared TypeScript types |
 
 ## Quick start
@@ -32,7 +43,7 @@ Pushing to **`main`** runs CI and auto-deploy workflows. Agents merge to `main`;
 
 - Companion + Pocket Cloud: GitHub Actions (`.github/workflows/`). Provider secrets unlock live deploys.
 - Full secret checklist and URLs: [`docs/deploy.md`](docs/deploy.md)
-- Firmware is **not** flashed from CI — use ESP-IDF locally when hardware is available.
+- Firmware is **not** flashed from CI — use ESP-IDF locally when hardware is available (owners / recovery).
 
 ## Product constraints (short)
 
@@ -41,8 +52,8 @@ Pushing to **`main`** runs CI and auto-deploy workflows. Agents merge to `main`;
 - PTT = side button hold ≥200 ms; Function long ≥800 ms → Home
 - First-boot: **no** e-ink device naming (Part B); default name `"Pocket"`
 - Subscription product name: **Pocket Cloud** only (never "Connect")
-- No marketing landing page in this repo (deferred Spec)
+- Companion CTA: **Download Companion** (phone); not a desktop web app
 
 ## License
 
-Proprietary — all rights reserved.
+Proprietary — all rights reserved. Source may be visible for transparency; the platform remains controlled.

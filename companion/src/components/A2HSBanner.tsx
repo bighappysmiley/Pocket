@@ -53,7 +53,7 @@ export function A2HSBanner() {
 
   return (
     <div className="banner" role="region" aria-label="Add to Home Screen">
-      <span className="banner-text">Add Pocket Cloud to your Home Screen</span>
+      <span className="banner-text">Add Companion to your Home Screen</span>
       <div className="actions-row">
         <button type="button" className="btn btn-primary" onClick={() => void onAdd()}>
           Add

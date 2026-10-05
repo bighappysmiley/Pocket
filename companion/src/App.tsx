@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './lib/auth'
 import { AppLayout, RequireAuth, RequireEntitlement } from './components/Layout'
+import { RequirePhone } from './components/RequirePhone'
 import { AccountPage } from './pages/AccountPage'
 import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { BackupPage } from './pages/BackupPage'
@@ -9,6 +10,7 @@ import { ConnectorsPage } from './pages/ConnectorsPage'
 import { DeviceDetailPage } from './pages/DeviceDetailPage'
 import { DeviceSetupPage } from './pages/DeviceSetupPage'
 import { DevicesPage } from './pages/DevicesPage'
+import { DeveloperPage } from './pages/DeveloperPage'
 import { HomePage } from './pages/HomePage'
 import { LandingPage } from './pages/LandingPage'
 import { ListDetailPage } from './pages/ListDetailPage'
@@ -18,6 +20,7 @@ import { NoteDetailPage } from './pages/NoteDetailPage'
 import { NotesListPage } from './pages/NotesListPage'
 import { LinkPage, PairRedirect, WifiSetupRedirect } from './pages/LinkPage'
 import { PassesPage } from './pages/PassesPage'
+import { PhoneOnlyPage } from './pages/PhoneOnlyPage'
 import { MusicPage } from './pages/MusicPage'
 import { BooksPage } from './pages/BooksPage'
 import { UpgradePage } from './pages/UpgradePage'
@@ -38,36 +41,52 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
-            <Route path="/wifi-setup" element={<WifiSetupRedirect />} />
-            <Route path="/link" element={<LinkPage />} />
+            <Route path="/get-companion" element={<PhoneOnlyPage />} />
+            <Route path="/developer" element={<DeveloperPage />} />
+            <Route path="/developer/" element={<DeveloperPage />} />
+          </Route>
+
+          {/* Phone Companion pairing / SoftAP flows */}
+          <Route element={<RequirePhone />}>
+            <Route element={<AppLayout bare />}>
+              <Route path="/wifi-setup" element={<WifiSetupRedirect />} />
+              <Route path="/link" element={<LinkPage />} />
+            </Route>
           </Route>
 
           <Route element={<RequireAuth />}>
+            {/* Owner admin — desktop OK */}
             <Route element={<AppLayout />}>
-              <Route path="/home" element={<HomePage />} />
-              <Route path="/passes" element={<PassesPage />} />
-              <Route path="/devices" element={<DevicesPage />} />
-              <Route path="/devices/:id" element={<DeviceDetailPage />} />
-              <Route path="/devices/:id/setup" element={<DeviceSetupPage />} />
-              <Route path="/pair" element={<PairRedirect />} />
-              <Route path="/link" element={<LinkPage />} />
-              <Route path="/billing" element={<BillingPage />} />
-              <Route path="/billing/success" element={<BillingSuccessPage />} />
-              <Route path="/billing/cancel" element={<BillingCancelPage />} />
-              <Route path="/upgrade" element={<UpgradePage />} />
-              <Route path="/account" element={<AccountPage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/admin/" element={<AdminPage />} />
+            </Route>
 
-              <Route element={<RequireEntitlement />}>
-                <Route path="/notes" element={<NotesListPage />} />
-                <Route path="/notes/:id" element={<NoteDetailPage />} />
-                <Route path="/lists" element={<ListsListPage />} />
-                <Route path="/lists/:id" element={<ListDetailPage />} />
-                <Route path="/music" element={<MusicPage />} />
-                <Route path="/reading" element={<BooksPage />} />
-                <Route path="/connectors" element={<ConnectorsPage />} />
-                <Route path="/backup" element={<BackupPage />} />
+            {/* Companion app — phone only */}
+            <Route element={<RequirePhone />}>
+              <Route element={<AppLayout />}>
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/passes" element={<PassesPage />} />
+                <Route path="/devices" element={<DevicesPage />} />
+                <Route path="/devices/:id" element={<DeviceDetailPage />} />
+                <Route path="/devices/:id/setup" element={<DeviceSetupPage />} />
+                <Route path="/pair" element={<PairRedirect />} />
+                <Route path="/link" element={<LinkPage />} />
+                <Route path="/billing" element={<BillingPage />} />
+                <Route path="/billing/success" element={<BillingSuccessPage />} />
+                <Route path="/billing/cancel" element={<BillingCancelPage />} />
+                <Route path="/upgrade" element={<UpgradePage />} />
+                <Route path="/account" element={<AccountPage />} />
+
+                <Route element={<RequireEntitlement />}>
+                  <Route path="/notes" element={<NotesListPage />} />
+                  <Route path="/notes/:id" element={<NoteDetailPage />} />
+                  <Route path="/lists" element={<ListsListPage />} />
+                  <Route path="/lists/:id" element={<ListDetailPage />} />
+                  <Route path="/music" element={<MusicPage />} />
+                  <Route path="/reading" element={<BooksPage />} />
+                  <Route path="/connectors" element={<ConnectorsPage />} />
+                  <Route path="/backup" element={<BackupPage />} />
+                </Route>
               </Route>
             </Route>
           </Route>

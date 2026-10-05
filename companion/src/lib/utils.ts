@@ -79,3 +79,49 @@ export function isStandaloneDisplay(): boolean {
     ('standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone))
   )
 }
+
+const FORCE_PHONE_KEY = 'pocket.force_phone'
+
+/** Companion app routes are phone-only (Pocket product posture). */
+export function isPhoneCompanionClient(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+  try {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('force_phone') === '1') {
+      sessionStorage.setItem(FORCE_PHONE_KEY, '1')
+      return true
+    }
+    if (q.get('force_desktop') === '1') {
+      sessionStorage.removeItem(FORCE_PHONE_KEY)
+      return false
+    }
+    if (sessionStorage.getItem(FORCE_PHONE_KEY) === '1') return true
+  } catch {
+    // ignore storage / URL errors
+  }
+  const ua = navigator.userAgent || ''
+  // Phones only — not desktop browsers, not iPad desktop-mode.
+  if (/iPhone|iPod/i.test(ua)) return true
+  if (/Android/i.test(ua) && /Mobile/i.test(ua)) return true
+  return false
+}
+
+/** Public Pages origin for QR / “open on phone” copy. */
+export function companionPublicUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const base = import.meta.env.BASE_URL || '/'
+    const path = base.endsWith('/') ? base : `${base}/`
+    return `${window.location.origin}${path}`
+  }
+  return 'https://bighappysmiley.github.io/Pocket/'
+}
+
+/** App routes that must not run as a desktop website app. */
+export function isCompanionAppPath(pathname: string): boolean {
+  const p = pathname.replace(/\/+$/, '') || '/'
+  if (p === '/' || p === '') return false
+  if (p === '/admin' || p.startsWith('/admin/')) return false
+  if (p === '/developer' || p.startsWith('/developer/')) return false
+  if (p === '/get-companion') return false
+  return true
+}

@@ -6,7 +6,14 @@ import { WordMark } from './WordMark'
 
 export function AppLayout({ bare = false }: { bare?: boolean }) {
   const { pathname } = useLocation()
-  const isMarketing = bare && (pathname === '/' || pathname === '')
+  const isMarketing =
+    bare &&
+    (pathname === '/' ||
+      pathname === '' ||
+      pathname === '/get-companion' ||
+      pathname.startsWith('/get-companion/') ||
+      pathname === '/developer' ||
+      pathname.startsWith('/developer/'))
 
   return (
     <div className={bare ? 'app-shell app-shell--bare' : 'app-shell'}>

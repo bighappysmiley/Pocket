@@ -1,6 +1,8 @@
-# Pocket Cloud — Companion PWA
+# Pocket — Companion PWA
 
-Phone companion for Pocket (Part D of the Pocket Spec). Sync Notes & Lists, pair and name devices, manage Pocket Cloud billing, connectors, and backup.
+Phone-only companion for Pocket (Part D of the Pocket Spec). Sync Notes & Lists, pair and name devices, manage Pocket Cloud billing, connectors, and backup.
+
+**Product posture:** Companion is not a desktop website app. Marketing lives at `/`; app routes require a phone browser (or `?force_phone=1` for local testing). Platform is source-available / closed — see `/developer`.
 
 ## Stack
 

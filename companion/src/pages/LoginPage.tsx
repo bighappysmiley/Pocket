@@ -6,6 +6,7 @@ import { ApiError } from '../lib/types'
 import { ErrorState } from '../components/ErrorState'
 import { WordMark } from '../components/WordMark'
 import { useDocumentTitle } from '../components/useDocumentTitle'
+import { isCompanionAppPath, isPhoneCompanionClient } from '../lib/utils'
 
 type Mode = 'signin' | 'signup'
 type State = 'idle' | 'busy' | 'error'
@@ -23,9 +24,14 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
 
   const cloudReady = isApiConfigured()
+  const phone = isPhoneCompanionClient()
+  const safeReturn =
+    !phone && isCompanionAppPath(returnTo.split('?')[0] || returnTo)
+      ? `/get-companion?from=${encodeURIComponent(returnTo)}`
+      : returnTo
 
   if (!loading && isAuthenticated) {
-    return <Navigate to={returnTo} replace />
+    return <Navigate to={safeReturn} replace />
   }
 
   async function onSubmit(e: FormEvent) {
@@ -72,6 +78,12 @@ export function LoginPage() {
             ? 'Create a Pocket Cloud account with your email and a password (8+ characters).'
             : 'Use the email and password for your Pocket Cloud account.'}
         </p>
+        {!phone ? (
+          <p className="muted">
+            Companion is phone-only. On a computer you can sign in for Cloud Admin; download Companion
+            on your phone for pairing and everyday use.
+          </p>
+        ) : null}
       </div>
 
       {!cloudReady || offline ? (

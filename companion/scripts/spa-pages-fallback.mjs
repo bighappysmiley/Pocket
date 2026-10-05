@@ -32,6 +32,8 @@ const spaDirs = [
   'reading',
   'notes',
   'lists',
+  'get-companion',
+  'developer',
 ]
 
 for (const dir of spaDirs) {

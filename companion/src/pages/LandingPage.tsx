@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { companionPublicUrl, isPhoneCompanionClient } from '../lib/utils'
 import { useDocumentTitle } from '../components/useDocumentTitle'
 import './landing.css'
 
@@ -75,7 +76,6 @@ function DeviceHero() {
         >
           Classic
         </text>
-        {/* App grid motif */}
         <g fill="none" stroke="#1a1f1c" strokeWidth="1.5">
           <rect x="78" y="150" width="52" height="52" rx="10" />
           <rect x="134" y="150" width="52" height="52" rx="10" />
@@ -159,11 +159,90 @@ function FeatureVisual({ active }: { active: (typeof FEATURES)[number]['key'] })
   )
 }
 
+function DownloadCompanionCta({
+  className,
+  children,
+}: {
+  className?: string
+  children?: ReactNode
+}) {
+  const phone = isPhoneCompanionClient()
+  const label = children ?? 'Download Companion'
+  if (phone) {
+    return (
+      <Link className={className} to="/login?mode=signup">
+        {label}
+        <span aria-hidden="true">→</span>
+      </Link>
+    )
+  }
+  return (
+    <a className={className} href="#download">
+      {label}
+      <span aria-hidden="true">→</span>
+    </a>
+  )
+}
+
+function DownloadPanel() {
+  const phone = isPhoneCompanionClient()
+  const url = companionPublicUrl()
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=8&data=${encodeURIComponent(url)}`
+
+  if (phone) {
+    return (
+      <div className="landing-download">
+        <h2 className="landing-section__title">Download Companion</h2>
+        <p className="landing-section__lede">
+          Install Companion on this phone — add to Home Screen, then sign in to link Pocket and use
+          Pocket Cloud.
+        </p>
+        <div className="landing-hero__ctas">
+          <Link className="landing-btn landing-btn--solid landing-btn--lg" to="/login?mode=signup">
+            Download Companion
+            <span aria-hidden="true">→</span>
+          </Link>
+          <Link className="landing-btn landing-btn--soft landing-btn--lg" to="/login">
+            Sign in
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="landing-download">
+      <h2 className="landing-section__title">Download Companion</h2>
+      <p className="landing-section__lede">
+        Companion is phone-only — not a desktop web app. Scan the QR or open this page on your phone
+        to install.
+      </p>
+      <div className="landing-download__grid">
+        <img
+          className="landing-download__qr"
+          src={qr}
+          width={160}
+          height={160}
+          alt="QR code to open Pocket on your phone"
+        />
+        <div className="landing-download__copy">
+          <p className="landing-download__hint">Phone only — scan QR / open this page on your phone</p>
+          <p className="landing-download__url">{url}</p>
+          <Link className="landing-btn landing-btn--soft" to="/get-companion">
+            How to install
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function LandingPage() {
-  useDocumentTitle('Pocket Classic')
+  useDocumentTitle('Pocket')
   const { isAuthenticated, loading } = useAuth()
   const [feature, setFeature] = useState<(typeof FEATURES)[number]['key']>('notes')
   const [menuOpen, setMenuOpen] = useState(false)
+  const phone = isPhoneCompanionClient()
 
   useEffect(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -177,7 +256,7 @@ export function LandingPage() {
     return () => window.clearInterval(id)
   }, [])
 
-  if (!loading && isAuthenticated) {
+  if (!loading && isAuthenticated && phone) {
     return <Navigate to="/home" replace />
   }
 
@@ -188,26 +267,20 @@ export function LandingPage() {
       <nav className="landing-nav" aria-label="Marketing">
         <a className="landing-brand" href="#top">
           <span className="landing-brand__mark" aria-hidden="true" />
-          <span>Pocket Classic</span>
+          <span>Pocket</span>
         </a>
         <div className="landing-nav__links">
+          <a href="#shop">Shop</a>
           <a href="#features">Features</a>
-          <a href="#values">Values</a>
-          <a href={FIRMWARE_RELEASE} target="_blank" rel="noreferrer">
-            Flash
-          </a>
-          <a href={DOCS_URL} target="_blank" rel="noreferrer">
-            Docs
-          </a>
+          <a href="#download">Companion</a>
+          <a href="#platform">Platform</a>
+          <Link to="/developer">Developers</Link>
         </div>
         <div className="landing-nav__actions">
           <Link className="landing-btn landing-btn--ghost" to="/login">
             Sign in
           </Link>
-          <Link className="landing-btn landing-btn--solid landing-nav__cta" to="/login?mode=signup">
-            Open Companion
-            <span aria-hidden="true">→</span>
-          </Link>
+          <DownloadCompanionCta className="landing-btn landing-btn--solid landing-nav__cta" />
           <button
             type="button"
             className="landing-nav__menu"
@@ -223,24 +296,41 @@ export function LandingPage() {
 
       {menuOpen ? (
         <div id="landing-mobile-menu" className="landing-mobile">
+          <a href="#shop" onClick={() => setMenuOpen(false)}>
+            Shop
+          </a>
           <a href="#features" onClick={() => setMenuOpen(false)}>
             Features
           </a>
-          <a href="#values" onClick={() => setMenuOpen(false)}>
-            Values
+          <a href="#download" onClick={() => setMenuOpen(false)}>
+            Companion
           </a>
-          <a href={FIRMWARE_RELEASE} target="_blank" rel="noreferrer">
-            Flash firmware
+          <a href="#platform" onClick={() => setMenuOpen(false)}>
+            Platform
           </a>
-          <a href={DOCS_URL} target="_blank" rel="noreferrer">
-            Documentation
-          </a>
+          <Link to="/developer" onClick={() => setMenuOpen(false)}>
+            Developers
+          </Link>
           <Link to="/login" onClick={() => setMenuOpen(false)}>
             Sign in
           </Link>
-          <Link className="landing-btn landing-btn--solid" to="/login?mode=signup">
-            Open Companion
-          </Link>
+          {phone ? (
+            <Link
+              className="landing-btn landing-btn--solid"
+              to="/login?mode=signup"
+              onClick={() => setMenuOpen(false)}
+            >
+              Download Companion
+            </Link>
+          ) : (
+            <a
+              className="landing-btn landing-btn--solid"
+              href="#download"
+              onClick={() => setMenuOpen(false)}
+            >
+              Download Companion
+            </a>
+          )}
         </div>
       ) : null}
 
@@ -265,34 +355,56 @@ export function LandingPage() {
             </span>
           </h1>
           <p className="landing-hero__lede">
-            Pocket Classic is a calm e-ink device for notes, lists, music, and reading —
-            paired with Companion on your phone when you want the cloud.
+            Pocket devices for notes, lists, music, and reading — paired with Companion on your phone
+            when you want the cloud.
           </p>
           <div className="landing-hero__ctas">
-            <Link className="landing-btn landing-btn--solid landing-btn--lg" to="/login?mode=signup">
-              Open Companion
-              <span aria-hidden="true">→</span>
-            </Link>
-            <a
-              className="landing-btn landing-btn--soft landing-btn--lg"
-              href={FIRMWARE_RELEASE}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Flash latest firmware
+            <DownloadCompanionCta className="landing-btn landing-btn--solid landing-btn--lg" />
+            <a className="landing-btn landing-btn--soft landing-btn--lg" href="#shop">
+              Shop devices
             </a>
           </div>
+          {!phone ? (
+            <p className="landing-hero__phone-hint">
+              Phone only — scan QR / open this page on your phone
+            </p>
+          ) : null}
           <div className="landing-hero__social">
+            <a href="#shop">Shop</a>
             <a href={REPO_URL} target="_blank" rel="noreferrer" aria-label="Pocket on GitHub">
-              GitHub
+              Source
             </a>
-            <a href={DOCS_URL} target="_blank" rel="noreferrer">
-              Docs
-            </a>
-            <Link to="/admin/">Admin</Link>
+            <Link to="/developer">Developers</Link>
           </div>
           <DeviceHero />
         </header>
+
+        <section id="shop" className="landing-section landing-shop">
+          <h2 className="landing-section__title">Shop</h2>
+          <p className="landing-section__lede">
+            Buy a Pocket device, then download Companion on your phone. The product line starts with
+            Classic — we only list what ships.
+          </p>
+          <div className="landing-shop__card">
+            <div className="landing-shop__meta">
+              <p className="landing-shop__eyebrow">Device</p>
+              <h3>Pocket Classic</h3>
+              <p>
+                Calm e-ink for Notes, Lists, Music, and Reading. Works offline; optional Pocket Cloud
+                sync via Companion.
+              </p>
+            </div>
+            <div className="landing-shop__actions">
+              <a className="landing-btn landing-btn--solid" href="#shop">
+                Shop Classic
+                <span aria-hidden="true">→</span>
+              </a>
+              <p className="landing-shop__note">
+                Storefront link coming — this section is the real shop CTA until checkout goes live.
+              </p>
+            </div>
+          </div>
+        </section>
 
         <section id="features" className="landing-section landing-features">
           <h2 className="landing-section__title">
@@ -341,6 +453,10 @@ export function LandingPage() {
           </div>
         </section>
 
+        <section id="download" className="landing-section landing-cloud">
+          <DownloadPanel />
+        </section>
+
         <section className="landing-section landing-cloud">
           <h2 className="landing-section__title">Pocket Cloud</h2>
           <p className="landing-section__lede">
@@ -348,43 +464,35 @@ export function LandingPage() {
             <strong>$3.99/mo</strong> with a 7-day trial. The device works offline without it.
           </p>
           <div className="landing-hero__ctas">
-            <Link className="landing-btn landing-btn--solid landing-btn--lg" to="/login">
-              Start with Companion
-              <span aria-hidden="true">→</span>
-            </Link>
-            <a
-              className="landing-btn landing-btn--soft landing-btn--lg"
-              href={FIRMWARE_RELEASE}
-              target="_blank"
-              rel="noreferrer"
-            >
-              firmware-latest
+            <DownloadCompanionCta className="landing-btn landing-btn--solid landing-btn--lg" />
+            <a className="landing-btn landing-btn--soft landing-btn--lg" href="#shop">
+              Shop Classic
             </a>
           </div>
         </section>
 
-        <section id="values" className="landing-section landing-values">
+        <section id="platform" className="landing-section landing-values">
           <h2 className="landing-section__title">
-            <span>Our</span> <span>core</span> <span>values</span>
+            <span>Open</span> <span>source,</span> <span>closed</span> <span>platform</span>
           </h2>
           <p className="landing-section__lede">
-            We balance calm hardware, useful software, and a Companion that stays out of the way —
-            beauty, focus, and honesty over engagement.
+            Source is available to read. The device is for buyers to use as shipped — not a casual
+            alternate-OS playground. Tweaks go through an approved developer path.
           </p>
           <ul className="landing-values__list">
             <li>
-              <a href={REPO_URL} target="_blank" rel="noreferrer" className="landing-btn landing-btn--soft">
-                Built in the open
-              </a>
+              <Link to="/developer" className="landing-btn landing-btn--soft">
+                Developer console
+              </Link>
             </li>
             <li className="landing-values__chip">
-              <span aria-hidden="true">✓</span> Simple yet powerful
+              <span aria-hidden="true">✓</span> Buy &amp; use the product
             </li>
             <li className="landing-values__chip">
-              <span aria-hidden="true">✓</span> Offline-first on device
+              <span aria-hidden="true">✓</span> Approved extensions
             </li>
             <li className="landing-values__chip">
-              <span aria-hidden="true">✓</span> Cloud only when you want it
+              <span aria-hidden="true">✓</span> Official updates &amp; recovery
             </li>
           </ul>
         </section>
@@ -393,56 +501,53 @@ export function LandingPage() {
       <footer className="landing-footer">
         <div className="landing-footer__inner">
           <div className="landing-footer__brand">
-            <p className="landing-footer__name">Pocket Classic</p>
+            <p className="landing-footer__name">Pocket</p>
             <p>
-              A quieter pocket for notes, lists, music, and reading — with Companion and optional
-              Pocket Cloud.
+              Devices for a quieter pocket — Companion on your phone, optional Pocket Cloud, source
+              available with a guided platform.
             </p>
           </div>
-          <Link className="landing-btn landing-btn--paper" to="/login">
-            Open Companion
-            <span aria-hidden="true">→</span>
-          </Link>
+          <DownloadCompanionCta className="landing-btn landing-btn--paper" />
           <div className="landing-footer__cols">
             <div>
               <h3>Get started</h3>
               <ul>
                 <li>
-                  <Link to="/login">Companion sign in</Link>
+                  <a href="#download">Download Companion</a>
                 </li>
                 <li>
-                  <a href={FIRMWARE_RELEASE} target="_blank" rel="noreferrer">
-                    Flash firmware
-                  </a>
+                  <a href="#shop">Shop Classic</a>
+                </li>
+                <li>
+                  <Link to="/developer">Developer console</Link>
                 </li>
                 <li>
                   <a href={DOCS_URL} target="_blank" rel="noreferrer">
                     Documentation
                   </a>
                 </li>
-                <li>
-                  <Link to="/link">Link a Pocket</Link>
-                </li>
               </ul>
             </div>
             <div>
-              <h3>Product</h3>
+              <h3>Owners</h3>
               <ul>
-                <li>
-                  <a href="#features">Features</a>
-                </li>
                 <li>
                   <Link to="/admin/">Cloud Admin</Link>
                 </li>
                 <li>
+                  <a href={FIRMWARE_RELEASE} target="_blank" rel="noreferrer">
+                    Official firmware / recovery
+                  </a>
+                </li>
+                <li>
                   <a href={REPO_URL} target="_blank" rel="noreferrer">
-                    GitHub
+                    Source on GitHub
                   </a>
                 </li>
               </ul>
             </div>
           </div>
-          <p className="landing-footer__copy">Pocket Classic · Companion on GitHub Pages</p>
+          <p className="landing-footer__copy">Pocket · Companion phone app · GitHub Pages</p>
           <div className="landing-footer__rings" aria-hidden="true" />
         </div>
       </footer>

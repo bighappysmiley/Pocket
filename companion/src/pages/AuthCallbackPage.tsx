@@ -4,6 +4,7 @@ import { api, isNetworkError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ErrorState } from '../components/ErrorState'
 import { useDocumentTitle } from '../components/useDocumentTitle'
+import { isCompanionAppPath, isPhoneCompanionClient } from '../lib/utils'
 
 export function AuthCallbackPage() {
   useDocumentTitle('Signing in')
@@ -13,6 +14,11 @@ export function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null)
   const token = params.get('token')
   const returnTo = params.get('return_to') || '/home'
+  const phone = isPhoneCompanionClient()
+  const safeReturn =
+    !phone && isCompanionAppPath(returnTo.split('?')[0] || returnTo)
+      ? `/get-companion?from=${encodeURIComponent(returnTo)}`
+      : returnTo
 
   useEffect(() => {
     if (!token) {
@@ -24,7 +30,7 @@ export function AuthCallbackPage() {
       try {
         await api.consumeMagicLink(token)
         await refresh()
-        if (!cancelled) navigate(returnTo, { replace: true })
+        if (!cancelled) navigate(safeReturn, { replace: true })
       } catch (err) {
         if (cancelled) return
         if (isNetworkError(err)) {
@@ -37,7 +43,7 @@ export function AuthCallbackPage() {
     return () => {
       cancelled = true
     }
-  }, [token, refresh, navigate, returnTo])
+  }, [token, refresh, navigate, safeReturn])
 
   if (!token && !error) {
     return <Navigate to="/login" replace />
