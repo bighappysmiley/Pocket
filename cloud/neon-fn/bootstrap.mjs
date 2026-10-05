@@ -1,45 +1,42 @@
-import { writeFileSync, mkdtempSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
-
-const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/9c0f689a4f54bba185703c8e6cbe69556f38d1bc/cloud/neon-fn/scram-api.mjs?cb=v16stt3";
-const PIN = "9c0f689a4f54bba185703c8e6cbe69556f38d1bc";
-
-let modPromise = null;
-async function load() {
-  if (modPromise) return modPromise;
-  modPromise = (async () => {
-    const res = await fetch(SRC_URL, { cache: "no-store" });
-    if (!res.ok) throw new Error("bootstrap fetch failed: " + res.status + " url=" + SRC_URL);
-    const src = await res.text();
-    if (!src.includes("scram-api-v16-stt") || !src.includes("stt_proxy_url")) {
-      throw new Error("unexpected source (pin=" + PIN + ", len=" + src.length + ")");
-    }
-    const dir = mkdtempSync(join(tmpdir(), "fn-"));
-    const file = join(dir, "index.mjs");
-    writeFileSync(file, src);
-    return import("file://" + file);
-  })();
-  return modPromise;
-}
-
+/**
+ * Neon Function bootstrap for Pocket Cloud `api`.
+ * Tiny loader that fetches pinned scram-api.mjs from GitHub (avoids MCP zip size limits).
+ *
+ * Hard rules for the deployed zip (MCP transcription corruption):
+ * - never use the substring `fetch(req` (use `fetch(r)` / dynamic import)
+ * - avoid top-level `throw` in the bootstrap itself
+ */
 export default {
-  async fetch(req) {
-    const u = new URL(req.url);
+  async fetch(r) {
+    const u = new URL(r.url);
+    const P = "9c0f689a4f54bba185703c8e6cbe69556f38d1bc";
+    const U =
+      "https://raw.githubusercontent.com/bighappysmiley/Pocket/" +
+      P +
+      "/cloud/neon-fn/scram-api.mjs?cb=v16stt8";
     if (u.pathname === "/v1/bootstrap") {
-      return new Response(JSON.stringify({ ok: true, pin: PIN, src: SRC_URL }), {
-        headers: { "content-type": "application/json", "cache-control": "no-store" },
-      });
+      return Response.json({ ok: true, pin: P, src: U });
     }
     try {
-      const m = await load();
-      return m.default.fetch(req);
+      const fs = await import("node:fs");
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const res = await globalThis.fetch(U, { cache: "no-store" });
+      if (!res.ok) return Response.json({ error: "fetch " + res.status }, { status: 500 });
+      const body = await res.text();
+      if (!body.includes("scram-api-v16-stt") || !body.includes("stt_proxy_url")) {
+        return Response.json({ error: "bad source", len: body.length }, { status: 500 });
+      }
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fn-"));
+      const file = path.join(dir, "i.mjs");
+      fs.writeFileSync(file, body);
+      const mod = await import("file://" + file);
+      return mod.default.fetch.bind(mod.default)(r);
     } catch (e) {
-      modPromise = null;
-      return new Response(JSON.stringify({ error: "bootstrap_failed", message: String(e && e.message || e), pin: PIN }), {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      });
+      return Response.json(
+        { error: "bootstrap_failed", message: String(e && e.message || e) },
+        { status: 500 },
+      );
     }
   },
 };

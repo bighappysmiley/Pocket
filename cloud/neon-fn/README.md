@@ -24,10 +24,11 @@ Env (carried across deploys; set on change):
 - `ADMIN_EMAILS` — comma-separated (default includes owner)
 - `DATABASE_URL` injected by Neon
 - **STT (device dictation `/v1/stt`):** prefer `GROQ_API_KEY` (free Whisper) or `OPENAI_API_KEY`.
-  Optional: `STT_PROXY_URL` (+ `STT_PROXY_KEY`), or `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`
-  for Workers AI Whisper. Neon AI Gateway Gemini multimodal is used as a fallback when keys are
-  unset (injected `NEON_AI_GATEWAY_*`). Admins can also `PUT /v1/admin/stt` with
-  `{ "groq_api_key": "gsk_…" }` / `{ "openai_api_key": "sk-…" }` (stored in `app_settings`).
+  Optional: `STT_PROXY_URL` (+ `STT_PROXY_KEY`) — production uses the Neon Function slug `stt`
+  (`whisper-runtime.mjs`, on-function Whisper tiny, no external key). Also:
+  `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` for Workers AI, or Neon AI Gateway Gemini
+  (paid plan). Admins can `PUT /v1/admin/stt` with `{ "groq_api_key": "gsk_…" }` /
+  `{ "openai_api_key": "sk-…" }` / `{ "stt_proxy_url": "…" }` (stored in `app_settings`).
 
 Health: `{ "ok": true, "build": "scram-api-v16-stt" }`
 
