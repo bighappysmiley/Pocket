@@ -2,8 +2,8 @@ import { writeFileSync, mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/7062439f81550fe8f37b655362d549ca48a78b37/cloud/neon-fn/scram-api.mjs?cb=v16stt2";
-const PIN = "7062439f81550fe8f37b655362d549ca48a78b37";
+const SRC_URL = "https://raw.githubusercontent.com/bighappysmiley/Pocket/029a9a0943f6e93b89aafbbfc29e6fd530261268/cloud/neon-fn/scram-api.mjs?cb=v16stt2";
+const PIN = "029a9a0943f6e93b89aafbbfc29e6fd530261268";
 
 let modPromise = null;
 async function load() {
@@ -12,7 +12,7 @@ async function load() {
     const res = await fetch(SRC_URL, { cache: "no-store" });
     if (!res.ok) throw new Error("bootstrap fetch failed: " + res.status + " url=" + SRC_URL);
     const src = await res.text();
-    if (!src.includes("scram-api-v16-stt")) {
+    if (!src.includes("scram-api-v16-stt") || !src.includes("stt_proxy_url")) {
       throw new Error("unexpected source (pin=" + PIN + ", len=" + src.length + ")");
     }
     const dir = mkdtempSync(join(tmpdir(), "fn-"));
