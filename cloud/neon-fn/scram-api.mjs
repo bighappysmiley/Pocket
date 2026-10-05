@@ -1070,7 +1070,7 @@ async function transcribePcmS16le(pcm, sampleRate) {
       "No STT provider configured (set GROQ_API_KEY or OPENAI_API_KEY on the Neon Function, or Admin → STT)",
     );
   }
-  throw new Error(errors[errors.length - 1] || "STT failed");
+  throw new Error(errors.join(" | ") || "STT failed");
 }
 
 export default {
