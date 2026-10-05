@@ -67,6 +67,26 @@ void EpdDisplay::rotate_canvas_to_mono(const pocket::Canvas& src, uint8_t* dst) 
   }
 }
 
+void EpdDisplay::rotate_canvas_to_mono_region(const pocket::Canvas& src, uint8_t* dst, int px0,
+                                              int px1, int py0, int py1) {
+  const int byte_w = (px1 - px0) / 8;
+  for (int py = py0; py < py1; ++py) {
+    const int x = (kLogicalW - 1) - py;
+    for (int pxb = 0; pxb < byte_w; ++pxb) {
+      const int px = px0 + pxb * 8;
+      uint8_t byte = 0;
+      for (int b = 0; b < 8; ++b) {
+        const int y = px + b;
+        if (static_cast<uint8_t>(src.get_pixel(x, y)) >= gray_threshold_) {
+          byte |= static_cast<uint8_t>(0x80 >> b);
+        }
+      }
+      dst[static_cast<size_t>(py - py0) * static_cast<size_t>(byte_w) + static_cast<size_t>(pxb)] =
+          byte;
+    }
+  }
+}
+
 void EpdDisplay::present(const pocket::Canvas& canvas, pocket::RefreshMode mode) {
   if (!ready_ && !init()) return;
   rotate_canvas_to_mono(canvas, panel_1bpp_);
@@ -102,8 +122,6 @@ void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, in
   if (ly + lh > kLogicalH) lh = kLogicalH - ly;
   if (lw <= 0 || lh <= 0) return;
 
-  rotate_canvas_to_mono(canvas, panel_1bpp_);
-
   // Logical portrait (lx,ly) → panel landscape: px=ly, py=(kLogicalW-1)-lx
   // Region maps to panel x ∈ [ly, ly+lh), panel y ∈ [kLogicalW-(lx+lw), kLogicalW-lx)
   int px0 = ly;
@@ -123,7 +141,6 @@ void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, in
     return;
   }
 
-  const int byte0 = px0 / 8;
   const int byte_w = (px1 - px0) / 8;
   const int rows = py1 - py0;
   if (byte_w <= 0 || rows <= 0) {
@@ -132,20 +149,16 @@ void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, in
   }
 
   // Waveshare EPD_Display_Partial expects a tightly packed region buffer
-  // (window width × height), not the full framebuffer from offset 0.
+  // (window width × height), not the full framebuffer from offset 0. Rotate
+  // only this window directly — a status-bar tick or a PIN digit no longer
+  // pays for re-scanning the full 480×800 canvas just to keep a small strip.
   const size_t region_bytes = static_cast<size_t>(byte_w) * static_cast<size_t>(rows);
   uint8_t* region = static_cast<uint8_t*>(malloc(region_bytes));
   if (!region) {
     present(canvas, pocket::RefreshMode::Partial);
     return;
   }
-  for (int row = 0; row < rows; ++row) {
-    const uint8_t* src =
-        panel_1bpp_ + static_cast<size_t>(py0 + row) * static_cast<size_t>(kPanelW / 8) +
-        static_cast<size_t>(byte0);
-    std::memcpy(region + static_cast<size_t>(row) * static_cast<size_t>(byte_w), src,
-                static_cast<size_t>(byte_w));
-  }
+  rotate_canvas_to_mono_region(canvas, region, px0, px1, py0, py1);
 
   ESP_LOGI(TAG, "Waveshare region partial px=%d..%d py=%d..%d bytes=%u", px0, px1, py0, py1,
            static_cast<unsigned>(region_bytes));

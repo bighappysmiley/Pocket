@@ -19,6 +19,13 @@ class EpdDisplay {
 
  private:
   void rotate_canvas_to_mono(const pocket::Canvas& src, uint8_t* dst);
+  /** Same rotation, but only for the panel-coordinate window [px0,px1)×[py0,py1) — writes a
+   * tightly packed (py1-py0) rows × (px1-px0)/8 bytes buffer. Used by present_region() so a
+   * small region update costs proportional work instead of re-rotating the whole 480×800
+   * canvas (384k pixel reads) just to keep a handful of changed rows. `px0`/`px1` must already
+   * be byte-aligned (multiples of 8). */
+  void rotate_canvas_to_mono_region(const pocket::Canvas& src, uint8_t* dst, int px0, int px1,
+                                    int py0, int py1);
 
   bool ready_ = false;
   uint8_t* panel_1bpp_ = nullptr;
