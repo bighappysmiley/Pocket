@@ -362,7 +362,7 @@ void App::render_onboarding() {
                                         "Hold the side button and say something to check your mic.",
                                         Canvas::TextRole::Body, Gray::G0);
       if (ptt_active_) {
-        canvas_.draw_text(kSideMargin, y + 24, "Listening...", Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text(kSideMargin, y + 24, "Listening…", Canvas::TextRole::Body, Gray::G0);
       } else if (!mic_result_.empty()) {
         canvas_.draw_text_wrapped(kSideMargin, y + 24, kWrapW, kLineGap, mic_result_, Canvas::TextRole::Body,
                                   Gray::G0);

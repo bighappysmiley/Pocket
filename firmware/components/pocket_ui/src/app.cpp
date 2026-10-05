@@ -57,6 +57,8 @@ void App::boot() {
   last_input_ms_ = now_ms_;
   if (audio_) audio_->set_volume(cfg_.volume_percent);
   display_.set_brightness(cfg_.brightness_percent);
+  refresh_.set_ghosting_budget(cfg_.ghosting_frequent ? RefreshPolicy::kGhostingNFrequent
+                                                       : RefreshPolicy::kGhostingN);
   if (!cfg_.onboarding_complete) {
     const ScreenId resume = resume_onboarding_screen();
     if (resume == ScreenId::OnboardingWifiPassword || resume == ScreenId::OnboardingCompanionQr) {

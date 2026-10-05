@@ -50,7 +50,7 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, 5,
-        "Faster microSD for Music and Reading, and a smoother insert-anytime card setup.",
+        "A refreshed Home screen, clearer wording throughout, and a ghosting control for the display.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);
@@ -59,7 +59,7 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 8 * kBodyLinePitch + 16,
                       cfg_.companion_linked ? "Companion: Linked" : "Companion: Not linked",
                       Canvas::TextRole::Secondary, Gray::G1);
-    const char* acts[] = {"Controls tips", "Reset Pocket...", "Back"};
+    const char* acts[] = {"Controls tips", "Reset Pocket…", "Back"};
     draw_focus_rows(canvas_, focus_, acts, 3, 560);
     return;
   }
@@ -102,9 +102,11 @@ void App::render_settings() {
     const char* bright_label = cfg_.brightness_percent < 34 ? "Brightness: Darker"
                                : cfg_.brightness_percent < 67 ? "Brightness: Normal"
                                                                : "Brightness: Lighter";
+    const char* ghost_label =
+        cfg_.ghosting_frequent ? "Ghosting control: Frequent" : "Ghosting control: Normal";
     const char* rows[] = {idle,
                           cfg_.show_batt_pct ? "Show battery %: On" : "Show battery %: Off",
-                          lockmsg.c_str(), bright_label, "Full refresh: Now", "Ghosting control", "Back"};
+                          lockmsg.c_str(), bright_label, "Full refresh: Now", ghost_label, "Back"};
     draw_focus_rows(canvas_, focus_, rows, 7, kListTop);
     canvas_.draw_text_wrapped(kSideMargin, kListTop + 7 * kRowPitch + 16, kContentW, 6,
                               "Set a custom lock message in Pocket Companion.",
@@ -554,6 +556,12 @@ void App::handle_settings(InputEvent e) {
         redraw(true);  // full refresh so the new contrast is visible immediately
       } else if (focus_.index == 4) {
         redraw(true);
+      } else if (focus_.index == 5) {
+        cfg_.ghosting_frequent = !cfg_.ghosting_frequent;
+        refresh_.set_ghosting_budget(cfg_.ghosting_frequent ? RefreshPolicy::kGhostingNFrequent
+                                                             : RefreshPolicy::kGhostingN);
+        store_.save(cfg_);
+        redraw(true);  // full refresh now also clears any ghosting already on screen
       } else if (focus_.index == 6) {
         nav_.replace(ScreenId::SettingsRoot);
         after_nav();

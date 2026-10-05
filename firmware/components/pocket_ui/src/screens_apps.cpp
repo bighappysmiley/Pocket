@@ -238,12 +238,13 @@ void App::render_clock() {
     }
     canvas_.draw_text_centered(kCanvasW / 2, 280, tbuf, Canvas::TextRole::HugeClock, Gray::G0);
   } else if (clock_tab_ == 1) {
-    if (data_.alarms.empty())
-      canvas_.draw_text_centered(kCanvasW / 2, 300, "No alarms", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(24, kBottomCtaY, "Add alarm", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_centered(kCanvasW / 2, 300, "Coming soon", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_centered(kCanvasW / 2, 340, "Alarms will arrive in a free update.",
+                               Canvas::TextRole::Secondary, Gray::G1);
   } else {
-    canvas_.draw_text_centered(kCanvasW / 2, 300, "Timers", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(24, kBottomCtaY, "Start", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_centered(kCanvasW / 2, 300, "Coming soon", Canvas::TextRole::Body, Gray::G0);
+    canvas_.draw_text_centered(kCanvasW / 2, 340, "Timers will arrive in a free update.",
+                               Canvas::TextRole::Secondary, Gray::G1);
   }
 }
 

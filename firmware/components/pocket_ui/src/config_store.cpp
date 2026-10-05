@@ -7,7 +7,7 @@ namespace pocket {
 namespace {
 
 constexpr uint32_t kMagic = 0x314B4350u;  // 'PCK1' LE
-constexpr uint16_t kVersion = 7;
+constexpr uint16_t kVersion = 8;
 constexpr size_t kMaxString = 128;
 constexpr size_t kMaxBlob = 8192;
 
@@ -173,6 +173,8 @@ bool pack_device_config(const DeviceConfig& cfg, std::vector<uint8_t>& out) {
   put_u32(out, static_cast<uint32_t>(cfg.reading_last_page));
   // v7: display brightness
   put_u8(out, cfg.brightness_percent);
+  // v8: Settings → Display → Ghosting control
+  put_u8(out, cfg.ghosting_frequent ? 1 : 0);
   return out.size() <= kMaxBlob;
 }
 
@@ -184,7 +186,7 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
   uint16_t flags = 0;
   if (!get_u32(data, len, off, magic) || magic != kMagic) return false;
   if (!get_u16(data, len, off, ver) ||
-      (ver != 2 && ver != 3 && ver != 4 && ver != 5 && ver != 6 && ver != 7)) {
+      (ver != 2 && ver != 3 && ver != 4 && ver != 5 && ver != 6 && ver != 7 && ver != 8)) {
     return false;
   }
   if (!get_u16(data, len, off, flags)) return false;
@@ -257,6 +259,11 @@ bool unpack_device_config(const uint8_t* data, size_t len, DeviceConfig& out) {
 
   if (ver >= 7) {
     if (!get_u8(data, len, off, cfg.brightness_percent)) return false;
+  }
+
+  if (ver >= 8) {
+    if (!get_u8(data, len, off, b)) return false;
+    cfg.ghosting_frequent = b != 0;
   }
 
   out = std::move(cfg);

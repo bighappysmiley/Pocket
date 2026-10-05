@@ -43,6 +43,8 @@ int main() {
   cfg.time_format = 24;
   CHECK(cfg.lock_message.empty());  // default: no message on lock/sleep face
   cfg.lock_message = "Emma's Pocket";
+  CHECK(!cfg.ghosting_frequent);  // default: normal ghosting budget
+  cfg.ghosting_frequent = true;
 
   std::vector<uint8_t> blob;
   CHECK(pack_device_config(cfg, blob));
@@ -71,6 +73,7 @@ int main() {
   CHECK(!round.show_batt_pct);
   CHECK(round.time_format == 24);
   CHECK(round.lock_message == "Emma's Pocket");
+  CHECK(round.ghosting_frequent);
 
   // Corrupt magic → fail
   blob[0] ^= 0xff;

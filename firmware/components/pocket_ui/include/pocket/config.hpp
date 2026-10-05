@@ -38,7 +38,7 @@ struct DeviceConfig {
   bool companion_linked = false;
   std::string fw_channel = "stable";
   /** Consumer-facing semver shown in About / Update — never a POCKET-LIVE flash marker. */
-  std::string fw_version = "1.2.3";
+  std::string fw_version = "1.2.4";
   std::string fw_build_id;  // internal OTA id e.g. POCKET-LIVE-v38-… (not shown to users)
   std::string device_id;  // UUID
   std::string device_token;
@@ -60,11 +60,14 @@ struct DeviceConfig {
   /** Reading: resume the last book at its last page across reboots. */
   std::string reading_last_book_id;
   int reading_last_page = 0;
+  /** Settings → Display → "Ghosting control": force a full e-ink flash more often
+   * (every 8 partials instead of 16) for users who notice residual ghosting. */
+  bool ghosting_frequent = false;
 };
 
 /** Consumer product branding (UI). Flash markers stay in `fw_build_id` only. */
 inline constexpr const char* kProductName = "Pocket Classic";
-inline constexpr const char* kConsumerVersion = "1.2.3";
+inline constexpr const char* kConsumerVersion = "1.2.4";
 
 /** Insert or update SSID; move to front as preferred (`wifi_ssid`). Cap at kMaxKnownWifi. */
 void wifi_known_upsert(DeviceConfig& cfg, const std::string& ssid, const std::string& password);

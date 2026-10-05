@@ -4,7 +4,7 @@ namespace pocket {
 
 RefreshMode RefreshPolicy::plan(bool wants_partial) {
   if (!wants_partial) return RefreshMode::Full;
-  if (partial_count_ >= kGhostingN) return RefreshMode::Full;
+  if (partial_count_ >= ghosting_n_) return RefreshMode::Full;
   return RefreshMode::Partial;
 }
 
