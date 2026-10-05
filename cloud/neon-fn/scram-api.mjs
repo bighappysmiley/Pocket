@@ -860,84 +860,214 @@ function pcmS16leToWav(pcm, sampleRate) {
   return buf;
 }
 
+const STT_SETTING_KEYS = ["stt_openai_api_key", "stt_groq_api_key"];
+
+async function loadSttSecrets() {
+  let openai = (process.env.OPENAI_API_KEY || process.env.STT_API_KEY || "").trim();
+  let groq = (process.env.GROQ_API_KEY || "").trim();
+  try {
+    if (!openai) openai = String(await getAppSetting("stt_openai_api_key") || "").trim();
+    if (!groq) groq = String(await getAppSetting("stt_groq_api_key") || "").trim();
+  } catch {
+    /* schema may not be ready in health probes; ignore */
+  }
+  return { openai, groq };
+}
+
+function extractChatTranscript(parsed) {
+  const choice = parsed?.choices?.[0]?.message?.content;
+  if (typeof choice === "string") return choice.trim();
+  if (Array.isArray(choice)) {
+    return choice
+      .map((p) => (typeof p?.text === "string" ? p.text : typeof p === "string" ? p : ""))
+      .join(" ")
+      .trim();
+  }
+  const parts = parsed?.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    return parts.map((p) => (typeof p?.text === "string" ? p.text : "")).join(" ").trim();
+  }
+  if (typeof parsed?.text === "string") return parsed.text.trim();
+  return "";
+}
+
 /**
  * Cloud STT for device dictation. Tries, in order:
- *   1) OPENAI_API_KEY → api.openai.com whisper-1
- *   2) GROQ_API_KEY → api.groq.com whisper-large-v3
- *   3) NEON_AI_GATEWAY_* → branch gateway openai-compatible /audio/transcriptions
+ *   1) OPENAI_API_KEY / app_settings → OpenAI whisper-1
+ *   2) GROQ_API_KEY / app_settings → Groq whisper-large-v3
+ *   3) STT_PROXY_URL → POST WAV, expect {text}
+ *   4) Cloudflare Workers AI (CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN)
+ *   5) Neon AI Gateway Gemini multimodal (injected NEON_AI_GATEWAY_*)
  */
 async function transcribePcmS16le(pcm, sampleRate) {
   const wav = pcmS16leToWav(pcm, sampleRate);
-  const attempts = [];
+  const wavB64 = wav.toString("base64");
+  const { openai: openaiKey, groq: groqKey } = await loadSttSecrets();
+  const errors = [];
 
-  const openaiKey = (process.env.OPENAI_API_KEY || process.env.STT_API_KEY || "").trim();
+  async function tryWhisperForm(url, key, model) {
+    const form = new FormData();
+    form.append("file", new Blob([wav], { type: "audio/wav" }), "note.wav");
+    form.append("model", model);
+    form.append("response_format", "json");
+    form.append("language", "en");
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+    });
+    const bodyText = await r.text();
+    if (!r.ok) throw new Error(`${url} → HTTP ${r.status}: ${bodyText.slice(0, 180)}`);
+    let parsed = {};
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch {
+      throw new Error(`${url} → non-JSON`);
+    }
+    const text = typeof parsed.text === "string" ? parsed.text.trim() : "";
+    if (!text) throw new Error(`${url} → empty text`);
+    return text;
+  }
+
   if (openaiKey) {
-    attempts.push({
-      url: "https://api.openai.com/v1/audio/transcriptions",
-      key: openaiKey,
-      model: "whisper-1",
-    });
+    try {
+      return await tryWhisperForm("https://api.openai.com/v1/audio/transcriptions", openaiKey, "whisper-1");
+    } catch (e) {
+      errors.push(String(e && e.message || e));
+    }
   }
-  const groqKey = (process.env.GROQ_API_KEY || "").trim();
   if (groqKey) {
-    attempts.push({
-      url: "https://api.groq.com/openai/v1/audio/transcriptions",
-      key: groqKey,
-      model: "whisper-large-v3",
-    });
+    try {
+      return await tryWhisperForm(
+        "https://api.groq.com/openai/v1/audio/transcriptions",
+        groqKey,
+        "whisper-large-v3",
+      );
+    } catch (e) {
+      errors.push(String(e && e.message || e));
+    }
   }
+
+  const proxyUrl = (process.env.STT_PROXY_URL || "").trim().replace(/\/$/, "");
+  if (proxyUrl) {
+    try {
+      const headers = { "content-type": "application/octet-stream", accept: "application/json" };
+      const proxyKey = (process.env.STT_PROXY_KEY || "").trim();
+      if (proxyKey) headers["x-stt-key"] = proxyKey;
+      const r = await fetch(proxyUrl, { method: "POST", headers, body: wav });
+      const bodyText = await r.text();
+      if (!r.ok) throw new Error(`STT_PROXY_URL → HTTP ${r.status}: ${bodyText.slice(0, 180)}`);
+      const parsed = JSON.parse(bodyText);
+      const text = typeof parsed.text === "string" ? parsed.text.trim() : "";
+      if (!text) throw new Error("STT_PROXY_URL → empty text");
+      return text;
+    } catch (e) {
+      errors.push(String(e && e.message || e));
+    }
+  }
+
+  const cfAccount = (process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+  const cfToken = (process.env.CLOUDFLARE_API_TOKEN || "").trim();
+  if (cfAccount && cfToken) {
+    try {
+      const url = `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/run/@cf/openai/whisper-large-v3-turbo`;
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ audio: wavB64, task: "transcribe", language: "en" }),
+      });
+      const bodyText = await r.text();
+      if (!r.ok) throw new Error(`Cloudflare AI → HTTP ${r.status}: ${bodyText.slice(0, 180)}`);
+      const parsed = JSON.parse(bodyText);
+      const text = typeof parsed?.result?.text === "string"
+        ? parsed.result.text.trim()
+        : typeof parsed?.text === "string"
+          ? parsed.text.trim()
+          : "";
+      if (!text) throw new Error("Cloudflare AI → empty text");
+      return text;
+    } catch (e) {
+      errors.push(String(e && e.message || e));
+    }
+  }
+
+  // Neon AI Gateway: no Whisper route (404). Use Gemini multimodal audio → text instead.
   const neonTok = (process.env.NEON_AI_GATEWAY_TOKEN || "").trim();
   const neonBase = (process.env.NEON_AI_GATEWAY_BASE_URL || "").replace(/\/$/, "");
   if (neonTok && neonBase) {
-    attempts.push({
-      url: `${neonBase}/openai/v1/audio/transcriptions`,
-      key: neonTok,
-      model: "whisper-1",
-    });
-    attempts.push({
-      url: `${neonBase}/v1/audio/transcriptions`,
-      key: neonTok,
-      model: "whisper-1",
-    });
-  }
-
-  if (!attempts.length) {
-    throw new Error("No STT provider configured (set OPENAI_API_KEY, GROQ_API_KEY, or Neon AI Gateway)");
-  }
-
-  let lastErr = null;
-  for (const a of attempts) {
-    try {
-      const form = new FormData();
-      form.append("file", new Blob([wav], { type: "audio/wav" }), "note.wav");
-      form.append("model", a.model);
-      form.append("response_format", "json");
-      form.append("language", "en");
-      const r = await fetch(a.url, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${a.key}` },
-        body: form,
-      });
-      const bodyText = await r.text();
-      if (!r.ok) {
-        lastErr = new Error(`${a.url} → HTTP ${r.status}: ${bodyText.slice(0, 180)}`);
-        continue;
-      }
-      let parsed = {};
+    const prompt =
+      "Transcribe any spoken words in this audio. Reply with only the transcript text. " +
+      "If there is no speech, reply with exactly EMPTY.";
+    const geminiModels = ["gemini-3-flash", "gemini-3-5-flash-lite", "gemini-2-5-flash"];
+    for (const model of geminiModels) {
       try {
-        parsed = JSON.parse(bodyText);
-      } catch {
-        lastErr = new Error("STT returned non-JSON");
-        continue;
+        const r = await fetch(`${neonBase}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${neonTok}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: prompt },
+                  { type: "input_audio", input_audio: { data: wavB64, format: "wav" } },
+                ],
+              },
+            ],
+          }),
+        });
+        const bodyText = await r.text();
+        if (!r.ok) throw new Error(`Neon Gemini chat ${model} → HTTP ${r.status}: ${bodyText.slice(0, 180)}`);
+        const parsed = JSON.parse(bodyText);
+        let text = extractChatTranscript(parsed);
+        if (/^EMPTY$/i.test(text)) return ""; // reachable, no speech
+        if (text) return text;
+        throw new Error(`Neon Gemini chat ${model} → empty transcript`);
+      } catch (e) {
+        errors.push(String(e && e.message || e));
       }
-      const text = typeof parsed.text === "string" ? parsed.text.trim() : "";
-      if (text) return text;
-      lastErr = new Error("STT returned empty text");
-    } catch (e) {
-      lastErr = e;
+      try {
+        const r = await fetch(`${neonBase}/gemini/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${neonTok}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { text: prompt },
+                  { inline_data: { mime_type: "audio/wav", data: wavB64 } },
+                ],
+              },
+            ],
+          }),
+        });
+        const bodyText = await r.text();
+        if (!r.ok) throw new Error(`Neon Gemini native ${model} → HTTP ${r.status}: ${bodyText.slice(0, 180)}`);
+        const parsed = JSON.parse(bodyText);
+        let text = extractChatTranscript(parsed);
+        if (/^EMPTY$/i.test(text)) return ""; // reachable, no speech
+        if (text) return text;
+        throw new Error(`Neon Gemini native ${model} → empty transcript`);
+      } catch (e) {
+        errors.push(String(e && e.message || e));
+      }
     }
   }
-  throw lastErr || new Error("STT failed");
+
+  if (!errors.length) {
+    throw new Error(
+      "No STT provider configured (set GROQ_API_KEY or OPENAI_API_KEY on the Neon Function, or Admin → STT)",
+    );
+  }
+  throw new Error(errors[errors.length - 1] || "STT failed");
 }
 
 export default {
@@ -947,7 +1077,7 @@ export default {
     // Health does not depend on DB schema readiness so it stays useful for diagnosing DB-layer issues.
     if (path === "/health" || path === "/" || path === "/v1/health") {
       const sha256 = await getSelfSourceSha256();
-      return json(req, { ok: true, build: "scram-api-v15-stt", sourceSha256: sha256 });
+      return json(req, { ok: true, build: "scram-api-v16-stt", sourceSha256: sha256 });
     }
     try {
       await readySchema();
@@ -1596,7 +1726,30 @@ export default {
         });
       }
 
-      // Device dictation — raw PCM s16le → Whisper (OpenAI / Groq / Neon AI Gateway).
+      // Device dictation — raw PCM s16le → Whisper / Gemini multimodal.
+      if (req.method === "GET" && path === "/v1/stt/status") {
+        const key = (req.headers.get("x-device-key") || "").trim();
+        if (!safeEqual(key, DEVICE_API_KEY)) return json(req, { message: "Unauthorized." }, 401);
+        const secrets = await loadSttSecrets();
+        return json(req, {
+          ok: true,
+          build: "scram-api-v16-stt",
+          providers: {
+            openai: Boolean(secrets.openai),
+            groq: Boolean(secrets.groq),
+            stt_proxy: Boolean((process.env.STT_PROXY_URL || "").trim()),
+            cloudflare_ai: Boolean(
+              (process.env.CLOUDFLARE_ACCOUNT_ID || "").trim() &&
+                (process.env.CLOUDFLARE_API_TOKEN || "").trim(),
+            ),
+            neon_ai_gateway: Boolean(
+              (process.env.NEON_AI_GATEWAY_TOKEN || "").trim() &&
+                (process.env.NEON_AI_GATEWAY_BASE_URL || "").trim(),
+            ),
+          },
+        });
+      }
+
       if (req.method === "POST" && path === "/v1/stt") {
         const key = (req.headers.get("x-device-key") || "").trim();
         if (!safeEqual(key, DEVICE_API_KEY)) return json(req, { message: "Unauthorized." }, 401);
@@ -1609,7 +1762,7 @@ export default {
         if (pcm.length > 2 * 1024 * 1024) return json(req, { message: "Audio too large." }, 413);
         try {
           const text = await transcribePcmS16le(pcm, rate);
-          if (!text) return json(req, { message: "Couldn't reach speech service." }, 502);
+          if (!text) return json(req, { message: "Couldn't hear anything.", text: "" }, 200);
           return json(req, { text });
         } catch (e) {
           return json(req, { message: "Couldn't reach speech service.", detail: String(e && e.message || e) }, 502);
@@ -1916,6 +2069,70 @@ export default {
       }
 
       // ---- Admin ----
+      if (req.method === "GET" && path === "/v1/admin/stt") {
+        const gate = await requireAdmin(req);
+        if (gate.error) return gate.error;
+        const secrets = await loadSttSecrets();
+        return json(req, {
+          openai_set: Boolean(secrets.openai),
+          openai_masked: maskSecret(secrets.openai),
+          groq_set: Boolean(secrets.groq),
+          groq_masked: maskSecret(secrets.groq),
+          neon_ai_gateway: Boolean(
+            (process.env.NEON_AI_GATEWAY_TOKEN || "").trim() &&
+              (process.env.NEON_AI_GATEWAY_BASE_URL || "").trim(),
+          ),
+          stt_proxy: Boolean((process.env.STT_PROXY_URL || "").trim()),
+          cloudflare_ai: Boolean(
+            (process.env.CLOUDFLARE_ACCOUNT_ID || "").trim() &&
+              (process.env.CLOUDFLARE_API_TOKEN || "").trim(),
+          ),
+          hint: "Paste a Groq (free) or OpenAI API key. Neon AI Gateway Gemini is used as fallback when keys are unset.",
+        });
+      }
+
+      if (req.method === "PUT" && path === "/v1/admin/stt") {
+        const gate = await requireAdmin(req);
+        if (gate.error) return gate.error;
+        const body = await req.json().catch(() => ({}));
+        const updates = [];
+        if (typeof body.openai_api_key === "string" && body.openai_api_key.trim()) {
+          const k = body.openai_api_key.trim();
+          if (!k.startsWith("sk-")) {
+            return json(req, { message: "OpenAI key should start with sk-." }, 400);
+          }
+          await setAppSetting("stt_openai_api_key", k, gate.user.id);
+          updates.push("openai_api_key");
+        }
+        if (typeof body.groq_api_key === "string" && body.groq_api_key.trim()) {
+          const k = body.groq_api_key.trim();
+          if (!k.startsWith("gsk_")) {
+            return json(req, { message: "Groq key should start with gsk_." }, 400);
+          }
+          await setAppSetting("stt_groq_api_key", k, gate.user.id);
+          updates.push("groq_api_key");
+        }
+        if (body.clear === true) {
+          for (const k of STT_SETTING_KEYS) {
+            await query(`DELETE FROM app_settings WHERE key='${esc(k)}'`);
+          }
+          updates.push("cleared");
+        }
+        if (!updates.length) {
+          return json(req, { message: "Nothing to update. Paste openai_api_key, groq_api_key, or clear." }, 400);
+        }
+        await audit(gate.user.id, "stt.configure", "stt", null, { updates });
+        const secrets = await loadSttSecrets();
+        return json(req, {
+          ok: true,
+          updates,
+          openai_set: Boolean(secrets.openai),
+          openai_masked: maskSecret(secrets.openai),
+          groq_set: Boolean(secrets.groq),
+          groq_masked: maskSecret(secrets.groq),
+        });
+      }
+
       if (req.method === "GET" && path === "/v1/admin/stripe") {
         const gate = await requireAdmin(req);
         if (gate.error) return gate.error;

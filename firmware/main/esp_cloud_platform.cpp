@@ -234,16 +234,18 @@ std::string EspCloud::stt_transcribe(const std::vector<uint8_t>& pcm) {
     ESP_LOGW(TAG, "stt: pcm too short (%u)", static_cast<unsigned>(pcm.size()));
     return {};
   }
-  // Raw PCM body — avoids base64 bloat on device. Server wraps as WAV for Whisper.
+  // Raw PCM body — avoids base64 bloat on device. Server wraps as WAV for Whisper/Gemini.
+  // Content-Type must be application/octet-stream (param after the two PCM headers).
   const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/stt";
   const std::string body(reinterpret_cast<const char*>(pcm.data()), pcm.size());
   int status = 0;
   std::string resp;
-  if (!http_request("POST", url, POCKET_DEVICE_API_KEY, body, status, resp, 60000, "application/json",
+  if (!http_request("POST", url, POCKET_DEVICE_API_KEY, body, status, resp, 90000, "application/json",
                     "x-pcm-rate", "16000", "application/octet-stream", "x-pcm-encoding", "s16le") ||
       status != 200) {
-    ESP_LOGW(TAG, "stt HTTP %d resp=%s", status, resp.substr(0, 120).c_str());
-    return {};
+    ESP_LOGW(TAG, "stt HTTP %d resp=%s", status, resp.substr(0, 160).c_str());
+    // Sentinel so UI can distinguish transport/provider failure from empty audio.
+    return std::string("\x01");
   }
   std::string text = json_string_field(resp, "text");
   // Trim whitespace

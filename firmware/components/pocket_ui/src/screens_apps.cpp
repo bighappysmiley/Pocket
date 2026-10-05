@@ -419,8 +419,14 @@ void App::handle_notes(InputEvent e) {
       return;
     }
     std::string t = cloud_.stt_transcribe(cap.pcm);
-    if (t.empty()) {
+    if (t.size() == 1 && t[0] == '\x01') {
       error_msg_ = "Couldn't reach speech service. Try again.";
+      error_until_ms_ = now_ms_ + 3000;
+      mark_content_dirty();
+      return;
+    }
+    if (t.empty()) {
+      error_msg_ = "Couldn't hear anything. Hold closer and try again.";
       error_until_ms_ = now_ms_ + 3000;
       mark_content_dirty();
       return;

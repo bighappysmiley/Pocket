@@ -23,8 +23,13 @@ Env (carried across deploys; set on change):
 - `DEVICE_API_KEY`, `SESSION_COOKIE_NAME`, `PWA_ORIGIN`, `PUBLIC_BASE_URL`
 - `ADMIN_EMAILS` — comma-separated (default includes owner)
 - `DATABASE_URL` injected by Neon
+- **STT (device dictation `/v1/stt`):** prefer `GROQ_API_KEY` (free Whisper) or `OPENAI_API_KEY`.
+  Optional: `STT_PROXY_URL` (+ `STT_PROXY_KEY`), or `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`
+  for Workers AI Whisper. Neon AI Gateway Gemini multimodal is used as a fallback when keys are
+  unset (injected `NEON_AI_GATEWAY_*`). Admins can also `PUT /v1/admin/stt` with
+  `{ "groq_api_key": "gsk_…" }` / `{ "openai_api_key": "sk-…" }` (stored in `app_settings`).
 
-Health: `{ "ok": true, "build": "scram-api-v14-sd-admin" }`
+Health: `{ "ok": true, "build": "scram-api-v16-stt" }`
 
 ## Stripe (Admin UI)
 
