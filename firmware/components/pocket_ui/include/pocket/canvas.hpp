@@ -17,8 +17,12 @@ class Canvas {
   void stroke_rect(int x, int y, int w, int h, Gray g);
   /** Soft rounded fill for tiles (e-ink). `r` is corner radius in pixels. */
   void fill_round_rect(int x, int y, int w, int h, int r, Gray g);
-  /** Rounded outline; `thickness` ≥ 1 draws a soft border without a harsh box. */
-  void stroke_round_rect(int x, int y, int w, int h, int r, Gray g, int thickness = 1);
+  /** Rounded outline; `thickness` ≥ 1 draws a soft border without a harsh box.
+   * `bg` is the color used to clear the interior — must match the surface the
+   * outline sits on (defaults to paper/G3; pass G0 for a white outline drawn
+   * over a filled-black focus tile, or the glyph degrades into a solid blob). */
+  void stroke_round_rect(int x, int y, int w, int h, int r, Gray g, int thickness = 1,
+                         Gray bg = Gray::G3);
   void hline(int x, int y, int w, Gray g);
   void vline(int x, int y, int h, Gray g);
   void line(int x0, int y0, int x1, int y1, Gray g);
