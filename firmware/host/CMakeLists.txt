@@ -35,6 +35,11 @@ add_executable(pocket_host
 target_include_directories(pocket_host PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(pocket_host PRIVATE POCKET_HOST=1)
 
+add_executable(test_notes_wrap ../tests/test_notes_wrap.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_notes_wrap PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_notes_wrap PRIVATE POCKET_HOST=1)
+add_test(NAME test_notes_wrap COMMAND test_notes_wrap)
+
 enable_testing()
 add_executable(test_input ../tests/test_input.cpp ${POCKET_UI}/src/input.cpp)
 target_include_directories(test_input PRIVATE ${POCKET_UI}/include)

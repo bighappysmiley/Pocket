@@ -32,7 +32,8 @@ void App::render_notes() {
           canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, data_.notes[i].title,
                                   Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, y + 10, data_.notes[i].title, Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text_fit(kSideMargin + 8, y + 10, kCanvasW - 48, data_.notes[i].title,
+                                Canvas::TextRole::Body, Gray::G0);
       }
     }
     int y = kBottomCtaY;
@@ -45,8 +46,11 @@ void App::render_notes() {
   } else if (s == ScreenId::NotesDetail) {
     if (note_index_ >= 0 && note_index_ < static_cast<int>(data_.notes.size())) {
       auto& n = data_.notes[note_index_];
-      canvas_.draw_text(kSideMargin, kContentTop, n.title, Canvas::TextRole::ScreenTitle, Gray::G0);
-      canvas_.draw_text(kSideMargin, kContentTop + 52, n.body, Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text_fit(kSideMargin, kContentTop, kContentW, n.title, Canvas::TextRole::ScreenTitle,
+                            Gray::G0);
+      // Body can be several dictated sentences — wrap it, don't clip it to one line.
+      canvas_.draw_text_wrapped(kSideMargin, kContentTop + 52, kContentW, 8, n.body, Canvas::TextRole::Body,
+                                Gray::G0);
     }
     focus_.count = 2;
     const char* acts[] = {"Dictate", "Delete"};
@@ -68,13 +72,15 @@ void App::render_notes() {
         canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, data_.lists[i].title,
                                 Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + 10, data_.lists[i].title, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin + 8, y + 10, kCanvasW - 48, data_.lists[i].title,
+                              Canvas::TextRole::Body, Gray::G0);
     }
     canvas_.draw_text(kSideMargin + 8, kBottomCtaY, "New list", Canvas::TextRole::Body, Gray::G0);
   } else if (s == ScreenId::ListsDetail) {
     if (note_index_ < static_cast<int>(data_.lists.size())) {
       auto& L = data_.lists[note_index_];
-      canvas_.draw_text(kSideMargin, kContentTop, L.title, Canvas::TextRole::ScreenTitle, Gray::G0);
+      canvas_.draw_text_fit(kSideMargin, kContentTop, kContentW, L.title, Canvas::TextRole::ScreenTitle,
+                            Gray::G0);
       for (size_t i = 0; i < L.items.size(); ++i) {
         int y = kContentTop + 56 + static_cast<int>(i) * kRowPitch;
         std::string row = (L.items[i].checked ? "[x] " : "[ ] ") + L.items[i].text;
@@ -82,7 +88,7 @@ void App::render_notes() {
         if (static_cast<int>(i) == focus_.index)
           canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, row, Canvas::TextRole::Secondary);
         else
-          canvas_.draw_text(kSideMargin + 8, y + 10, row, Canvas::TextRole::Secondary, g);
+          canvas_.draw_text_fit(kSideMargin + 8, y + 10, kCanvasW - 48, row, Canvas::TextRole::Secondary, g);
       }
     }
   }
@@ -300,7 +306,8 @@ void App::render_pass() {
         canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, data_.passes[i].title,
                                 Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + 10, data_.passes[i].title, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin + 8, y + 10, kCanvasW - 48, data_.passes[i].title,
+                              Canvas::TextRole::Body, Gray::G0);
     }
   }
 }
@@ -332,16 +339,17 @@ void App::render_weather() {
     canvas_.draw_text(16, 480, "Set a city in Settings → Units / Weather.", Canvas::TextRole::Secondary, Gray::G1);
     return;
   }
-  canvas_.draw_text(16, 40, data_.weather.city, Canvas::TextRole::ScreenTitle, Gray::G0);
+  canvas_.draw_text_fit(16, 40, kContentW, data_.weather.city, Canvas::TextRole::ScreenTitle, Gray::G0);
   char tbuf[32];
   std::snprintf(tbuf, sizeof(tbuf), "%d°%c", data_.weather.today_temp, cfg_.weather_units ? 'C' : 'F');
   canvas_.draw_text(16, 100, tbuf, Canvas::TextRole::HugeClock, Gray::G0);
-  canvas_.draw_text(16, 180, data_.weather.today_condition, Canvas::TextRole::Body, Gray::G0);
+  canvas_.draw_text_fit(16, 180, kContentW, data_.weather.today_condition, Canvas::TextRole::Body, Gray::G0);
   for (size_t i = 0; i < data_.weather.days.size() && i < 5; ++i) {
     auto& d = data_.weather.days[i];
     char line[64];
     std::snprintf(line, sizeof(line), "%s  %d/%d  %s", d.date.c_str(), d.hi, d.lo, d.condition.c_str());
-    canvas_.draw_text(16, 260 + static_cast<int>(i) * 40, line, Canvas::TextRole::Secondary, Gray::G0);
+    canvas_.draw_text_fit(16, 260 + static_cast<int>(i) * 40, kContentW, line, Canvas::TextRole::Secondary,
+                          Gray::G0);
   }
   canvas_.draw_text(16, 760, "Offline · showing saved forecast", Canvas::TextRole::Secondary, Gray::G1);
 }

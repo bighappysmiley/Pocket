@@ -17,7 +17,8 @@ void draw_focus_rows(Canvas& c, FocusModel& focus, const char* const* rows, int 
     if (i == focus.index)
       c.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, rows[i], Canvas::TextRole::Body);
     else
-      c.draw_text(kSideMargin + 8, y + kRowTextPad, rows[i], Canvas::TextRole::Body, Gray::G0);
+      c.draw_text_fit(kSideMargin + 8, y + kRowTextPad, kCanvasW - 48, rows[i], Canvas::TextRole::Body,
+                      Gray::G0);
   }
 }
 
@@ -44,8 +45,8 @@ void App::render_settings() {
     char ver[48];
     std::snprintf(ver, sizeof(ver), "Version %s", kConsumerVersion);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody, ver, Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + kBodyLinePitch, cfg_.device_name,
-                      Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text_fit(kSideMargin, kListTop + kTitleToBody + kBodyLinePitch, kContentW, cfg_.device_name,
+                          Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 2 * kBodyLinePitch + 8, "What's new",
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
@@ -168,7 +169,8 @@ void App::render_settings() {
       if (i == focus_.index)
         canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, label, Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin + 8, y + kRowTextPad, kCanvasW - 48, label, Canvas::TextRole::Body,
+                              Gray::G0);
     }
     return;
   }
@@ -238,7 +240,8 @@ void App::render_settings() {
         if (i == focus_.index)
           canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, net.ssid, Canvas::TextRole::Body);
         else
-          canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, net.ssid.c_str(), Canvas::TextRole::Body, Gray::G0);
+          canvas_.draw_text_fit(kSideMargin + 8, y + kRowTextPad, kCanvasW - 48, net.ssid,
+                                Canvas::TextRole::Body, Gray::G0);
         y += kRowPitch;
       }
       if (focus_.index == n_known)
@@ -275,7 +278,8 @@ void App::render_settings() {
       if (i == focus_.index)
         canvas_.draw_focus_tile(kSideMargin, y, kCanvasW - 32, kFocusRowH, label, Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + 8, y + kRowTextPad, label.c_str(), Canvas::TextRole::Body, Gray::G0);
+        canvas_.draw_text_fit(kSideMargin + 8, y + kRowTextPad, kCanvasW - 48, label, Canvas::TextRole::Body,
+                              Gray::G0);
       y += kRowPitch;
     }
     const char* add_label = "Add network…";
