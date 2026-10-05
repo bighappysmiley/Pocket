@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v51-icons";
+static const char* kBuildId = "POCKET-LIVE-v52-mic-notes";
 
 namespace {
 
@@ -182,6 +182,17 @@ struct EspStorage : pocket::PlatformStorage {
     }
     const uint64_t free = free_bytes(root.rfind("/sdcard", 0) == 0 ? "/sdcard" : "/littlefs");
     return free > 128 * 1024;
+  }
+
+  std::string data_root() override {
+    if (pocket::board::littlefs_mounted() || pocket::board::littlefs_mount()) return "/littlefs";
+    return {};
+  }
+  bool data_ensure_root() override {
+    if (data_root().empty()) return false;
+    mkdir("/littlefs/notes", 0755);
+    mkdir("/littlefs/lists", 0755);
+    return true;
   }
 };
 

@@ -41,7 +41,7 @@ function cors(req) {
     h["access-control-allow-origin"] = o;
     h["access-control-allow-credentials"] = "true";
     // x-pocket-session: bearer alternative — third-party cookies often blocked on mobile Safari / ITP.
-    h["access-control-allow-headers"] = "content-type,authorization,x-device-key,x-pocket-session";
+    h["access-control-allow-headers"] = "content-type,authorization,x-device-key,x-pocket-session,x-pcm-rate,x-pcm-encoding,x-device-id";
     h["access-control-allow-methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
   }
   return h;
@@ -839,6 +839,107 @@ async function getSelfSourceSha256() {
   return selfSourceSha256;
 }
 
+/** Wrap raw PCM s16le mono as a minimal WAV so Whisper multipart accepts it. */
+function pcmS16leToWav(pcm, sampleRate) {
+  const dataSize = pcm.length;
+  const buf = Buffer.alloc(44 + dataSize);
+  buf.write("RIFF", 0);
+  buf.writeUInt32LE(36 + dataSize, 4);
+  buf.write("WAVE", 8);
+  buf.write("fmt ", 12);
+  buf.writeUInt32LE(16, 16); // PCM fmt chunk size
+  buf.writeUInt16LE(1, 20); // PCM
+  buf.writeUInt16LE(1, 22); // mono
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate * 2, 28); // byte rate
+  buf.writeUInt16LE(2, 32); // block align
+  buf.writeUInt16LE(16, 34); // bits
+  buf.write("data", 36);
+  buf.writeUInt32LE(dataSize, 40);
+  pcm.copy(buf, 44);
+  return buf;
+}
+
+/**
+ * Cloud STT for device dictation. Tries, in order:
+ *   1) OPENAI_API_KEY → api.openai.com whisper-1
+ *   2) GROQ_API_KEY → api.groq.com whisper-large-v3
+ *   3) NEON_AI_GATEWAY_* → branch gateway openai-compatible /audio/transcriptions
+ */
+async function transcribePcmS16le(pcm, sampleRate) {
+  const wav = pcmS16leToWav(pcm, sampleRate);
+  const attempts = [];
+
+  const openaiKey = (process.env.OPENAI_API_KEY || process.env.STT_API_KEY || "").trim();
+  if (openaiKey) {
+    attempts.push({
+      url: "https://api.openai.com/v1/audio/transcriptions",
+      key: openaiKey,
+      model: "whisper-1",
+    });
+  }
+  const groqKey = (process.env.GROQ_API_KEY || "").trim();
+  if (groqKey) {
+    attempts.push({
+      url: "https://api.groq.com/openai/v1/audio/transcriptions",
+      key: groqKey,
+      model: "whisper-large-v3",
+    });
+  }
+  const neonTok = (process.env.NEON_AI_GATEWAY_TOKEN || "").trim();
+  const neonBase = (process.env.NEON_AI_GATEWAY_BASE_URL || "").replace(/\/$/, "");
+  if (neonTok && neonBase) {
+    attempts.push({
+      url: `${neonBase}/openai/v1/audio/transcriptions`,
+      key: neonTok,
+      model: "whisper-1",
+    });
+    attempts.push({
+      url: `${neonBase}/v1/audio/transcriptions`,
+      key: neonTok,
+      model: "whisper-1",
+    });
+  }
+
+  if (!attempts.length) {
+    throw new Error("No STT provider configured (set OPENAI_API_KEY, GROQ_API_KEY, or Neon AI Gateway)");
+  }
+
+  let lastErr = null;
+  for (const a of attempts) {
+    try {
+      const form = new FormData();
+      form.append("file", new Blob([wav], { type: "audio/wav" }), "note.wav");
+      form.append("model", a.model);
+      form.append("response_format", "json");
+      form.append("language", "en");
+      const r = await fetch(a.url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${a.key}` },
+        body: form,
+      });
+      const bodyText = await r.text();
+      if (!r.ok) {
+        lastErr = new Error(`${a.url} → HTTP ${r.status}: ${bodyText.slice(0, 180)}`);
+        continue;
+      }
+      let parsed = {};
+      try {
+        parsed = JSON.parse(bodyText);
+      } catch {
+        lastErr = new Error("STT returned non-JSON");
+        continue;
+      }
+      const text = typeof parsed.text === "string" ? parsed.text.trim() : "";
+      if (text) return text;
+      lastErr = new Error("STT returned empty text");
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("STT failed");
+}
+
 export default {
   async fetch(req) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(req) });
@@ -846,7 +947,7 @@ export default {
     // Health does not depend on DB schema readiness so it stays useful for diagnosing DB-layer issues.
     if (path === "/health" || path === "/" || path === "/v1/health") {
       const sha256 = await getSelfSourceSha256();
-      return json(req, { ok: true, build: "scram-api-v14-sd-admin", sourceSha256: sha256 });
+      return json(req, { ok: true, build: "scram-api-v15-stt", sourceSha256: sha256 });
     }
     try {
       await readySchema();
@@ -1493,6 +1594,26 @@ export default {
           size: 0,
           channel: "stable",
         });
+      }
+
+      // Device dictation — raw PCM s16le → Whisper (OpenAI / Groq / Neon AI Gateway).
+      if (req.method === "POST" && path === "/v1/stt") {
+        const key = (req.headers.get("x-device-key") || "").trim();
+        if (!safeEqual(key, DEVICE_API_KEY)) return json(req, { message: "Unauthorized." }, 401);
+        const rate = Math.max(8000, Math.min(48000, parseInt(req.headers.get("x-pcm-rate") || "16000", 10) || 16000));
+        const encoding = (req.headers.get("x-pcm-encoding") || "s16le").toLowerCase();
+        if (encoding !== "s16le") return json(req, { message: "Unsupported encoding." }, 400);
+        const ab = await req.arrayBuffer();
+        const pcm = Buffer.from(ab);
+        if (pcm.length < 320) return json(req, { message: "Audio too short." }, 400);
+        if (pcm.length > 2 * 1024 * 1024) return json(req, { message: "Audio too large." }, 413);
+        try {
+          const text = await transcribePcmS16le(pcm, rate);
+          if (!text) return json(req, { message: "Couldn't reach speech service." }, 502);
+          return json(req, { text });
+        } catch (e) {
+          return json(req, { message: "Couldn't reach speech service.", detail: String(e && e.message || e) }, 502);
+        }
       }
 
       // ---- Notes ----

@@ -32,7 +32,9 @@ esp_err_t http_event(esp_http_client_event_t* evt) {
 bool http_request(const char* method, const std::string& url, const char* auth_bearer,
                   const std::string& body, int& status_out, std::string& response_out,
                   int timeout_ms = 12000, const char* accept = "application/json",
-                  const char* extra_header_name = nullptr, const char* extra_header_value = nullptr) {
+                  const char* extra_header_name = nullptr, const char* extra_header_value = nullptr,
+                  const char* content_type = "application/json",
+                  const char* extra_header_name2 = nullptr, const char* extra_header_value2 = nullptr) {
   HttpBuf buf;
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
@@ -47,6 +49,9 @@ bool http_request(const char* method, const std::string& url, const char* auth_b
   cfg.event_handler = http_event;
   cfg.user_data = &buf;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
+  // Large STT uploads need a bigger buffer; default is fine for JSON APIs.
+  cfg.buffer_size = 4096;
+  cfg.buffer_size_tx = 4096;
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (!client) return false;
@@ -61,8 +66,13 @@ bool http_request(const char* method, const std::string& url, const char* auth_b
   if (extra_header_name && extra_header_value) {
     esp_http_client_set_header(client, extra_header_name, extra_header_value);
   }
+  if (extra_header_name2 && extra_header_value2) {
+    esp_http_client_set_header(client, extra_header_name2, extra_header_value2);
+  }
   if (!body.empty()) {
-    esp_http_client_set_header(client, "Content-Type", "application/json");
+    if (content_type && content_type[0]) {
+      esp_http_client_set_header(client, "Content-Type", content_type);
+    }
     esp_http_client_set_post_field(client, body.c_str(), body.size());
   }
 
@@ -217,6 +227,29 @@ std::string EspCloud::firmware_latest_json() {
     return {};
   }
   return resp;
+}
+
+std::string EspCloud::stt_transcribe(const std::vector<uint8_t>& pcm) {
+  if (pcm.size() < 320) {  // <10 ms @16 kHz mono s16 — not speech
+    ESP_LOGW(TAG, "stt: pcm too short (%u)", static_cast<unsigned>(pcm.size()));
+    return {};
+  }
+  // Raw PCM body — avoids base64 bloat on device. Server wraps as WAV for Whisper.
+  const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/stt";
+  const std::string body(reinterpret_cast<const char*>(pcm.data()), pcm.size());
+  int status = 0;
+  std::string resp;
+  if (!http_request("POST", url, POCKET_DEVICE_API_KEY, body, status, resp, 60000, "application/json",
+                    "x-pcm-rate", "16000", "application/octet-stream", "x-pcm-encoding", "s16le") ||
+      status != 200) {
+    ESP_LOGW(TAG, "stt HTTP %d resp=%s", status, resp.substr(0, 120).c_str());
+    return {};
+  }
+  std::string text = json_string_field(resp, "text");
+  // Trim whitespace
+  while (!text.empty() && (text.back() == ' ' || text.back() == '\n' || text.back() == '\r')) text.pop_back();
+  while (!text.empty() && (text.front() == ' ' || text.front() == '\n' || text.front() == '\r')) text.erase(text.begin());
+  return text;
 }
 
 bool EspCloud::push_device_settings(const std::string& device_id, int volume_percent, int brightness_percent) {

@@ -59,6 +59,8 @@ void App::boot() {
   display_.set_brightness(cfg_.brightness_percent);
   refresh_.set_ghosting_budget(cfg_.ghosting_frequent ? RefreshPolicy::kGhostingNFrequent
                                                        : RefreshPolicy::kGhostingN);
+  load_local_notes();
+  load_local_lists();
   if (!cfg_.onboarding_complete) {
     const ScreenId resume = resume_onboarding_screen();
     if (resume == ScreenId::OnboardingWifiPassword || resume == ScreenId::OnboardingCompanionQr) {

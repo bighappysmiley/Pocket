@@ -34,7 +34,7 @@ i2s_chan_handle_t rx_ = nullptr;
 bool ready_ = false;
 bool capturing_ = false;
 std::vector<uint8_t> capture_buf_;
-constexpr size_t kMaxCaptureBytes = 16000 * 2 * 6;  // ~6 s mono @16 kHz
+constexpr size_t kMaxCaptureBytes = 16000 * 2 * 2 * 5;  // ~5 s stereo @16 kHz
 
 bool es_wr(uint8_t reg, uint8_t val) {
   if (!es_dev_) return false;
@@ -114,10 +114,16 @@ bool es_init_regs() {
   if (!es_wr(0x32, 0xBF)) return false;
   if (!es_rmw(0x31, 0x60, 0x00)) return false;  // clear mute bits 6|5
 
-  // Mic (ADC) path — REG14 selects analog mic input + PGA gain, REG17 sets ADC volume.
-  // Values match Espressif's es8311 driver defaults for a single-ended analog mic.
-  if (!es_wr(0x14, 0x1A)) return false;  // analog mic1, PGA gain ~+18 dB
-  if (!es_wr(0x17, 0xBF)) return false;  // ADC volume ~0 dB, unmuted
+  // Mic (ADC) path — full Espressif-style ADC bring-up (not just DAC regs).
+  // REG14: analog mic1 + PGA (~+18 dB). REG17: ADC digital volume unmuted.
+  // REG15/1B: ADC scale / DMIC / HPF defaults from es8311_codec driver.
+  if (!es_wr(0x14, 0x1A)) return false;
+  if (!es_wr(0x15, 0x40)) return false;
+  if (!es_wr(0x1B, 0x0A)) return false;
+  if (!es_wr(0x17, 0xBF)) return false;
+  // Re-assert ADC modulator power (REG0E) after mic select — needed on some boards
+  // where the first 0x0E write races ahead of analog settle.
+  if (!es_wr(0x0E, 0x02)) return false;
 
   return true;
 }
@@ -320,19 +326,32 @@ void audio_capture_start() {
   if (!audio_mic_supported()) return;
   if (capturing_) return;
   capture_buf_.clear();
-  capture_buf_.reserve(std::min(kMaxCaptureBytes, static_cast<size_t>(32000)));
+  capture_buf_.reserve(std::min(kMaxCaptureBytes, static_cast<size_t>(64000)));
+  // Mute the speaker amp while recording so PA feedback doesn't swamp the mic.
+  gpio_set_level(static_cast<gpio_num_t>(kPinPaCtrl), 0);
+  // Re-assert mic PGA/volume each capture (safe if already set).
+  es_wr(0x14, 0x1A);
+  es_wr(0x17, 0xBF);
+  es_wr(0x0E, 0x02);
   if (i2s_channel_enable(rx_) == ESP_OK) {
     capturing_ = true;
+    // Let the ADC / DMA settle; discard the first noisy chunk.
+    vTaskDelay(pdMS_TO_TICKS(60));
+    uint8_t discard[512];
+    size_t nread = 0;
+    (void)i2s_channel_read(rx_, discard, sizeof(discard), &nread, pdMS_TO_TICKS(30));
+  } else {
+    gpio_set_level(static_cast<gpio_num_t>(kPinPaCtrl), 1);
   }
 }
 
 void audio_capture_poll() {
   if (!capturing_ || !rx_) return;
   if (capture_buf_.size() >= kMaxCaptureBytes) return;
-  uint8_t chunk[1024];
+  uint8_t chunk[2048];
   size_t nread = 0;
-  // Non-blocking best-effort drain; caller (App::tick) polls every ~50 ms.
-  if (i2s_channel_read(rx_, chunk, sizeof(chunk), &nread, 0) == ESP_OK && nread > 0) {
+  // Short block so a ~50 ms UI tick still drains DMA without spinning forever.
+  if (i2s_channel_read(rx_, chunk, sizeof(chunk), &nread, pdMS_TO_TICKS(20)) == ESP_OK && nread > 0) {
     const size_t room = kMaxCaptureBytes - capture_buf_.size();
     const size_t take = std::min(nread, room);
     capture_buf_.insert(capture_buf_.end(), chunk, chunk + take);
@@ -346,17 +365,35 @@ MicCaptureResult audio_capture_stop() {
   audio_capture_poll();
   if (rx_) i2s_channel_disable(rx_);
   capturing_ = false;
+  gpio_set_level(static_cast<gpio_num_t>(kPinPaCtrl), 1);
 
   result.ok = !capture_buf_.empty();
   if (result.ok) {
-    // Stereo interleaved 16-bit; fold to mono by taking the left channel — matches the
-    // stereo-out slot config used for playback so we don't need a second slot layout.
+    // Stereo interleaved 16-bit. Pick the louder channel (or average when similar) —
+    // some board revisions wire the analog mic into R instead of L.
     const auto* samples = reinterpret_cast<const int16_t*>(capture_buf_.data());
     const size_t n_frames = capture_buf_.size() / (2 * sizeof(int16_t));
+    double sum_l = 0.0, sum_r = 0.0;
+    for (size_t i = 0; i < n_frames; ++i) {
+      const double l = samples[i * 2];
+      const double r = samples[i * 2 + 1];
+      sum_l += l * l;
+      sum_r += r * r;
+    }
+    const bool use_right = sum_r > sum_l * 1.25;
+    const bool blend = !use_right && sum_l <= sum_r * 1.25 && sum_r > 0;
     std::vector<int16_t> mono(n_frames);
     double sum_sq = 0.0;
     for (size_t i = 0; i < n_frames; ++i) {
-      const int16_t s = samples[i * 2];
+      int16_t s;
+      if (use_right) {
+        s = samples[i * 2 + 1];
+      } else if (blend) {
+        const int32_t avg = (static_cast<int32_t>(samples[i * 2]) + samples[i * 2 + 1]) / 2;
+        s = static_cast<int16_t>(avg);
+      } else {
+        s = samples[i * 2];
+      }
       mono[i] = s;
       sum_sq += static_cast<double>(s) * static_cast<double>(s);
     }
@@ -365,6 +402,11 @@ MicCaptureResult audio_capture_stop() {
     const double rms = n_frames ? std::sqrt(sum_sq / static_cast<double>(n_frames)) : 0.0;
     // 32767 full-scale → percent scale tuned so normal speech reads ~15-40%.
     result.level_percent = static_cast<int>(std::min(100.0, (rms / 32767.0) * 400.0));
+    // Treat near-silence as a failed capture so Notes can prompt the user to retry.
+    if (result.level_percent < 2) {
+      result.ok = false;
+      result.pcm.clear();
+    }
   }
   capture_buf_.clear();
   return result;

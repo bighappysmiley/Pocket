@@ -131,6 +131,9 @@ struct PlatformStorage {
   /** Prefer SD when mounted; else LittleFS internal. Empty if neither usable. */
   virtual std::string book_root() { return {}; }
   virtual bool book_ensure_root() { return false; }
+  /** Local user-data root for Notes/Lists JSON (LittleFS). Empty if unavailable. */
+  virtual std::string data_root() { return {}; }
+  virtual bool data_ensure_root() { return false; }
 };
 
 enum class SoundId : uint8_t { Click = 0, Welcome, Success, Attention };
@@ -335,6 +338,10 @@ class App {
   bool screen_has_status_bar() const;
   void render_notes();
   void handle_notes(InputEvent e);
+  void load_local_notes();
+  void save_local_notes();
+  void load_local_lists();
+  void save_local_lists();
   void render_ledger();
   void handle_ledger(InputEvent e);
   void render_clock();
