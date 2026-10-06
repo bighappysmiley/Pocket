@@ -45,6 +45,8 @@ int main() {
   cfg.lock_message = "Emma's Pocket";
   CHECK(!cfg.ghosting_frequent);  // default: normal ghosting budget
   cfg.ghosting_frequent = true;
+  cfg.cloud_entitled = true;
+  cfg.cloud_last_ok_unix = 1700000000u;
 
   std::vector<uint8_t> blob;
   CHECK(pack_device_config(cfg, blob));
@@ -74,6 +76,8 @@ int main() {
   CHECK(round.time_format == 24);
   CHECK(round.lock_message == "Emma's Pocket");
   CHECK(round.ghosting_frequent);
+  CHECK(round.cloud_entitled);
+  CHECK(round.cloud_last_ok_unix == 1700000000u);
 
   // Corrupt magic → fail
   blob[0] ^= 0xff;

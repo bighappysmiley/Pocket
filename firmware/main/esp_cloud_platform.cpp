@@ -323,3 +323,14 @@ std::string EspCloud::device_attest_json(const std::string& device_id) {
   }
   return resp;
 }
+
+std::string EspCloud::http_get_text(const std::string& url) {
+  if (url.empty()) return {};
+  int status = 0;
+  std::string resp;
+  if (!http_request("GET", url, nullptr, {}, status, resp, 20000, "*/*") || status != 200) {
+    ESP_LOGW(TAG, "http_get HTTP %d url=%s", status, url.substr(0, 80).c_str());
+    return {};
+  }
+  return resp;
+}

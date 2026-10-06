@@ -1,6 +1,8 @@
 #include "pocket/app.hpp"
+#include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
 #include <fstream>
 #include <sys/stat.h>
 
@@ -63,11 +65,52 @@ void parse_music_list(const std::string& json, std::vector<MusicTrack>& out) {
 
 }  // namespace
 
+void App::music_load_local() {
+  music_tracks_.clear();
+  if (!storage_ || !storage_->music_ensure_root()) {
+    music_status_ = "No local music yet.";
+    return;
+  }
+  const std::string root = storage_->music_root();
+  DIR* dir = ::opendir(root.c_str());
+  if (!dir) {
+    music_status_ = "No local music yet.";
+    return;
+  }
+  while (auto* ent = ::readdir(dir)) {
+    const char* name = ent->d_name;
+    if (!name || name[0] == '.') continue;
+    const std::string fname = name;
+    const auto dot = fname.rfind('.');
+    if (dot == std::string::npos) continue;
+    std::string ext = fname.substr(dot + 1);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext != "wav" && ext != "mp3" && ext != "ogg" && ext != "flac") continue;
+    const std::string path = root + "/" + fname;
+    struct stat st {};
+    if (stat(path.c_str(), &st) != 0 || st.st_size <= 0) continue;
+    MusicTrack t;
+    t.id = fname;
+    t.filename = fname;
+    t.title = fname.substr(0, dot);
+    t.local_path = path;
+    t.size_bytes = static_cast<int>(st.st_size);
+    music_tracks_.push_back(std::move(t));
+  }
+  ::closedir(dir);
+  music_status_ = music_tracks_.empty() ? "No local music yet."
+                                       : (std::to_string(music_tracks_.size()) + " on device");
+}
+
 void App::music_sync_from_cloud() {
   music_status_ = "Syncing…";
   mark_content_dirty();
   if (!wifi_.connected()) {
-    music_status_ = "Wi-Fi required to sync.";
+    music_load_local();
+    if (music_tracks_.empty())
+      music_status_ = "Wi-Fi required to sync.";
+    else
+      music_status_ = "Offline · " + std::to_string(music_tracks_.size()) + " local";
     return;
   }
   if (!storage_ || !storage_->music_ensure_root()) {

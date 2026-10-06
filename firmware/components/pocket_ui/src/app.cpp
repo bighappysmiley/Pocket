@@ -61,6 +61,11 @@ void App::boot() {
                                                        : RefreshPolicy::kGhostingN);
   load_local_notes();
   load_local_lists();
+  load_local_passes();
+  load_weather_cache();
+  music_load_local();
+  reading_load_local();
+  apply_cloud_offline_grace();
   if (!cfg_.onboarding_complete) {
     const ScreenId resume = resume_onboarding_screen();
     if (resume == ScreenId::OnboardingWifiPassword || resume == ScreenId::OnboardingCompanionQr) {
@@ -404,14 +409,40 @@ void App::launch_home_app(HomeApp launch) {
   after_nav();
 }
 
+void App::apply_cloud_offline_grace() {
+  if (!cfg_.cloud_entitled) return;
+  if (cfg_.cloud_last_ok_unix == 0) return;
+  uint32_t now_unix = 0;
+  if (clock_.time_valid()) {
+    now_unix = static_cast<uint32_t>(std::time(nullptr));
+  } else {
+    now_unix = static_cast<uint32_t>(now_ms_ / 1000u);
+  }
+  if (now_unix < cfg_.cloud_last_ok_unix) return;  // clock skew / boot stamp
+  if (now_unix - cfg_.cloud_last_ok_unix > kCloudOfflineGraceSec) {
+    // Past grace — keep last status string but clear entitlement for outgoing Cloud use.
+    cfg_.cloud_entitled = false;
+    if (cfg_.cloud_status == "trialing" || cfg_.cloud_status == "active") {
+      cfg_.cloud_status = "lapsed";
+    }
+    store_.save(cfg_);
+  }
+}
+
 void App::maybe_cloud_attest() {
   if (!cfg_.onboarding_complete || !cfg_.companion_linked) return;
-  if (!wifi_.connected() || cfg_.device_id.empty()) return;
+  if (!wifi_.connected() || cfg_.device_id.empty()) {
+    apply_cloud_offline_grace();
+    return;
+  }
   // ~20s so Companion “Online” / rename stay fresh after reconnect.
   if (last_attest_ms_ != 0 && now_ms_ - last_attest_ms_ < 20000u) return;
   last_attest_ms_ = now_ms_;
   const std::string body = cloud_.device_attest_json(cfg_.device_id);
-  if (body.empty()) return;
+  if (body.empty()) {
+    apply_cloud_offline_grace();
+    return;
+  }
 
   auto json_bool = [](const std::string& j, const char* key) -> int {
     const std::string needle = std::string("\"") + key + "\"";
@@ -441,6 +472,12 @@ void App::maybe_cloud_attest() {
   if (entitled >= 0) cfg_.cloud_entitled = entitled == 1;
   const std::string st = json_str(body, "status");
   if (!st.empty()) cfg_.cloud_status = st;
+  // Successful attest → refresh offline grace clock (unix when RTC valid).
+  if (clock_.time_valid()) {
+    cfg_.cloud_last_ok_unix = static_cast<uint32_t>(std::time(nullptr));
+  } else {
+    cfg_.cloud_last_ok_unix = static_cast<uint32_t>(now_ms_ / 1000u);
+  }
   const std::string dname = json_str(body, "device_name");
   if (!dname.empty() && dname != cfg_.device_name) {
     cfg_.device_name = dname;

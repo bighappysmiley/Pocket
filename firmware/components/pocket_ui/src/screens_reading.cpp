@@ -1,7 +1,9 @@
 #include "pocket/app.hpp"
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
 #include <fstream>
 #include <sys/stat.h>
 
@@ -66,11 +68,53 @@ void parse_books_list(const std::string& json, std::vector<Book>& out) {
 
 }  // namespace
 
+void App::reading_load_local() {
+  books_.clear();
+  if (!storage_ || !storage_->book_ensure_root()) {
+    reading_status_ = "No local books yet.";
+    return;
+  }
+  const std::string root = storage_->book_root();
+  DIR* dir = ::opendir(root.c_str());
+  if (!dir) {
+    reading_status_ = "No local books yet.";
+    return;
+  }
+  while (auto* ent = ::readdir(dir)) {
+    const char* name = ent->d_name;
+    if (!name || name[0] == '.') continue;
+    const std::string fname = name;
+    const auto dot = fname.rfind('.');
+    if (dot == std::string::npos) continue;
+    std::string ext = fname.substr(dot + 1);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext != "txt") continue;
+    const std::string path = root + "/" + fname;
+    struct stat st {};
+    if (stat(path.c_str(), &st) != 0 || st.st_size <= 0) continue;
+    Book b;
+    b.id = fname;
+    b.filename = fname;
+    b.title = fname.substr(0, dot);
+    b.format = "txt";
+    b.local_path = path;
+    b.size_bytes = static_cast<int>(st.st_size);
+    books_.push_back(std::move(b));
+  }
+  ::closedir(dir);
+  reading_status_ =
+      books_.empty() ? "No local books yet." : (std::to_string(books_.size()) + " on device");
+}
+
 void App::reading_sync_from_cloud() {
   reading_status_ = "Syncing…";
   mark_content_dirty();
   if (!wifi_.connected()) {
-    reading_status_ = "Wi-Fi required to sync.";
+    reading_load_local();
+    if (books_.empty())
+      reading_status_ = "Wi-Fi required to sync.";
+    else
+      reading_status_ = "Offline · " + std::to_string(books_.size()) + " local";
     return;
   }
   if (!storage_ || !storage_->book_ensure_root()) {

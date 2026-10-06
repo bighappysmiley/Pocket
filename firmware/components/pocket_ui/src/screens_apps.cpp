@@ -1,5 +1,6 @@
 #include "pocket/app.hpp"
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -133,7 +134,9 @@ void App::load_local_notes() {
 
 void App::save_local_notes() {
   if (!storage_ || !storage_->data_ensure_root()) return;
-  const std::string path = storage_->data_root() + "/notes/index.json";
+  const std::string dir = storage_->data_root() + "/notes";
+  ::mkdir(dir.c_str(), 0755);
+  const std::string path = dir + "/index.json";
   std::ofstream out(path, std::ios::trunc);
   if (!out) return;
   out << "[";
@@ -206,7 +209,9 @@ void App::load_local_lists() {
 
 void App::save_local_lists() {
   if (!storage_ || !storage_->data_ensure_root()) return;
-  const std::string path = storage_->data_root() + "/lists/index.json";
+  const std::string dir = storage_->data_root() + "/lists";
+  ::mkdir(dir.c_str(), 0755);
+  const std::string path = dir + "/index.json";
   std::ofstream out(path, std::ios::trunc);
   if (!out) return;
   out << "[";
@@ -223,6 +228,296 @@ void App::save_local_lists() {
     out << "]}";
   }
   out << "]";
+}
+
+void App::load_local_passes() {
+  data_.passes.clear();
+  if (!storage_ || !storage_->data_ensure_root()) return;
+  const std::string path = storage_->data_root() + "/passes/index.json";
+  std::ifstream in(path);
+  if (!in) return;
+  std::string json((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  size_t i = 0;
+  while (i < json.size()) {
+    const size_t obj = json.find('{', i);
+    if (obj == std::string::npos) break;
+    const size_t end = json.find('}', obj + 1);
+    if (end == std::string::npos) break;
+    const std::string obj_s = json.substr(obj, end - obj + 1);
+    Pass p;
+    grab_json_string(obj_s, "id", p.id);
+    grab_json_string(obj_s, "title", p.title);
+    grab_json_string(obj_s, "type", p.type);
+    grab_json_string(obj_s, "payload", p.payload);
+    if (!p.id.empty()) {
+      if (p.title.empty()) p.title = p.id;
+      data_.passes.push_back(std::move(p));
+    }
+    i = end + 1;
+  }
+}
+
+void App::save_local_passes() {
+  if (!storage_ || !storage_->data_ensure_root()) return;
+  const std::string dir = storage_->data_root() + "/passes";
+  ::mkdir(dir.c_str(), 0755);
+  const std::string path = dir + "/index.json";
+  std::ofstream out(path, std::ios::trunc);
+  if (!out) return;
+  out << "[";
+  for (size_t i = 0; i < data_.passes.size(); ++i) {
+    const auto& p = data_.passes[i];
+    if (i) out << ",";
+    out << "{\"id\":\"" << json_escape(p.id) << "\",\"title\":\"" << json_escape(p.title)
+        << "\",\"type\":\"" << json_escape(p.type) << "\",\"payload\":\"" << json_escape(p.payload)
+        << "\"}";
+  }
+  out << "]";
+}
+
+static const char* wmo_condition(int code) {
+  if (code == 0) return "Clear";
+  if (code <= 3) return "Partly cloudy";
+  if (code <= 48) return "Fog";
+  if (code <= 57) return "Drizzle";
+  if (code <= 67) return "Rain";
+  if (code <= 77) return "Snow";
+  if (code <= 82) return "Showers";
+  if (code <= 86) return "Snow showers";
+  if (code <= 99) return "Thunderstorm";
+  return "—";
+}
+
+void App::load_weather_cache() {
+  data_.weather = WeatherCache{};
+  if (!storage_ || !storage_->data_ensure_root()) {
+    if (!cfg_.weather_city.empty()) data_.weather.city = cfg_.weather_city;
+    data_.weather.units = cfg_.weather_units;
+    return;
+  }
+  const std::string path = storage_->data_root() + "/weather/cache.json";
+  std::ifstream in(path);
+  if (!in) {
+    if (!cfg_.weather_city.empty()) data_.weather.city = cfg_.weather_city;
+    data_.weather.units = cfg_.weather_units;
+    return;
+  }
+  std::string json((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  grab_json_string(json, "city", data_.weather.city);
+  int64_t fetched = 0;
+  grab_json_int64(json, "fetched_at", fetched);
+  data_.weather.fetched_at = fetched;
+  int64_t units = 0;
+  if (grab_json_int64(json, "units", units)) data_.weather.units = static_cast<uint8_t>(units);
+  int64_t temp = 0;
+  if (grab_json_int64(json, "today_temp", temp)) data_.weather.today_temp = static_cast<int>(temp);
+  grab_json_string(json, "today_condition", data_.weather.today_condition);
+  data_.weather.days.clear();
+  size_t days = json.find("\"days\"");
+  if (days != std::string::npos) {
+    size_t i = days;
+    while (i < json.size()) {
+      const size_t obj = json.find('{', i);
+      if (obj == std::string::npos) break;
+      const size_t end = json.find('}', obj + 1);
+      if (end == std::string::npos) break;
+      const std::string obj_s = json.substr(obj, end - obj + 1);
+      WeatherDay d;
+      grab_json_string(obj_s, "date", d.date);
+      int64_t hi = 0, lo = 0;
+      grab_json_int64(obj_s, "hi", hi);
+      grab_json_int64(obj_s, "lo", lo);
+      d.hi = static_cast<int>(hi);
+      d.lo = static_cast<int>(lo);
+      grab_json_string(obj_s, "condition", d.condition);
+      if (!d.date.empty()) data_.weather.days.push_back(std::move(d));
+      i = end + 1;
+      if (data_.weather.days.size() >= 5) break;
+    }
+  }
+  if (data_.weather.city.empty() && !cfg_.weather_city.empty()) data_.weather.city = cfg_.weather_city;
+  if (data_.weather.units == 0 && cfg_.weather_units) data_.weather.units = cfg_.weather_units;
+}
+
+void App::save_weather_cache() {
+  if (!storage_ || !storage_->data_ensure_root()) return;
+  const std::string dir = storage_->data_root() + "/weather";
+  ::mkdir(dir.c_str(), 0755);
+  const std::string path = dir + "/cache.json";
+  std::ofstream out(path, std::ios::trunc);
+  if (!out) return;
+  out << "{\"city\":\"" << json_escape(data_.weather.city) << "\",\"units\":" << static_cast<int>(data_.weather.units)
+      << ",\"fetched_at\":" << data_.weather.fetched_at << ",\"today_temp\":" << data_.weather.today_temp
+      << ",\"today_condition\":\"" << json_escape(data_.weather.today_condition) << "\",\"days\":[";
+  for (size_t i = 0; i < data_.weather.days.size(); ++i) {
+    const auto& d = data_.weather.days[i];
+    if (i) out << ",";
+    out << "{\"date\":\"" << json_escape(d.date) << "\",\"hi\":" << d.hi << ",\"lo\":" << d.lo
+        << ",\"condition\":\"" << json_escape(d.condition) << "\"}";
+  }
+  out << "]}";
+}
+
+bool App::weather_geocode_city() {
+  if (cfg_.weather_city.empty()) return false;
+  if (cfg_.weather_lat != 0.f || cfg_.weather_lon != 0.f) return true;
+  std::string q;
+  for (unsigned char c : cfg_.weather_city) {
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' ||
+        c == '-' || c == '\'') {
+      if (c == ' ')
+        q += "%20";
+      else if (c == '\'')
+        q += "%27";
+      else
+        q.push_back(static_cast<char>(c));
+    }
+  }
+  if (q.empty()) return false;
+  const std::string url =
+      "https://geocoding-api.open-meteo.com/v1/search?name=" + q + "&count=1&language=en&format=json";
+  const std::string body = cloud_.http_get_text(url);
+  if (body.empty()) return false;
+  // "latitude":47.6,"longitude":-122.3
+  auto grab_num = [&](const char* key, float& dest) -> bool {
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t p = body.find(needle);
+    if (p == std::string::npos) return false;
+    p = body.find(':', p + needle.size());
+    if (p == std::string::npos) return false;
+    ++p;
+    while (p < body.size() && (body[p] == ' ' || body[p] == '\t')) ++p;
+    dest = static_cast<float>(std::atof(body.c_str() + p));
+    return true;
+  };
+  float lat = 0, lon = 0;
+  if (!grab_num("latitude", lat) || !grab_num("longitude", lon)) return false;
+  cfg_.weather_lat = lat;
+  cfg_.weather_lon = lon;
+  store_.save(cfg_);
+  return true;
+}
+
+bool App::weather_fetch_forecast() {
+  if (!wifi_.connected()) return false;
+  if (!weather_geocode_city()) return false;
+  char url[256];
+  const char* unit = cfg_.weather_units ? "celsius" : "fahrenheit";
+  std::snprintf(url, sizeof(url),
+                "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+                "&current=temperature_2m,weather_code"
+                "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+                "&temperature_unit=%s&timezone=auto&forecast_days=5",
+                static_cast<double>(cfg_.weather_lat), static_cast<double>(cfg_.weather_lon), unit);
+  const std::string body = cloud_.http_get_text(url);
+  if (body.empty()) return false;
+
+  auto find_arr = [&](const char* key) -> size_t {
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t p = body.find(needle);
+    if (p == std::string::npos) return std::string::npos;
+    return body.find('[', p);
+  };
+  auto next_num = [&](size_t& i) -> double {
+    while (i < body.size() &&
+           (body[i] == ' ' || body[i] == '\t' || body[i] == ',' || body[i] == '[' || body[i] == '\n'))
+      ++i;
+    const char* s = body.c_str() + i;
+    char* end = nullptr;
+    double v = std::strtod(s, &end);
+    if (end) i = static_cast<size_t>(end - body.c_str());
+    return v;
+  };
+  auto next_str = [&](size_t& i) -> std::string {
+    while (i < body.size() && body[i] != '"') ++i;
+    if (i >= body.size()) return {};
+    ++i;
+    size_t end = body.find('"', i);
+    if (end == std::string::npos) return {};
+    std::string s = body.substr(i, end - i);
+    i = end + 1;
+    return s;
+  };
+
+  // current temperature + weather_code (first occurrence after "current")
+  size_t cur = body.find("\"current\"");
+  int cur_temp = data_.weather.today_temp;
+  int cur_code = 0;
+  if (cur != std::string::npos) {
+    size_t t = body.find("\"temperature_2m\"", cur);
+    if (t != std::string::npos) {
+      t = body.find(':', t);
+      if (t != std::string::npos) cur_temp = static_cast<int>(std::lround(std::atof(body.c_str() + t + 1)));
+    }
+    size_t c = body.find("\"weather_code\"", cur);
+    if (c != std::string::npos && c < body.find("\"daily\"", cur)) {
+      c = body.find(':', c);
+      if (c != std::string::npos) cur_code = static_cast<int>(std::atoi(body.c_str() + c + 1));
+    }
+  }
+
+  size_t times = find_arr("time");
+  size_t codes = find_arr("weather_code");
+  // Prefer daily weather_code array (second weather_code after daily)
+  size_t daily = body.find("\"daily\"");
+  if (daily != std::string::npos) {
+    size_t dt = body.find("\"time\"", daily);
+    size_t dc = body.find("\"weather_code\"", daily);
+    size_t dhi = body.find("\"temperature_2m_max\"", daily);
+    size_t dlo = body.find("\"temperature_2m_min\"", daily);
+    if (dt != std::string::npos) times = body.find('[', dt);
+    if (dc != std::string::npos) codes = body.find('[', dc);
+    size_t his = (dhi != std::string::npos) ? body.find('[', dhi) : std::string::npos;
+    size_t los = (dlo != std::string::npos) ? body.find('[', dlo) : std::string::npos;
+    if (times == std::string::npos || codes == std::string::npos || his == std::string::npos ||
+        los == std::string::npos)
+      return false;
+    size_t ti = times + 1, ci = codes + 1, hi = his + 1, lo = los + 1;
+    data_.weather.days.clear();
+    for (int n = 0; n < 5; ++n) {
+      WeatherDay d;
+      d.date = next_str(ti);
+      d.condition = wmo_condition(static_cast<int>(next_num(ci)));
+      d.hi = static_cast<int>(std::lround(next_num(hi)));
+      d.lo = static_cast<int>(std::lround(next_num(lo)));
+      if (d.date.size() >= 10) d.date = d.date.substr(5);  // MM-DD
+      if (d.date.empty()) break;
+      data_.weather.days.push_back(std::move(d));
+    }
+  } else {
+    return false;
+  }
+
+  data_.weather.city = cfg_.weather_city.empty() ? data_.weather.city : cfg_.weather_city;
+  data_.weather.units = cfg_.weather_units;
+  data_.weather.today_temp = cur_temp;
+  data_.weather.today_condition = wmo_condition(cur_code);
+  if (data_.weather.today_condition.empty() && !data_.weather.days.empty())
+    data_.weather.today_condition = data_.weather.days[0].condition;
+  data_.weather.fetched_at = static_cast<int64_t>(now_ms_);
+  save_weather_cache();
+  return true;
+}
+
+void App::weather_refresh() {
+  error_msg_.clear();
+  if (!wifi_.connected()) {
+    error_msg_ = "You're offline. Showing saved forecast.";
+    error_until_ms_ = now_ms_ + 3500;
+    mark_content_dirty();
+    return;
+  }
+  if (cfg_.weather_city.empty()) {
+    error_msg_ = "Set a city in Settings → Units / Weather.";
+    error_until_ms_ = now_ms_ + 3500;
+    mark_content_dirty();
+    return;
+  }
+  if (!weather_fetch_forecast()) {
+    error_msg_ = "Couldn't refresh weather.";
+    error_until_ms_ = now_ms_ + 3500;
+  }
+  mark_content_dirty();
 }
 
 void App::render_notes() {
@@ -691,6 +986,7 @@ void App::handle_pass(InputEvent e) {
 
 void App::render_weather() {
   draw_status_bar();
+  if (data_.weather.city.empty() && !cfg_.weather_city.empty()) data_.weather.city = cfg_.weather_city;
   if (data_.weather.city.empty()) {
     canvas_.draw_text(kSideMargin, kContentTop, "Weather", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop), kContentW, kWrapGap,
@@ -698,6 +994,7 @@ void App::render_weather() {
     canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop) + kBodyLinePitch, kContentW, kWrapGap,
                               "Set a city in Settings → Units / Weather.", Canvas::TextRole::Secondary,
                               Gray::G1);
+    focus_.count = 1;
     canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Try again",
                             Canvas::TextRole::Body);
     return;
@@ -719,14 +1016,29 @@ void App::render_weather() {
     canvas_.draw_text_fit(kSideMargin, forecast_top + static_cast<int>(i) * kBodyLinePitch, kContentW,
                           line, Canvas::TextRole::Secondary, Gray::G0);
   }
-  canvas_.draw_text_fit(kSideMargin, kFooterY, kContentW, "Offline · showing saved forecast",
-                        Canvas::TextRole::Secondary, Gray::G1);
+  const char* footer = wifi_.connected() && data_.weather.fetched_at != 0
+                           ? "Updated · hold Select to refresh"
+                           : "Offline · showing saved forecast";
+  if (data_.weather.fetched_at == 0 && data_.weather.days.empty()) {
+    footer = wifi_.connected() ? "Select to fetch forecast" : "Offline · no saved forecast yet";
+  }
+  canvas_.draw_text_fit(kSideMargin, kFooterY, kContentW, footer, Canvas::TextRole::Secondary, Gray::G1);
+  focus_.count = 1;
+  if (now_ms_ < error_until_ms_ && !error_msg_.empty()) {
+    canvas_.fill_rect(0, kFooterY - 8, kCanvasW, 44, Gray::G3);
+    canvas_.draw_text_wrapped(kSideMargin, kFooterY - 4, kContentW, kWrapGap, error_msg_,
+                              Canvas::TextRole::Secondary, Gray::G0);
+  }
 }
 
 void App::handle_weather(InputEvent e) {
   if (e == InputEvent::Back) {
     nav_.pop();
     after_nav();
+    return;
+  }
+  if (e == InputEvent::Select) {
+    weather_refresh();
   }
 }
 

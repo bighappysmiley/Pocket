@@ -14,4 +14,5 @@ struct EspCloud : pocket::PlatformCloud {
   std::string firmware_latest_json() override;
   std::string device_attest_json(const std::string& device_id) override;
   bool push_device_settings(const std::string& device_id, int volume_percent, int brightness_percent) override;
+  std::string http_get_text(const std::string& url) override;
 };

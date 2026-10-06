@@ -76,6 +76,8 @@ struct PlatformCloud {
                                     int /*brightness_percent*/) {
     return false;
   }
+  /** Plain GET (no device auth) for public APIs such as Open-Meteo. Empty on failure. */
+  virtual std::string http_get_text(const std::string& /*url*/) { return {}; }
 };
 
 struct FirmwareUpdateInfo {
@@ -342,6 +344,15 @@ class App {
   void save_local_notes();
   void load_local_lists();
   void save_local_lists();
+  void load_local_passes();
+  void save_local_passes();
+  void load_weather_cache();
+  void save_weather_cache();
+  void weather_refresh();
+  bool weather_geocode_city();
+  bool weather_fetch_forecast();
+  void music_load_local();
+  void reading_load_local();
   void render_ledger();
   void handle_ledger(InputEvent e);
   void render_clock();
@@ -356,6 +367,8 @@ class App {
   void render_reading();
   void handle_reading(InputEvent e);
   void reading_sync_from_cloud();
+  /** Apply 72h offline entitlement grace when Cloud is unreachable. */
+  void apply_cloud_offline_grace();
   /** Load a book's text, compute e-ink page boundaries, resume last page if it matches. */
   void reading_open_book(int index);
   /** Recompute `reading_pages_` word-wrap boundaries for `reading_text_` at content width. */
