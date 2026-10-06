@@ -280,9 +280,13 @@ class App {
   void handle(InputEvent e);
   /** True while the user is spinning/committing PIN digits (lock or onboarding). */
   bool is_pin_entry_screen() const;
+  /** True on the Home app grid (rotary focus coalescing). */
+  bool is_home_screen() const;
   /** Apply a net rotary delta to the working PIN digit (Down=+1) and dirty once. */
   void apply_pin_digit_delta(int delta);
-  /** Present the canvas if a dirty mark is pending (used after coalesced PIN spins). */
+  /** Apply a net rotary delta to Home focus and dirty once (region of changed tiles). */
+  void apply_home_focus_delta(int delta);
+  /** Present the canvas if a dirty mark is pending (used after coalesced PIN/Home spins). */
   void flush_dirty();
 
   ScreenId screen() const { return nav_.current(); }
@@ -313,6 +317,8 @@ class App {
   /** Tight e-ink region update (PIN digits, focus rows, etc.). */
   void mark_region_dirty(int x, int y, int w, int h);
   void mark_pin_dirty();
+  /** Dirty the union of previous/next Home tiles (or content-band every few moves). */
+  void mark_home_focus_dirty(int prev_index, int next_index);
   void present_canvas(bool full);
   void play_sound(SoundId id);
   bool mint_pair_session();
@@ -430,6 +436,8 @@ class App {
   char pin_digit_working_ = '0';
   /** Counts digit spins since PIN enter — every few spins use a wider refresh to clear ghosts. */
   int pin_spin_count_ = 0;
+  /** Counts Home focus moves — every few moves use content-band to clear tile ghosts. */
+  int home_focus_spin_count_ = 0;
   int pin_fail_count_ = 0;
   uint32_t pin_lockout_until_ms_ = 0;
   uint32_t error_until_ms_ = 0;

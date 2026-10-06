@@ -142,6 +142,23 @@ int main() {
   CHECK(disp.region > after_min_region);
   CHECK(disp.full_or_fast == home_full);
 
+  // Home focus move → region partial (tile union), not a full-panel refresh.
+  const int home_focus_region = disp.region;
+  const int home_focus_full = disp.full_or_fast;
+  app.apply_home_focus_delta(1);
+  app.flush_dirty();
+  CHECK(disp.region > home_focus_region);
+  CHECK(disp.full_or_fast == home_focus_full);
+  CHECK(disp.last_ry > 0);  // below status bar
+  CHECK(app.is_home_screen());
+
+  // Coalesced Home rotary burst still presents once.
+  const int coalesce_region = disp.region;
+  app.apply_home_focus_delta(3);
+  app.flush_dirty();
+  CHECK(disp.region == coalesce_region + 1);
+  CHECK(disp.full_or_fast == home_focus_full);
+
   // Lock face starts on the first of the rotating calm motifs (no clock hands).
   CHECK(app.lock_motif_index() == 0);
   CHECK(app.lock_motif_index() >= 0 && app.lock_motif_index() < kLockMotifCount);

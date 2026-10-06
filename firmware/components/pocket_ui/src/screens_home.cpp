@@ -20,218 +20,184 @@ void dot(Canvas& c, int cx, int cy, int d, Gray g) {
 /** Outline color `g` implies the surface it sits on: a white (G3) stroke means
  * we're drawing over a filled-black focus tile, so the hole must clear to G0. */
 Gray surface_for(Gray g) { return g == Gray::G3 ? Gray::G0 : Gray::G3; }
-void thick_line(Canvas& c, int x0, int y0, int x1, int y1, Gray g, int thickness = 2) {
-  for (int t = 0; t < thickness; ++t) c.line(x0 + t, y0, x1 + t, y1, g);
-}
-/** Thick circular arc from angle a0 to a1 (radians, screen coords: 0 = east, +PI/2 = south). */
-void arc(Canvas& c, int cx, int cy, int r, double a0, double a1, Gray g, int thickness) {
-  const int steps = std::max(8, static_cast<int>(std::abs(a1 - a0) * r));
-  for (int i = 0; i <= steps; ++i) {
-    const double a = a0 + (a1 - a0) * i / steps;
-    const double ca = std::cos(a), sa = std::sin(a);
-    for (int t = 0; t < thickness; ++t) {
-      const double rr = r - t;
-      c.set_pixel(cx + static_cast<int>(std::lround(rr * ca)),
-                  cy + static_cast<int>(std::lround(rr * sa)), g);
-    }
-  }
-}
+
 constexpr double kPi = 3.14159265358979323846;
 
-/** Solid triangular arrowhead; `ang` is the direction the tip points (screen radians). */
-void arrowhead(Canvas& c, int tip_x, int tip_y, double ang, int len, Gray g) {
-  const double left = ang + 2.4;
-  const double right = ang - 2.4;
-  const int lx = tip_x + static_cast<int>(std::lround(len * std::cos(left)));
-  const int ly = tip_y + static_cast<int>(std::lround(len * std::sin(left)));
-  const int rx = tip_x + static_cast<int>(std::lround(len * std::cos(right)));
-  const int ry = tip_y + static_cast<int>(std::lround(len * std::sin(right)));
-  for (int i = 0; i <= len; ++i) {
-    const double t = static_cast<double>(i) / std::max(1, len);
-    const int ax = tip_x + static_cast<int>(std::lround(t * (lx - tip_x)));
-    const int ay = tip_y + static_cast<int>(std::lround(t * (ly - tip_y)));
-    const int dx = tip_x + static_cast<int>(std::lround(t * (rx - tip_x)));
-    const int dy = tip_y + static_cast<int>(std::lround(t * (ry - tip_y)));
-    c.line(ax, ay, dx, dy, g);
-    c.line(ax, ay + 1, dx, dy + 1, g);
-  }
-}
-
 /**
- * Home app glyphs (v61): designed e-ink silhouettes — classic metaphors,
- * consistent optical weight and padding inside the iPhone-style squircle.
- * High-contrast filled / 2-weight shapes that read at ~48–64px.
+ * Home app glyphs (v62): clearer iOS-style metaphors, matched optical weight,
+ * fill primitives only (no arc/stipple loops) for faster Home redraws.
  */
 void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
-  // ~70% of tile edge — consistent rim padding across the set.
-  const int s = std::max(24, size * 70 / 100);
+  // ~68% of tile — even rim padding; slightly tighter than v61 so silhouettes read larger.
+  const int s = std::max(24, size * 68 / 100);
   const Gray bg = surface_for(g);
-  const int x0 = cx - s / 2;
-  const int y0 = cy - s / 2;
-  const int stroke = std::max(3, s / 11);
+  const int stroke = std::max(3, s / 12);
   switch (app) {
     case HomeApp::Notes: {
-      // Lined pad — solid body, left margin rule, three even horizontal rules.
-      const int w = s * 5 / 8;
-      const int h = s * 13 / 16;
+      // Ruled notepad — solid body, margin rule, three even lines.
+      const int w = s * 9 / 16;
+      const int h = s * 3 / 4;
       const int x = cx - w / 2;
       const int y = cy - h / 2;
-      c.fill_round_rect(x, y, w, h, s / 10, g);
-      c.fill_rect(x + w / 5, y + stroke * 2, stroke, h - stroke * 4, bg);
-      const int lx = x + w / 5 + stroke * 2;
-      const int lw = w - (lx - x) - w / 7;
+      c.fill_round_rect(x, y, w, h, s / 12, g);
+      const int mx = x + w / 4;
+      c.fill_rect(mx, y + stroke * 2, stroke, h - stroke * 4, bg);
+      const int lx = mx + stroke * 2;
+      const int lw = w - (lx - x) - w / 8;
       for (int i = 0; i < 3; ++i) {
-        c.fill_rect(lx, y + h * (4 + i * 3) / 16, lw, stroke, bg);
+        c.fill_rect(lx, y + h * (5 + i * 3) / 16, lw, stroke, bg);
       }
       break;
     }
     case HomeApp::Ledger: {
-      // Three bold columns under a header — accounting ledger, not a grid scribble.
-      const int w = s * 11 / 16;
-      const int h = s * 13 / 16;
+      // Ledger sheet — header bar + three tidy columns (matched weight to Notes).
+      const int w = s * 5 / 8;
+      const int h = s * 3 / 4;
       const int x = cx - w / 2;
       const int y = cy - h / 2;
-      c.fill_round_rect(x, y, w, h, s / 11, g);
-      const int head_h = h / 4;
-      c.fill_rect(x + stroke, y + stroke, w - stroke * 2, head_h - stroke, bg);
-      const int body_y = y + head_h + 1;
+      c.fill_round_rect(x, y, w, h, s / 12, g);
+      const int head_h = std::max(stroke * 2, h / 5);
+      c.fill_rect(x + stroke, y + stroke, w - stroke * 2, head_h, bg);
+      const int body_y = y + head_h + stroke + 1;
       const int body_h = y + h - stroke - body_y;
-      // Two vertical dividers → three columns.
       for (int i = 1; i <= 2; ++i) {
         c.fill_rect(x + w * i / 3 - stroke / 2, body_y, stroke, body_h, bg);
       }
-      // Two horizontal rules spanning the body (row structure).
       for (int r = 1; r <= 2; ++r) {
         c.fill_rect(x + stroke, body_y + body_h * r / 3 - stroke / 2, w - stroke * 2, stroke, bg);
       }
       break;
     }
     case HomeApp::Clock: {
-      // Analog face: thick ring, 12/3/6/9 ticks, hands at 10:10, hub.
-      const int outer = s * 13 / 16;
+      // Analog face — thick ring, 12/3/6/9 ticks, hands @ 10:10, hub.
+      const int outer = s * 3 / 4;
       dot(c, cx, cy, outer, g);
       dot(c, cx, cy, outer - stroke * 2 - 2, bg);
       for (int k = 0; k < 4; ++k) {
-        const double ang = k * kPi / 2.0 - kPi / 2.0;  // start at 12
-        const int r0 = outer / 2 - stroke - 3;
-        const int r1 = outer / 2 - 2;
-        thick_line(c,
-                   cx + static_cast<int>(std::lround(r0 * std::cos(ang))),
-                   cy + static_cast<int>(std::lround(r0 * std::sin(ang))),
-                   cx + static_cast<int>(std::lround(r1 * std::cos(ang))),
-                   cy + static_cast<int>(std::lround(r1 * std::sin(ang))), g, stroke);
+        const double ang = k * kPi / 2.0 - kPi / 2.0;
+        const int r0 = outer / 2 - stroke - 2;
+        const int r1 = outer / 2 - 1;
+        const int x0 = cx + static_cast<int>(std::lround(r0 * std::cos(ang)));
+        const int y0 = cy + static_cast<int>(std::lround(r0 * std::sin(ang)));
+        const int x1 = cx + static_cast<int>(std::lround(r1 * std::cos(ang)));
+        const int y1 = cy + static_cast<int>(std::lround(r1 * std::sin(ang)));
+        c.fill_rect(std::min(x0, x1) - stroke / 2, std::min(y0, y1) - stroke / 2,
+                     std::max(stroke, std::abs(x1 - x0) + stroke),
+                     std::max(stroke, std::abs(y1 - y0) + stroke), g);
       }
-      thick_line(c, cx, cy, cx - s / 8, cy - s / 5, g, stroke + 1);
-      thick_line(c, cx, cy, cx + s / 4, cy - s / 14, g, stroke + 1);
-      dot(c, cx, cy, std::max(5, s / 8), g);
+      // Hour / minute as solid wedges (fill_rect diagonals via thick lines of rects).
+      const int hx = cx - s / 9;
+      const int hy = cy - s / 6;
+      const int mx = cx + s / 5;
+      const int my = cy - s / 16;
+      for (int i = 0; i <= 6; ++i) {
+        const int t = i;
+        c.fill_rect(cx + (hx - cx) * t / 6 - stroke / 2, cy + (hy - cy) * t / 6 - stroke / 2,
+                     stroke + 1, stroke + 1, g);
+        c.fill_rect(cx + (mx - cx) * t / 6 - stroke / 2, cy + (my - cy) * t / 6 - stroke / 2,
+                     stroke + 1, stroke + 1, g);
+      }
+      dot(c, cx, cy, std::max(4, s / 9), g);
       break;
     }
     case HomeApp::Pass: {
-      // Solid pass card + clip — filled silhouette, one photo cutout, short barcode.
-      const int cw = s * 9 / 16;
-      const int ch = s * 11 / 16;
+      // ID badge — clip + card + photo window + one barcode strip (no jagged ticks).
+      const int cw = s * 1 / 2;
+      const int ch = s * 5 / 8;
       const int bx = cx - cw / 2;
-      const int by = cy - ch / 2 + s / 12;
-      c.fill_round_rect(cx - s / 7, by - s / 6, s * 2 / 7, s / 5, s / 14, g);
-      c.fill_round_rect(bx, by, cw, ch, s / 9, g);
-      // Small photo window (keeps the card mostly solid ink).
-      c.fill_round_rect(bx + cw / 4, by + ch / 5, cw / 2, ch / 4, s / 20, bg);
-      c.fill_rect(bx + cw / 4, by + ch * 9 / 16, cw / 2, stroke, bg);
-      // Three barcode bars.
-      for (int i = 0; i < 3; ++i) {
-        c.fill_rect(bx + cw / 4 + i * (stroke + 3), by + ch * 3 / 4, stroke + (i & 1), ch / 9, bg);
-      }
+      const int by = cy - ch / 2 + s / 14;
+      c.fill_round_rect(cx - s / 8, by - s / 7, s / 4, s / 6, s / 16, g);
+      c.fill_round_rect(bx, by, cw, ch, s / 10, g);
+      c.fill_round_rect(bx + cw / 4, by + ch / 5, cw / 2, ch / 5, s / 22, bg);
+      c.fill_rect(bx + cw / 5, by + ch * 9 / 16, cw * 3 / 5, stroke, bg);
+      c.fill_rect(bx + cw / 5, by + ch * 3 / 4, cw * 3 / 5, ch / 10, bg);
       break;
     }
     case HomeApp::Weather: {
-      // Sun disc (no spiked rays) peeking over a smooth three-puff cloud.
-      const int sun_cx = x0 + s * 3 / 4;
-      const int sun_cy = y0 + s * 9 / 32;
-      const int sun_d = s * 3 / 8;
-      // Four stubby ray blobs (dots) — readable, not a jagged mohawk.
-      for (int k = 0; k < 4; ++k) {
-        const double ang = -kPi * 0.65 + k * 0.4;
-        const int rr = sun_d / 2 + s / 10;
-        dot(c,
-            sun_cx + static_cast<int>(std::lround(rr * std::cos(ang))),
-            sun_cy + static_cast<int>(std::lround(rr * std::sin(ang))),
-            std::max(4, s / 10), g);
-      }
-      dot(c, sun_cx, sun_cy, sun_d, g);
-      const int ccy = cy + s / 8;
-      dot(c, cx - s / 4, ccy, s * 3 / 8, g);
-      dot(c, cx + s / 8, ccy - s / 12, s * 7 / 16, g);
-      dot(c, cx + s / 3, ccy + s / 24, s * 5 / 16, g);
-      c.fill_round_rect(cx - s * 3 / 8, ccy + s / 32, s * 3 / 4, s / 5, s / 12, g);
+      // Clear sun (top-right) + flat cloud below — leave air so they don't fuse.
+      const int sun_d = s * 5 / 16;
+      dot(c, cx + s / 4, cy - s / 3, sun_d, g);
+      const int cloud_y = cy + s / 10;
+      const int cloud_h = s / 4;
+      c.fill_round_rect(cx - s * 3 / 8, cloud_y, s * 3 / 4, cloud_h, cloud_h / 2, g);
+      dot(c, cx - s / 6, cloud_y, s * 5 / 16, g);
+      dot(c, cx + s / 6, cloud_y - s / 28, s * 9 / 32, g);
       break;
     }
     case HomeApp::Music: {
-      // Eighth note — oval head, stem, tapered pennant; optically centered.
+      // Eighth note — slightly heavier head/stem/pennant to match Notes weight.
       const int head_w = s * 3 / 8;
-      const int head_h = s * 9 / 32;
-      const int hx = cx - s / 10;
-      const int hy = y0 + s * 23 / 32;
+      const int head_h = s * 5 / 16;
+      const int hx = cx - s / 14;
+      const int hy = cy + s / 5;
       c.fill_round_rect(hx - head_w / 2, hy - head_h / 2, head_w, head_h, head_h / 2, g);
-      const int stem_w = std::max(3, s / 12);
+      const int stem_w = std::max(4, s / 10);
       const int stem_x = hx + head_w / 2 - stem_w;
-      const int stem_top = y0 + s / 6;
-      c.fill_rect(stem_x, stem_top, stem_w, hy - stem_top - head_h / 4, g);
-      const int flag_h = s * 9 / 32;
-      const int flag_w = s * 5 / 16;
+      const int stem_top = cy - s * 5 / 16;
+      c.fill_rect(stem_x, stem_top, stem_w, hy - stem_top - head_h / 5, g);
+      const int flag_h = s * 5 / 16;
+      const int flag_w = s * 3 / 8;
       for (int i = 0; i < flag_h; ++i) {
-        // Soft taper (not a brick).
-        const int fw = flag_w - (flag_w * i * i) / (flag_h * flag_h);
-        c.hline(stem_x + stem_w - 1, stem_top + i, std::max(2, fw), g);
+        const int fw = flag_w - (flag_w * i) / flag_h;
+        c.hline(stem_x + stem_w - 1, stem_top + i, std::max(3, fw), g);
       }
       break;
     }
     case HomeApp::Settings: {
-      // Eight-tooth gear + hub — kept as the set’s reference silhouette weight.
-      const int r_body = s * 5 / 16;
-      const int tooth_len = std::max(5, s / 8);
-      const int tooth_w = std::max(5, s / 7);
-      constexpr int kTeeth = 8;
+      // Six-tooth gear — radial blunt teeth via short filled rects (cheap + crisp).
+      const int r_body = s * 9 / 32;
+      const int tooth_len = std::max(4, s / 9);
+      const int tooth_w = std::max(4, s / 8);
+      constexpr int kTeeth = 6;
       for (int k = 0; k < kTeeth; ++k) {
         const double ang = k * 2.0 * kPi / kTeeth;
         const double ca = std::cos(ang), sa = std::sin(ang);
-        for (int t = 0; t < tooth_len; ++t) {
-          dot(c,
-              cx + static_cast<int>(std::lround((r_body - 1 + t) * ca)),
-              cy + static_cast<int>(std::lround((r_body - 1 + t) * sa)), tooth_w, g);
-        }
+        const int tx = cx + static_cast<int>(std::lround((r_body + tooth_len / 2) * ca));
+        const int ty = cy + static_cast<int>(std::lround((r_body + tooth_len / 2) * sa));
+        // Axis-aligned tooth blob — reads as a gear at icon scale without nested dots.
+        c.fill_round_rect(tx - tooth_w / 2, ty - tooth_w / 2, tooth_w, tooth_w, tooth_w / 3, g);
       }
       dot(c, cx, cy, r_body * 2, g);
-      dot(c, cx, cy, std::max(8, s * 5 / 16), bg);
+      dot(c, cx, cy, std::max(7, s * 9 / 32), bg);
       break;
     }
     case HomeApp::Update: {
-      // Dual circular arrows — heavy arcs matching filled-glyph weight.
-      const int r = s * 3 / 8;
-      const int thickness = std::max(5, s / 7);
-      const double a0 = -kPi / 2.0 + 0.65;
-      const double a1 = kPi / 2.0 - 0.15;
-      arc(c, cx, cy, r, a0, a1, g, thickness);
-      arc(c, cx, cy, r, a0 + kPi, a1 + kPi, g, thickness);
-      const int hlen = std::max(8, s / 5);
-      arrowhead(c, cx + static_cast<int>(std::lround(r * std::cos(a1))),
-                cy + static_cast<int>(std::lround(r * std::sin(a1))), a1 + kPi / 2.0, hlen, g);
-      arrowhead(c, cx + static_cast<int>(std::lround(r * std::cos(a1 + kPi))),
-                cy + static_cast<int>(std::lround(r * std::sin(a1 + kPi))), a1 + kPi + kPi / 2.0,
-                hlen, g);
+      // Circular refresh: thick ring with two clockwise chevron heads (fill-only).
+      const int outer = s * 11 / 16;
+      const int ring = std::max(5, s / 7);
+      dot(c, cx, cy, outer, g);
+      dot(c, cx, cy, outer - ring * 2, bg);
+      // Gaps at 1 o'clock and 7 o'clock.
+      c.fill_rect(cx + outer / 6, cy - outer / 2 - 1, outer / 3, ring + 2, bg);
+      c.fill_rect(cx - outer / 2 - 1, cy + outer / 8, ring + 2, outer / 3, bg);
+      const int ah = std::max(7, s / 6);
+      // Clockwise tips.
+      c.fill_rect(cx + outer / 5, cy - outer / 2 - 2, ah, ring, g);
+      c.fill_rect(cx + outer / 5 + ah - ring, cy - outer / 2 - ah / 2, ring, ah, g);
+      c.fill_rect(cx - outer / 2 - 2, cy + outer / 6, ring, ah, g);
+      c.fill_rect(cx - outer / 2 - ah / 2, cy + outer / 6 + ah - ring, ah, ring, g);
       break;
     }
     case HomeApp::Reading: {
-      // Open book — two filled pages + spine; one bold rule each side.
-      const int w = s * 7 / 8;
-      const int h = s * 5 / 8;
+      // Open book — outline pages (hollow) + spine so weight matches Music/Notes.
+      const int w = s * 13 / 16;
+      const int h = s * 9 / 16;
       const int top = cy - h / 2;
       const int half = w / 2 - stroke;
-      c.fill_round_rect(cx - w / 2, top, half, h, s / 8, g);
-      c.fill_round_rect(cx + stroke, top, half, h, s / 8, g);
+      const int r = s / 10;
+      // Left page outline.
+      c.fill_round_rect(cx - w / 2, top, half, h, r, g);
+      c.fill_round_rect(cx - w / 2 + stroke, top + stroke, half - stroke * 2, h - stroke * 2,
+                        std::max(2, r - stroke), bg);
+      // Right page outline.
+      c.fill_round_rect(cx + stroke, top, half, h, r, g);
+      c.fill_round_rect(cx + stroke * 2, top + stroke, half - stroke * 2, h - stroke * 2,
+                        std::max(2, r - stroke), bg);
+      // Spine.
       c.fill_rect(cx - stroke / 2, top, stroke, h, g);
-      // One rule per page — enough to say "pages", not a window grid.
-      c.fill_rect(cx - w / 2 + half / 4, top + h / 2 - stroke / 2, half / 2, stroke, bg);
-      c.fill_rect(cx + stroke + half / 4, top + h / 2 - stroke / 2, half / 2, stroke, bg);
+      // One text rule per page.
+      c.fill_rect(cx - w / 2 + half / 4, top + h / 2 - stroke / 2, half / 2, stroke, g);
+      c.fill_rect(cx + stroke + half / 4, top + h / 2 - stroke / 2, half / 2, stroke, g);
       break;
     }
     default:
@@ -246,7 +212,7 @@ constexpr int kHomeOrder[kHomeGridSlots] = {0, 1, 2, 3, 4, 5, 8, 6, 7, 9, 10, 11
 HomeApp slot_app(int i) { return static_cast<HomeApp>(kHomeOrder[i]); }
 
 /** iPhone-style Home: 3 columns of square rounded icons with labels underneath.
- * v60: content-sized rows (no stretch-to-fill air between label and next icon). */
+ * v60+: content-sized rows (no stretch-to-fill air between label and next icon). */
 constexpr int kHomeCols = 3;
 constexpr int kHomeGapX = 16;
 constexpr int kHomeGapY = 8;
@@ -279,6 +245,18 @@ void home_grid_metrics(int n_focus, int label_band_h, int* out_grid_top, int* ou
   *out_cell_w = cell_w;
   *out_cell_h = cell_h;
   *out_icon = icon;
+}
+
+void home_cell_rect(int index, int n_focus, int label_band_h, int* out_x, int* out_y, int* out_w,
+                    int* out_h) {
+  int grid_top = 0, cell_w = 0, cell_h = 0, icon = 0;
+  home_grid_metrics(n_focus, label_band_h, &grid_top, &cell_w, &cell_h, &icon);
+  const int col = index % kHomeCols;
+  const int row = index / kHomeCols;
+  *out_x = kSideMargin + col * (cell_w + kHomeGapX);
+  *out_y = grid_top + row * (cell_h + kHomeGapY);
+  *out_w = cell_w;
+  *out_h = cell_h;
 }
 
 /** Word-wrap `text` into at most `max_lines` centered lines within `max_w`,
@@ -335,6 +313,15 @@ void draw_label_wrapped_centered(Canvas& c, int cx, int top_y, int max_w, int ma
   }
 }
 
+int count_home_focusable(const DeviceConfig& cfg, HomeApp* out, int cap) {
+  int n = 0;
+  for (int i = 0; i < kHomeGridSlots && n < cap; ++i) {
+    const HomeApp a = slot_app(i);
+    if (home_app_visible(cfg, a)) out[n++] = a;
+  }
+  return n;
+}
+
 }  // namespace
 
 void App::render_home() {
@@ -346,11 +333,7 @@ void App::render_home() {
   canvas_.hline(kSideMargin, brand_rule_y, 112, Gray::G1);
 
   HomeApp focusable[kHomeGridSlots];
-  int n_focus = 0;
-  for (int i = 0; i < kHomeGridSlots; ++i) {
-    const HomeApp a = slot_app(i);
-    if (home_app_visible(cfg_, a)) focusable[n_focus++] = a;
-  }
+  const int n_focus = count_home_focusable(cfg_, focusable, kHomeGridSlots);
   focus_.count = std::max(1, n_focus);
   if (focus_.index >= focus_.count) focus_.index = 0;
   const HomeApp focused = n_focus > 0 ? focusable[focus_.index] : HomeApp::Settings;
@@ -396,18 +379,53 @@ void App::render_home() {
   }
 }
 
+void App::mark_home_focus_dirty(int prev_index, int next_index) {
+  ++home_focus_spin_count_;
+  // Every 6th focus move: content-band partial clears residual tile ghosts.
+  // Otherwise only the union of the two cells — much less panel work than ContentBand.
+  if ((home_focus_spin_count_ % 6) == 0) {
+    mark_content_dirty();
+    return;
+  }
+  HomeApp focusable[kHomeGridSlots];
+  const int n = count_home_focusable(cfg_, focusable, kHomeGridSlots);
+  if (n <= 0) {
+    mark_content_dirty();
+    return;
+  }
+  const int label_band_h = canvas_.text_height(Canvas::TextRole::Secondary) + 6;
+  int x0 = 0, y0 = 0, w0 = 0, h0 = 0;
+  int x1 = 0, y1 = 0, w1 = 0, h1 = 0;
+  home_cell_rect(std::clamp(prev_index, 0, n - 1), n, label_band_h, &x0, &y0, &w0, &h0);
+  home_cell_rect(std::clamp(next_index, 0, n - 1), n, label_band_h, &x1, &y1, &w1, &h1);
+  const int pad = 6;
+  const int rx = std::max(0, std::min(x0, x1) - pad);
+  const int ry = std::max(0, std::min(y0, y1) - pad);
+  const int r2 = std::min(kCanvasW, std::max(x0 + w0, x1 + w1) + pad);
+  const int b2 = std::min(kCanvasH, std::max(y0 + h0, y1 + h1) + pad);
+  mark_region_dirty(rx, ry, r2 - rx, b2 - ry);
+}
+
+bool App::is_home_screen() const { return nav_.current() == ScreenId::Home; }
+
+void App::apply_home_focus_delta(int delta) {
+  if (!is_home_screen() || delta == 0) return;
+  HomeApp focusable[kHomeGridSlots];
+  const int n = count_home_focusable(cfg_, focusable, kHomeGridSlots);
+  focus_.count = std::max(1, n);
+  if (focus_.index >= focus_.count) focus_.index = 0;
+  const int prev = focus_.index;
+  focus_.move(delta);
+  if (focus_.index == prev) return;
+  mark_home_focus_dirty(prev, focus_.index);
+}
+
 void App::handle_home(InputEvent e) {
   HomeApp focusable[kHomeGridSlots];
-  int n = 0;
-  for (int i = 0; i < kHomeGridSlots; ++i) {
-    const HomeApp a = slot_app(i);
-    if (home_app_visible(cfg_, a)) focusable[n++] = a;
-  }
+  const int n = count_home_focusable(cfg_, focusable, kHomeGridSlots);
   focus_.count = std::max(1, n);
   if (e == InputEvent::Up || e == InputEvent::Down) {
-    focus_.move(e == InputEvent::Up ? -1 : 1);
-    // Full content refresh — tile region partials scrambled the Home grid on e-ink.
-    mark_content_dirty();
+    apply_home_focus_delta(e == InputEvent::Up ? -1 : 1);
   } else if (e == InputEvent::Select && n > 0) {
     const HomeApp launch = focusable[focus_.index];
     if (parental_requires_pin(launch) && !parental_session_unlocked_) {

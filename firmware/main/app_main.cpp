@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v61-icons";
+static const char* kBuildId = "POCKET-LIVE-v62-icons-speed";
 
 namespace {
 
@@ -374,13 +374,17 @@ extern "C" void app_main(void) {
       const pocket::InputEvent e = mapper.poll();
       if (e == pocket::InputEvent::None) break;
       if (!g_boot.ui_ready) continue;
-      // Coalesce queued Up/Down so PIN digit spins present once with the final value
-      // (avoids intermediate digits lagging / appearing to jump backward on e-ink).
-      if (app.is_pin_entry_screen() &&
+      // Coalesce queued Up/Down so PIN digit / Home focus present once with the final value
+      // (avoids intermediate frames lagging on e-ink during rapid rotary bursts).
+      if ((app.is_pin_entry_screen() || app.is_home_screen()) &&
           (e == pocket::InputEvent::Up || e == pocket::InputEvent::Down)) {
         int delta = (e == pocket::InputEvent::Down) ? 1 : -1;
         delta += mapper.drain_up_down_net();
-        app.apply_pin_digit_delta(delta);
+        if (app.is_pin_entry_screen()) {
+          app.apply_pin_digit_delta(delta);
+        } else {
+          app.apply_home_focus_delta(delta);
+        }
         app.flush_dirty();
         continue;
       }

@@ -382,6 +382,7 @@ void App::after_nav() { after_nav(screen_requires_full_enter(nav_.current())); }
 
 void App::go_home() {
   nav_.reset(ScreenId::Home);
+  home_focus_spin_count_ = 0;
   after_nav();
 }
 
@@ -727,8 +728,9 @@ void App::present_canvas(bool full) {
     refresh_.on_applied_tiny(RefreshMode::Partial);
   } else if (dirty_kind_ == DirtyKind::Region) {
     display_.present_region(canvas_, dirty_rx_, dirty_ry_, dirty_rw_, dirty_rh_);
-    // PIN / home tile regions are small — discount toward ghosting.
-    if (dirty_rh_ <= kStatusBarH + 40 || dirty_rw_ * dirty_rh_ < (kCanvasW * kCanvasH) / 4) {
+    // Only short strips (status-bar height) discount toward ghosting. Home tile
+    // unions and PIN bands count as full partials so navigation still clears ghosts.
+    if (dirty_rh_ <= kStatusBarH + 40) {
       refresh_.on_applied_tiny(RefreshMode::Partial);
     } else {
       refresh_.on_applied(RefreshMode::Partial);
