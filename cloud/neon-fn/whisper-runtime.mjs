@@ -1,45 +1,63 @@
 /**
  * Durable on-Neon Whisper STT (no external API keys).
- * Vendors @xenova/transformers + onnxruntime-node into /tmp on first use.
+ * Fits Neon Function /tmp (256MB tmpfs): wasm onnxruntime only, then wipe npm cache.
  * Marker: pocket-whisper-runtime-v1
  */
-import { mkdirSync, writeFileSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, existsSync, rmSync } from "fs";
 import { execSync } from "child_process";
 import { join } from "path";
 import { tmpdir } from "os";
 import { createRequire } from "module";
 
-const VENDOR = join(tmpdir(), "pocket-whisper-vendor-v1");
+const VENDOR = join(tmpdir(), "pocket-whisper-vendor-v2");
 const MARKER = join(VENDOR, ".ready");
 let pipelinePromise = null;
 
+const PATH_ENV = ["/usr/local/bin", "/usr/bin", process.env.PATH || ""].filter(Boolean).join(":");
+
+function run(cmd, opts = {}) {
+  return execSync(cmd, {
+    encoding: "utf8",
+    env: { ...process.env, PATH: PATH_ENV, ...(opts.env || {}) },
+    timeout: opts.timeout || 120000,
+    stdio: opts.stdio || "pipe",
+    cwd: opts.cwd,
+  });
+}
+
 async function ensureVendor() {
   if (existsSync(MARKER)) return;
+  try {
+    rmSync(VENDOR, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
   mkdirSync(join(VENDOR, "node_modules"), { recursive: true });
   writeFileSync(
     join(VENDOR, "package.json"),
     JSON.stringify({
       name: "pocket-whisper-vendor",
       private: true,
-      type: "commonjs",
       dependencies: {
         "@xenova/transformers": "2.17.2",
-        "onnxruntime-node": "1.14.0",
+        "onnxruntime-web": "1.14.0",
       },
     }),
   );
-  const pathEnv = ["/usr/local/bin", "/usr/bin", process.env.PATH || ""].filter(Boolean).join(":");
-  execSync("npm install --omit=dev --no-audit --no-fund", {
+  // Install without scripts; wasm only — stays under Neon /tmp budget.
+  run("npm install --omit=dev --no-audit --no-fund --ignore-scripts", {
     cwd: VENDOR,
     env: {
-      ...process.env,
-      PATH: pathEnv,
       npm_config_cache: join(VENDOR, ".npm-cache"),
       NODE_ENV: "production",
     },
-    stdio: "pipe",
     timeout: 240000,
   });
+  try {
+    rmSync(join(VENDOR, ".npm-cache"), { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
   writeFileSync(MARKER, "ok");
 }
 
@@ -53,7 +71,14 @@ async function getPipeline() {
     env.allowLocalModels = false;
     env.useBrowserCache = false;
     env.cacheDir = join(VENDOR, "model-cache");
-    return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en");
+    // Force wasm backend (no native onnxruntime-node).
+    if (env.backends?.onnx?.wasm) {
+      env.backends.onnx.wasm.numThreads = 1;
+      env.backends.onnx.wasm.proxy = false;
+    }
+    return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en", {
+      quantized: true,
+    });
   })();
   return pipelinePromise;
 }
@@ -102,7 +127,6 @@ function cors() {
 export default {
   async fetch(r) {
     if (r.method === "OPTIONS") return new Response(null, { status: 204, headers: cors() });
-    const u = new URL(r.url);
     if (r.method === "GET") {
       return Response.json(
         { ok: true, service: "pocket-whisper-runtime-v1", vendor: existsSync(MARKER) },
