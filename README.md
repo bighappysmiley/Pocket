@@ -1,59 +1,36 @@
 # Pocket
 
-Greenfield monorepo for **Pocket** device firmware, **Pocket Cloud** backend, and the phone **Companion** PWA.
+A quieter pocket.
 
-Authoritative Spec: Project docs `pocket-firmware-and-companion-spec.md` (Parts A–E). Part B (onboarding) and Part C (hardware) override Part A where they conflict.
+[Pocket Classic](https://bighappysmiley.github.io/Pocket/#shop) is calm e-ink for notes, lists, music, and reading. It works on its own. When you want sync, backup, or linking, [Companion](https://bighappysmiley.github.io/Pocket/get-companion) lives on your phone — not as a desktop web app.
 
-## Platform
+[Site](https://bighappysmiley.github.io/Pocket/) · [Shop](https://bighappysmiley.github.io/Pocket/#shop) · [Download Companion](https://bighappysmiley.github.io/Pocket/get-companion)
 
-Pocket is **source-available with a closed platform**:
+---
 
-- Buy and use the device as shipped.
-- Casual alternate OSes / unrestricted custom firmware are out of scope.
-- Tweaks and extensions go through an approved **developer** path (Companion `/developer` describes the model; submission UI coming).
-- Official firmware updates and owner recovery remain via `firmware-latest` / OTA — not marketed as an open modding playground.
+## Open source, closed platform
 
-Companion is **phone-only**. The marketing site may be browsed on a computer; the Companion app routes are blocked on desktop.
+Source is here to read. The product is for people who buy and use it as shipped.
 
-## Packages
+Pocket is not a casual alternate-OS playground. Official updates and owner recovery stay on the guided path. Tweaks and extensions go through an approved [developer](https://bighappysmiley.github.io/Pocket/developer) route — not unrestricted flashing.
 
-| Path | Role |
+## For owners
+
+Buy a device, then install Companion on your phone. Optional [Pocket Cloud](https://bighappysmiley.github.io/Pocket/) keeps Notes, Lists, Music, and Reading in sync when you want them everywhere; the device stays useful offline without it.
+
+If you need an official firmware package for recovery or update, use the [firmware-latest](https://github.com/bighappysmiley/Pocket/releases/tag/firmware-latest) release — not third-party images.
+
+## In this repository
+
+| | |
 | --- | --- |
-| [`firmware/`](firmware/) | ESP32-S3-ePaper firmware + host UI simulator |
-| [`cloud/`](cloud/) | Pocket Cloud API (auth, pairing, sync, billing) |
-| [`companion/`](companion/) | Marketing site + Companion PWA (`app.getpocket.device`) |
-| [`packages/shared/`](packages/shared/) | Shared TypeScript types |
+| [`firmware/`](firmware/) | Device software for Pocket Classic |
+| [`companion/`](companion/) | Marketing site and phone Companion |
+| [`cloud/`](cloud/) | Pocket Cloud API |
+| [`packages/shared/`](packages/shared/) | Shared types |
 
-## Quick start
-
-```bash
-# Cloud (port 8787)
-cd cloud && cp .env.example .env && npm install && npm run dev
-
-# Companion PWA (port 5173)
-cd companion && npm install && npm run dev
-
-# Firmware host tests / simulator
-cd firmware/host && cmake -B build && cmake --build build && ctest --test-dir build
-```
-
-## Deploy (always from `main`)
-
-Pushing to **`main`** runs CI and auto-deploy workflows. Agents merge to `main`; you do not need to merge or click Deploy.
-
-- Companion + Pocket Cloud: GitHub Actions (`.github/workflows/`). Provider secrets unlock live deploys.
-- Full secret checklist and URLs: [`docs/deploy.md`](docs/deploy.md)
-- Firmware is **not** flashed from CI — use ESP-IDF locally when hardware is available (owners / recovery).
-
-## Product constraints (short)
-
-- Canvas **480×800** portrait, 4-level grayscale; not a touchscreen
-- Controls: rotary wheel + **side button** + **power button** only — **no volume keys**
-- PTT = side button hold ≥200 ms; Function long ≥800 ms → Home
-- First-boot: **no** e-ink device naming (Part B); default name `"Pocket"`
-- Subscription product name: **Pocket Cloud** only (never "Connect")
-- Companion CTA: **Download Companion** (phone); not a desktop web app
+Local setup notes live beside each package. Product direction for Companion, shop, and platform posture is reflected on the [landing site](https://bighappysmiley.github.io/Pocket/).
 
 ## License
 
-Proprietary — all rights reserved. Source may be visible for transparency; the platform remains controlled.
+Proprietary — all rights reserved. Visibility of source is for transparency; the platform remains controlled.
