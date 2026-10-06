@@ -79,3 +79,7 @@ add_executable(test_pin_state ../tests/test_pin_state.cpp ${POCKET_UI_SRCS})
 target_include_directories(test_pin_state PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_pin_state PRIVATE POCKET_HOST=1)
 add_test(NAME test_pin_state COMMAND test_pin_state)
+
+add_executable(dump_home_png dump_home_png.cpp ${POCKET_UI_SRCS})
+target_include_directories(dump_home_png PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(dump_home_png PRIVATE POCKET_HOST=1)

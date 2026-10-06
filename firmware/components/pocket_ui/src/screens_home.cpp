@@ -1,6 +1,6 @@
 #include "pocket/app.hpp"
 #include <algorithm>
-#include <cmath>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -12,243 +12,74 @@ static const char* kAppLabels[kHomeGridSlots] = {
     "Reading", "",     "",      "",     "",        "",      "",         "",
 };
 
-/** Filled disc via rounded-rect with r == w/2 (square-cropped circle). */
-void dot(Canvas& c, int cx, int cy, int d, Gray g) {
-  d = std::max(2, d);
-  c.fill_round_rect(cx - d / 2, cy - d / 2, d, d, d / 2, g);
-}
-/** Outline color `g` implies the surface it sits on: a white (G3) stroke means
- * we're drawing over a filled-black focus tile, so the hole must clear to G0. */
-Gray surface_for(Gray g) { return g == Gray::G3 ? Gray::G0 : Gray::G3; }
+#include "home_glyphs.inc"
 
-constexpr double kPi = 3.14159265358979323846;
-
-/** Thick stroke along (x0,y0)→(x1,y1) via stepped fill_rects (fill-only, cheap). */
-void thick_line(Canvas& c, int x0, int y0, int x1, int y1, int th, Gray g) {
-  const int steps = std::max(6, std::max(std::abs(x1 - x0), std::abs(y1 - y0)));
-  const int hw = std::max(1, th / 2);
-  for (int i = 0; i <= steps; ++i) {
-    const int x = x0 + (x1 - x0) * i / steps;
-    const int y = y0 + (y1 - y0) * i / steps;
-    c.fill_rect(x - hw, y - hw, th, th, g);
+/** Map HomeApp → packed 1-bit bitmap index (Notes..Reading). */
+int home_glyph_index(HomeApp app) {
+  switch (app) {
+    case HomeApp::Notes:
+      return 0;
+    case HomeApp::Ledger:
+      return 1;
+    case HomeApp::Clock:
+      return 2;
+    case HomeApp::Pass:
+      return 3;
+    case HomeApp::Weather:
+      return 4;
+    case HomeApp::Music:
+      return 5;
+    case HomeApp::Settings:
+      return 6;
+    case HomeApp::Update:
+      return 7;
+    case HomeApp::Reading:
+      return 8;
+    default:
+      return -1;
   }
 }
 
-/** Filled triangle (arrow head) — three vertices, scanline fill. */
-void fill_tri(Canvas& c, int x0, int y0, int x1, int y1, int x2, int y2, Gray g) {
-  const int min_y = std::min(y0, std::min(y1, y2));
-  const int max_y = std::max(y0, std::max(y1, y2));
-  for (int y = min_y; y <= max_y; ++y) {
-    int nodes[3];
-    int n = 0;
-    const int xs[3] = {x0, x1, x2};
-    const int ys[3] = {y0, y1, y2};
-    for (int i = 0; i < 3; ++i) {
-      const int j = (i + 1) % 3;
-      if ((ys[i] < y && ys[j] >= y) || (ys[j] < y && ys[i] >= y)) {
-        nodes[n++] = xs[i] + (y - ys[i]) * (xs[j] - xs[i]) / (ys[j] - ys[i]);
-      }
-    }
-    if (n >= 2) {
-      int a = nodes[0], b = nodes[1];
-      if (a > b) std::swap(a, b);
-      c.hline(a, y, b - a + 1, g);
-    }
-  }
+/** True if packed bit at (sx,sy) is ink. */
+bool glyph_ink(const uint8_t* bits, int sx, int sy) {
+  if (sx < 0 || sy < 0 || sx >= kHomeGlyphSize || sy >= kHomeGlyphSize) return false;
+  return (bits[sy * kHomeGlyphRowBytes + (sx >> 3)] &
+          static_cast<uint8_t>(1u << (7 - (sx & 7)))) != 0;
 }
 
 /**
- * Home app glyphs (v64): traced from Apple-style GenerateImage references into
- * 1-bit fill silhouettes — SF Symbols weight, no flobs / blocky arrow stubs.
+ * Home app glyphs (v65): packed 1-bit bitmaps from Apple-quality GenerateImage
+ * SF Symbol–style filled marks (tools/pack_home_glyphs.py).
+ * Majority-vote scale keeps thin creases / ticks from vanishing.
  */
 void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
+  const int idx = home_glyph_index(app);
+  if (idx < 0) return;
+  const uint8_t* bits = kHomeGlyphBits[idx];
   // ~68% of tile — rim air like iOS glyphs inside the rounded squircle.
-  const int s = std::max(24, size * 68 / 100);
-  const Gray bg = surface_for(g);
-  const int stroke = std::max(3, s / 11);
-  switch (app) {
-    case HomeApp::Notes: {
-      // Apple Notes: solid page + dog-ear + three centered rules (no margin rail).
-      const int w = s * 9 / 16;
-      const int h = s * 3 / 4;
-      const int x = cx - w / 2;
-      const int y = cy - h / 2;
-      const int ear = std::max(7, w * 5 / 16);
-      c.fill_round_rect(x, y, w, h, std::max(4, s / 14), g);
-      c.fill_rect(x + w - ear, y, ear, ear, bg);
-      for (int i = 0; i < ear; ++i) {
-        c.hline(x + w - ear, y + i, ear - i, g);
-      }
-      const int lx = x + w / 5;
-      const int lw = w - w * 2 / 5;
-      const int th = std::max(2, stroke - 1);
-      for (int i = 0; i < 3; ++i) {
-        c.fill_rect(lx, y + h * (7 + i * 3) / 20, lw, th, bg);
-      }
-      break;
-    }
-    case HomeApp::Ledger: {
-      // Bound ledger book: spine band + three calm row rules + bold total (not a # hash).
-      const int w = s * 5 / 8;
-      const int h = s * 3 / 4;
-      const int x = cx - w / 2;
-      const int y = cy - h / 2;
-      c.fill_round_rect(x, y, w, h, std::max(4, s / 14), g);
-      const int inset = std::max(3, stroke);
-      // Spine / binding strip on the left.
-      c.fill_rect(x + inset, y + inset, std::max(4, w / 7), h - inset * 2, bg);
-      // Three horizontal entry rules (no verticals — avoids “hash” look).
-      const int rule_x = x + inset + w / 6;
-      const int rule_w = w - inset * 2 - w / 6;
-      const int th = std::max(2, stroke - 1);
-      for (int i = 0; i < 3; ++i) {
-        c.fill_rect(rule_x, y + h * (5 + i * 3) / 16, rule_w, th, bg);
-      }
-      // Total bar.
-      c.fill_rect(rule_x, y + h * 13 / 16, rule_w, std::max(th + 1, h / 10), bg);
-      break;
-    }
-    case HomeApp::Clock: {
-      // Apple Clock: thick ring, 12/3/6/9 ticks, hands @ 10:10, solid hub.
-      const int outer = s * 3 / 4;
-      const int ring = std::max(4, stroke + 1);
-      dot(c, cx, cy, outer, g);
-      dot(c, cx, cy, outer - ring * 2, bg);
-      for (int k = 0; k < 4; ++k) {
-        const double ang = k * kPi / 2.0 - kPi / 2.0;
-        const int r0 = outer / 2 - ring - 2;
-        const int r1 = outer / 2 - 1;
-        const int x0 = cx + static_cast<int>(std::lround(r0 * std::cos(ang)));
-        const int y0 = cy + static_cast<int>(std::lround(r0 * std::sin(ang)));
-        const int x1 = cx + static_cast<int>(std::lround(r1 * std::cos(ang)));
-        const int y1 = cy + static_cast<int>(std::lround(r1 * std::sin(ang)));
-        thick_line(c, x0, y0, x1, y1, std::max(2, stroke - 1), g);
-      }
-      const int hx = cx - s / 7;
-      const int hy = cy - s / 5;
-      const int mx = cx + s * 5 / 18;
-      const int my = cy - s / 16;
-      thick_line(c, cx, cy, hx, hy, stroke + 1, g);
-      thick_line(c, cx, cy, mx, my, stroke, g);
-      dot(c, cx, cy, std::max(5, s / 9), g);
-      break;
-    }
-    case HomeApp::Pass: {
-      // Wallet / Pass: clip tab, rounded badge, photo disc, name + stripe.
-      const int cw = s * 9 / 16;
-      const int ch = s * 11 / 16;
-      const int bx = cx - cw / 2;
-      const int by = cy - ch / 2 + s / 14;
-      c.fill_round_rect(cx - s / 10, by - s / 8, s / 5, s / 8, s / 20, g);
-      c.fill_round_rect(bx, by, cw, ch, s / 10, g);
-      const int photo = std::max(8, cw * 5 / 12);
-      dot(c, cx, by + ch * 6 / 19, photo, bg);
-      c.fill_rect(bx + cw / 5, by + ch * 11 / 20, cw * 3 / 5, std::max(2, stroke - 1), bg);
-      c.fill_rect(bx + cw / 5, by + ch * 3 / 4, cw * 3 / 5, std::max(stroke, ch / 10), bg);
-      break;
-    }
-    case HomeApp::Weather: {
-      // Solid sun disc, then cloud drawn over it — sun peeks top-right (classic Weather).
-      const int sun_cx = cx + s / 4;
-      const int sun_cy = cy - s * 5 / 16;
-      const int sun_d = s * 11 / 32;
-      dot(c, sun_cx, sun_cy, sun_d, g);
-      const int cloud_y = cy + s / 16;
-      const int cloud_h = s * 5 / 18;
-      c.fill_round_rect(cx - s * 3 / 8, cloud_y, s * 3 / 4, cloud_h, cloud_h / 2, g);
-      dot(c, cx - s / 6, cloud_y + 1, s * 5 / 16, g);
-      dot(c, cx + s / 8, cloud_y - s / 40, s * 9 / 32, g);
-      break;
-    }
-    case HomeApp::Music: {
-      // Eighth note — oval head, thick stem, solid pennant (no etched bands).
-      const int head_w = s * 7 / 16;
-      const int head_h = s * 5 / 16;
-      const int hx = cx - s / 14;
-      const int hy = cy + s / 5;
-      c.fill_round_rect(hx - head_w / 2, hy - head_h / 2, head_w, head_h, head_h / 2, g);
-      const int stem_w = std::max(4, s / 9);
-      const int stem_x = hx + head_w / 2 - stem_w;
-      const int stem_top = cy - s * 3 / 8;
-      c.fill_rect(stem_x, stem_top, stem_w, hy - stem_top - head_h / 5, g);
-      const int flag_h = s * 5 / 16;
-      const int flag_w = s * 3 / 8;
-      for (int i = 0; i < flag_h; ++i) {
-        const int fw = flag_w - (flag_w * i) / flag_h;
-        c.hline(stem_x + stem_w - 1, stem_top + i, std::max(4, fw), g);
-      }
-      break;
-    }
-    case HomeApp::Settings: {
-      // Eight soft teeth + body + round hub — matches GenerateImage gear silhouette.
-      const int r_body = s * 9 / 32;
-      const int tooth_len = std::max(6, s / 7);
-      const int tooth_w = std::max(6, s / 6);
-      constexpr int kTeeth = 8;
-      for (int k = 0; k < kTeeth; ++k) {
-        const double ang = k * 2.0 * kPi / kTeeth;
-        const double ca = std::cos(ang), sa = std::sin(ang);
-        const int tx = cx + static_cast<int>(std::lround((r_body + tooth_len / 2) * ca));
-        const int ty = cy + static_cast<int>(std::lround((r_body + tooth_len / 2) * sa));
-        // Rotate tooth box toward radial axis for even silhouette.
-        const int tw = static_cast<int>(tooth_w * (0.55 + 0.45 * std::abs(sa)) +
-                                       tooth_len * 0.45 * std::abs(ca));
-        const int th = static_cast<int>(tooth_w * (0.55 + 0.45 * std::abs(ca)) +
-                                       tooth_len * 0.45 * std::abs(sa));
-        c.fill_round_rect(tx - tw / 2, ty - th / 2, tw, th, std::min(tw, th) / 2, g);
-      }
-      dot(c, cx, cy, r_body * 2 + 2, g);
-      dot(c, cx, cy, std::max(9, s * 9 / 32), bg);
-      break;
-    }
-    case HomeApp::Update: {
-      // SF Symbol refresh: ring with an annulus gap + solid clockwise arrow head.
-      const int outer = s * 11 / 16;
-      const int ring = std::max(5, s / 7);
-      const int r_outer = outer / 2;
-      const int r_inner = std::max(2, r_outer - ring);
-      dot(c, cx, cy, outer, g);
-      dot(c, cx, cy, outer - ring * 2, bg);
-      // Punch a gap only in the ring annulus (0° = up, clockwise). Gap ~330°…60°.
-      for (int dy = -r_outer - 1; dy <= r_outer + 1; ++dy) {
-        for (int dx = -r_outer - 1; dx <= r_outer + 1; ++dx) {
-          const int rr = dx * dx + dy * dy;
-          if (rr > r_outer * r_outer || rr < r_inner * r_inner) continue;
-          double ang = std::atan2(static_cast<double>(dx), static_cast<double>(-dy)) * 180.0 / kPi;
-          if (ang < 0) ang += 360.0;
-          if (ang >= 330.0 || ang <= 55.0) {
-            c.set_pixel(cx + dx, cy + dy, bg);
-          }
+  const int dest = std::max(24, size * 68 / 100);
+  const int src = kHomeGlyphSize;
+  const int x0 = cx - dest / 2;
+  const int y0 = cy - dest / 2;
+  for (int dy = 0; dy < dest; ++dy) {
+    const int sy0 = dy * src / dest;
+    const int sy1 = std::max(sy0 + 1, (dy + 1) * src / dest);
+    for (int dx = 0; dx < dest; ++dx) {
+      const int sx0 = dx * src / dest;
+      const int sx1 = std::max(sx0 + 1, (dx + 1) * src / dest);
+      int ink = 0;
+      int tot = 0;
+      for (int sy = sy0; sy < sy1; ++sy) {
+        for (int sx = sx0; sx < sx1; ++sx) {
+          ++tot;
+          if (glyph_ink(bits, sx, sy)) ++ink;
         }
       }
-      // Arrow head at ~12 o'clock, tip pointing clockwise (toward 3).
-      const int r_mid = (r_outer + r_inner) / 2;
-      const int tip_x = cx + r_mid / 8;
-      const int tip_y = cy - r_mid;
-      const int ah = std::max(12, s / 4);
-      fill_tri(c, tip_x + ah * 3 / 4, tip_y, tip_x - ah / 5, tip_y - ah / 2, tip_x - ah / 5,
-               tip_y + ah / 2, g);
-      break;
+      // Strict majority — keeps cutouts (Notes rules, gear hub) from filling shut.
+      if (ink * 2 > tot) {
+        c.set_pixel(x0 + dx, y0 + dy, g);
+      }
     }
-    case HomeApp::Reading: {
-      // Open book — trapezoid pages (outer edges lower) + spine, Apple Books weight.
-      const int w = s * 7 / 8;
-      const int h = s * 10 / 16;
-      const int top = cy - h / 2;
-      const int half = w / 2 - 1;
-      const int drop = std::max(5, s / 12);  // outer corners sit lower = open book
-      // Left page.
-      c.fill_round_rect(cx - w / 2, top + drop / 2, half, h - drop / 2, s / 12, g);
-      fill_tri(c, cx - w / 2, top + drop, cx - 1, top, cx - 1, top + drop, g);
-      // Right page.
-      c.fill_round_rect(cx + 1, top + drop / 2, half, h - drop / 2, s / 12, g);
-      fill_tri(c, cx + 1, top, cx + w / 2, top + drop, cx + 1, top + drop, g);
-      // Spine crease.
-      c.fill_rect(cx - stroke / 2, top + 2, std::max(2, stroke), h - 4, bg);
-      break;
-    }
-    default:
-      break;
   }
 }
 
