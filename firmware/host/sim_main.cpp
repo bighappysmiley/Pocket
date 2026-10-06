@@ -179,6 +179,13 @@ int main() {
     }
     InputEvent ev;
     while ((ev = mapper.poll()) != InputEvent::None) {
+      if (app.is_pin_entry_screen() && (ev == InputEvent::Up || ev == InputEvent::Down)) {
+        int delta = (ev == InputEvent::Down) ? 1 : -1;
+        delta += mapper.drain_up_down_net();
+        app.apply_pin_digit_delta(delta);
+        app.flush_dirty();
+        continue;
+      }
       app.handle(ev);
     }
     app.tick(clock.now_ms());

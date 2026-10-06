@@ -39,164 +39,170 @@ void arc(Canvas& c, int cx, int cy, int r, double a0, double a1, Gray g, int thi
 constexpr double kPi = 3.14159265358979323846;
 
 /**
- * Home app glyphs (v59): iOS-style icons — clear silhouettes with one consistent
- * optical weight inside rounded squares. Slightly larger than v58's inset glyphs,
- * still far from the old fill-the-tile monsters.
+ * Home app glyphs (v60): brand-new e-ink silhouettes — not a resize of v59 line art.
+ * Bold filled shapes that read at a glance on 2bpp; chrome stays the rounded square.
  */
 void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
-  // ~80% of the icon well (v58 used 72%) — a tiny bump in presence.
-  const int s = std::max(22, size * 80 / 100);
+  const int s = std::max(22, size * 78 / 100);
   const Gray bg = surface_for(g);
   const int x0 = cx - s / 2;
   const int y0 = cy - s / 2;
-  const int stroke = std::max(2, s / 12);
+  const int stroke = std::max(2, s / 11);
   switch (app) {
     case HomeApp::Notes: {
-      // Document with folded corner + three rule lines.
-      const int w = s * 5 / 8;
-      const int h = s * 13 / 16;
-      const int x = cx - w / 2;
-      const int y = cy - h / 2;
-      c.fill_round_rect(x, y, w, h, s / 9, g);
-      const int fold = w * 2 / 5;
-      for (int i = 0; i < fold; ++i) {
-        c.hline(x + w - fold + i, y + i, fold - i, bg);
-        c.vline(x + w - fold + i, y, fold - i, bg);
-      }
-      const int lx = x + w / 5;
-      const int lw = w - w / 5 * 2;
+      // Pencil over a ruled pad — pad left, thick pencil diagonal right.
+      const int pad_w = s * 11 / 20;
+      const int pad_h = s * 3 / 4;
+      const int px = x0 + s / 10;
+      const int py = cy - pad_h / 2;
+      c.fill_round_rect(px, py, pad_w, pad_h, s / 12, g);
+      const int lx = px + pad_w / 5;
+      const int lw = pad_w - pad_w / 5 * 2;
       for (int i = 0; i < 3; ++i) {
-        const int ly = y + h * (5 + i * 3) / 16;
-        c.fill_rect(lx, ly, lw - (i == 2 ? lw / 4 : 0), stroke, bg);
+        c.fill_rect(lx, py + pad_h * (4 + i * 3) / 16, lw, stroke, bg);
       }
+      // Pencil body (parallelogram-ish via thick diagonal) + tip.
+      const int p0x = x0 + s * 11 / 20;
+      const int p0y = y0 + s * 3 / 4;
+      const int p1x = x0 + s * 7 / 8;
+      const int p1y = y0 + s / 6;
+      thick_line(c, p0x, p0y, p1x, p1y, g, stroke + 2);
+      // Eraser cap.
+      c.fill_round_rect(p1x - stroke, p1y - stroke, stroke * 3, stroke * 3, stroke, g);
+      // Tip point.
+      thick_line(c, p0x, p0y, p0x - stroke, p0y + stroke, bg, stroke);
       break;
     }
     case HomeApp::Ledger: {
-      // Three ascending bars on a baseline — finance at a glance.
-      const int base_y = y0 + s - s / 8;
-      const int bar_w = std::max(5, s / 5);
-      const int gap = std::max(3, s / 9);
-      const int heights[3] = {s * 36 / 100, s * 56 / 100, s * 76 / 100};
-      const int total_w = 3 * bar_w + 2 * gap;
-      int bx = cx - total_w / 2;
-      c.fill_rect(bx - 2, base_y - stroke / 2, total_w + 4, stroke, g);
-      for (int i = 0; i < 3; ++i) {
-        c.fill_round_rect(bx, base_y - heights[i], bar_w, heights[i], bar_w / 3, g);
-        bx += bar_w + gap;
+      // Checkmark over a receipt strip — money/tally at a glance.
+      const int rw = s * 9 / 16;
+      const int rh = s * 13 / 16;
+      const int rx = cx - rw / 2;
+      const int ry = cy - rh / 2;
+      c.fill_round_rect(rx, ry, rw, rh, s / 14, g);
+      // Jagged receipt top.
+      for (int i = 0; i < rw; i += stroke + 1) {
+        c.fill_rect(rx + i, ry, stroke, stroke, bg);
       }
+      // Two amount lines.
+      c.fill_rect(rx + rw / 5, ry + rh * 5 / 16, rw * 3 / 5, stroke, bg);
+      c.fill_rect(rx + rw / 5, ry + rh * 8 / 16, rw * 2 / 5, stroke, bg);
+      // Bold check.
+      const int cx0 = rx + rw / 4;
+      const int cy0 = ry + rh * 12 / 16;
+      thick_line(c, cx0, cy0, cx0 + rw / 5, cy0 + rh / 10, bg, stroke + 1);
+      thick_line(c, cx0 + rw / 5, cy0 + rh / 10, cx0 + rw / 2, cy0 - rh / 6, bg, stroke + 1);
       break;
     }
     case HomeApp::Clock: {
-      // Round face, cardinal ticks, hands at ~10:10.
-      const int face = s * 7 / 8;
-      dot(c, cx, cy, face, g);
-      for (int k = 0; k < 4; ++k) {
-        const double ang = k * kPi / 2.0;
-        const int r0 = face / 2 - stroke - 1;
-        const int r1 = face / 2 - 2;
-        thick_line(c, cx + static_cast<int>(std::lround(r0 * std::cos(ang))),
-                   cy + static_cast<int>(std::lround(r0 * std::sin(ang))),
-                   cx + static_cast<int>(std::lround(r1 * std::cos(ang))),
-                   cy + static_cast<int>(std::lround(r1 * std::sin(ang))), bg, stroke);
-      }
-      thick_line(c, cx, cy, cx - s / 6, cy - s / 5, bg, stroke);
-      thick_line(c, cx, cy, cx + s / 5, cy - s / 12, bg, stroke);
-      dot(c, cx, cy, std::max(4, s / 9), g);
+      // Bold ring + filled wedge hands (not the thin tick face).
+      const int outer = s * 7 / 8;
+      dot(c, cx, cy, outer, g);
+      dot(c, cx, cy, outer - stroke * 2 - 2, bg);
+      // Hour hand (short wedge toward 10).
+      thick_line(c, cx, cy, cx - s / 7, cy - s / 6, g, stroke + 1);
+      // Minute hand (longer toward 2).
+      thick_line(c, cx, cy, cx + s / 4, cy - s / 14, g, stroke + 1);
+      dot(c, cx, cy, std::max(5, s / 8), g);
       break;
     }
     case HomeApp::Pass: {
-      // Ticket with side notches + dashed tear.
-      const int w = s * 7 / 8;
-      const int h = s * 1 / 2;
-      const int x = cx - w / 2;
-      const int y = cy - h / 2;
-      c.fill_round_rect(x, y, w, h, h / 4, g);
-      const int notch = std::max(6, h / 3);
-      dot(c, x, cy, notch, bg);
-      dot(c, x + w, cy, notch, bg);
-      for (int i = 2; i < h - 4; i += stroke * 2 + 1) {
-        c.fill_rect(cx - 1, y + i, stroke, stroke, bg);
+      // ID badge: clip + rounded card + photo square + barcode lines.
+      const int cw = s * 11 / 16;
+      const int ch = s * 3 / 4;
+      const int bx = cx - cw / 2;
+      const int by = cy - ch / 2 + s / 14;
+      // Clip.
+      c.fill_round_rect(cx - s / 7, by - s / 7, s * 2 / 7, s / 6, s / 18, g);
+      c.fill_round_rect(bx, by, cw, ch, s / 10, g);
+      // Photo block.
+      c.fill_round_rect(bx + cw / 7, by + ch / 5, cw / 3, ch * 2 / 5, s / 20, bg);
+      // Name lines.
+      c.fill_rect(bx + cw / 2, by + ch / 4, cw * 5 / 14, stroke, bg);
+      c.fill_rect(bx + cw / 2, by + ch / 4 + stroke * 2 + 1, cw / 4, stroke, bg);
+      // Barcode.
+      for (int i = 0; i < 5; ++i) {
+        const int bw = (i % 2 == 0) ? stroke + 1 : stroke;
+        c.fill_rect(bx + cw / 7 + i * (stroke + 2), by + ch * 3 / 4, bw, ch / 7, bg);
       }
       break;
     }
     case HomeApp::Weather: {
-      // Sun peeking from behind a cloud.
-      const int sun_d = s * 5 / 14;
-      const int sun_cx = x0 + s * 3 / 4;
-      const int sun_cy = y0 + sun_d / 2 + s / 10;
-      dot(c, sun_cx, sun_cy, sun_d, g);
-      for (int k = 0; k < 4; ++k) {
-        const double ang = -kPi / 2.0 + k * 0.5;
-        const int sx = sun_cx + static_cast<int>(std::lround((sun_d / 2 + 1) * std::cos(ang)));
-        const int sy = sun_cy + static_cast<int>(std::lround((sun_d / 2 + 1) * std::sin(ang)));
-        const int ex = sun_cx + static_cast<int>(std::lround((sun_d / 2 + s / 7) * std::cos(ang)));
-        const int ey = sun_cy + static_cast<int>(std::lround((sun_d / 2 + s / 7) * std::sin(ang)));
-        thick_line(c, sx, sy, ex, ey, g, stroke);
-      }
-      const int ccy = y0 + s * 5 / 8;
-      const int puff = s * 3 / 10;
-      dot(c, x0 + s / 4, ccy, puff, g);
-      dot(c, cx, ccy - s / 12, s * 2 / 5, g);
-      dot(c, x0 + s * 3 / 4, ccy, puff, g);
-      c.fill_round_rect(x0 + s / 8, ccy, s - s / 4, s / 5, s / 12, g);
+      // Umbrella — clearer weather cue than sun-behind-cloud.
+      const int dome_r = s * 3 / 8;
+      const int dome_cy = cy - s / 14;
+      // Dome as thick upper arc.
+      arc(c, cx, dome_cy, dome_r, kPi, 2.0 * kPi, g, stroke + 2);
+      c.fill_round_rect(cx - dome_r, dome_cy - stroke, dome_r * 2, stroke + 1, 1, g);
+      // Shaft + crook handle.
+      c.fill_rect(cx - stroke / 2, dome_cy, stroke, s * 5 / 14, g);
+      arc(c, cx + s / 10, cy + s * 5 / 16, s / 8, 0, kPi, g, stroke);
       break;
     }
     case HomeApp::Music: {
-      // Eighth note — solid head, stem, pennant.
-      const int head_d = s * 2 / 5;
-      const int hx = x0 + s / 4 + head_d / 4;
-      const int hy = y0 + s - head_d / 2 - s / 10;
-      dot(c, hx, hy, head_d, g);
-      const int stem_w = std::max(3, s / 11);
-      const int stem_x = hx + head_d / 2 - stem_w;
-      const int stem_top = y0 + s / 8;
-      c.fill_rect(stem_x, stem_top, stem_w, hy - stem_top - head_d / 5, g);
-      const int flag_h = s / 4;
-      for (int i = 0; i < flag_h; ++i) {
-        const int fw = (flag_h - i) * 3 / 5 + stem_w;
-        c.hline(stem_x + stem_w, stem_top + i, fw, g);
-      }
+      // Over-ear headphones — solid cups + headband.
+      const int band_r = s * 5 / 14;
+      arc(c, cx, cy - s / 14, band_r, kPi + 0.25, 2.0 * kPi - 0.25, g, stroke + 1);
+      const int cup_w = s / 4;
+      const int cup_h = s * 5 / 14;
+      c.fill_round_rect(cx - band_r - cup_w / 4, cy - cup_h / 4, cup_w, cup_h, cup_w / 3, g);
+      c.fill_round_rect(cx + band_r - cup_w * 3 / 4, cy - cup_h / 4, cup_w, cup_h, cup_w / 3, g);
+      // Inner cup hollows.
+      c.fill_round_rect(cx - band_r + stroke / 2, cy - cup_h / 6, cup_w / 2, cup_h * 2 / 3, cup_w / 4, bg);
+      c.fill_round_rect(cx + band_r - cup_w / 2, cy - cup_h / 6, cup_w / 2, cup_h * 2 / 3, cup_w / 4, bg);
       break;
     }
     case HomeApp::Settings: {
-      // Six-tooth gear with clear hub.
-      const int r_out = s * 2 / 5;
-      const int r_tooth = std::max(3, s / 8);
-      constexpr int kTeeth = 6;
-      for (int k = 0; k < kTeeth; ++k) {
-        const double ang = k * 2.0 * kPi / kTeeth + kPi / 6.0;
-        dot(c, cx + static_cast<int>(r_out * std::cos(ang)),
-            cy + static_cast<int>(r_out * std::sin(ang)), 2 * r_tooth, g);
+      // Three slider rows with knobs — settings, not a gear.
+      const int row_h = s / 5;
+      const int track_w = s * 3 / 4;
+      const int track_x = cx - track_w / 2;
+      const int knob = std::max(8, s / 5);
+      const int positions[3] = {track_w / 4, track_w * 2 / 3, track_w / 2};
+      for (int i = 0; i < 3; ++i) {
+        const int ty = y0 + s / 6 + i * (row_h + s / 10);
+        c.fill_round_rect(track_x, ty + row_h / 3, track_w, std::max(3, row_h / 3), 2, g);
+        dot(c, track_x + positions[i], ty + row_h / 2, knob, g);
+        dot(c, track_x + positions[i], ty + row_h / 2, knob / 2, bg);
       }
-      dot(c, cx, cy, s * 3 / 5, g);
-      dot(c, cx, cy, s * 1 / 3, bg);
       break;
     }
     case HomeApp::Update: {
-      // Refresh arc with filled arrowhead.
-      const int r = s * 2 / 5;
-      const int thickness = std::max(3, s / 9);
-      const double a0 = -kPi / 2.0 - 0.35;
-      const double a1 = kPi * 0.9;
-      arc(c, cx, cy, r, a0, a1, g, thickness);
-      const int hx = cx + static_cast<int>(std::lround(r * std::cos(a0)));
-      const int hy = cy + static_cast<int>(std::lround(r * std::sin(a0)));
-      const int hd = s / 4;
-      thick_line(c, hx - hd, hy + 1, hx + 1, hy - hd + 1, g, stroke + 1);
-      thick_line(c, hx - 1, hy + hd - 1, hx + 1, hy - hd + 1, g, stroke + 1);
+      // Download tray: bold down-arrow into a dock (OTA metaphor).
+      const int shaft_w = std::max(5, s / 7);
+      const int shaft_h = s * 5 / 14;
+      c.fill_rect(cx - shaft_w / 2, y0 + s / 8, shaft_w, shaft_h, g);
+      // Arrowhead.
+      const int head_y = y0 + s / 8 + shaft_h - 2;
+      const int head_w = s * 5 / 14;
+      for (int i = 0; i < head_w / 2; ++i) {
+        c.hline(cx - head_w / 2 + i, head_y + i, head_w - 2 * i, g);
+      }
+      // Tray / dock.
+      const int tray_y = y0 + s * 3 / 4;
+      c.fill_rect(x0 + s / 6, tray_y, s * 2 / 3, stroke + 1, g);
+      c.fill_rect(x0 + s / 6, tray_y - s / 8, stroke + 1, s / 8, g);
+      c.fill_rect(x0 + s * 5 / 6 - stroke - 1, tray_y - s / 8, stroke + 1, s / 8, g);
       break;
     }
     case HomeApp::Reading: {
-      // Open book — two pages + spine + mid-line marks.
-      const int w = s * 7 / 8;
-      const int h = s * 2 / 3;
+      // Closed book with bookmark ribbon — distinct from open-spread.
+      const int w = s * 11 / 16;
+      const int h = s * 13 / 16;
+      const int x = cx - w / 2;
       const int y = cy - h / 2;
-      const int half = w / 2 - 2;
-      c.fill_round_rect(cx - w / 2, y, half, h, s / 10, g);
-      c.fill_round_rect(cx + 2, y, half, h, s / 10, g);
-      c.fill_rect(cx - stroke / 2, y, stroke, h, g);
-      c.fill_rect(cx - w / 2 + half / 5, y + h / 2 - stroke / 2, half / 2, stroke, bg);
-      c.fill_rect(cx + 2 + half / 5, y + h / 2 - stroke / 2, half / 2, stroke, bg);
+      c.fill_round_rect(x, y, w, h, s / 12, g);
+      // Cover margin / binding strip.
+      c.fill_rect(x + w / 6, y + stroke, stroke + 1, h - stroke * 2, bg);
+      // Title rules.
+      c.fill_rect(x + w / 3, y + h * 5 / 16, w / 2, stroke, bg);
+      c.fill_rect(x + w / 3, y + h * 5 / 16 + stroke * 2 + 1, w / 3, stroke, bg);
+      // Bookmark ribbon hanging from top.
+      const int bm_x = x + w * 2 / 3;
+      c.fill_rect(bm_x, y - 1, stroke + 2, h / 2, bg);
+      // V-notch at ribbon tip.
+      c.fill_rect(bm_x, y + h / 2 - stroke, stroke + 2, stroke, g);
+      c.hline(bm_x, y + h / 2 - stroke - 1, stroke + 2, g);
       break;
     }
     default:
@@ -210,29 +216,36 @@ constexpr int kHomeOrder[kHomeGridSlots] = {0, 1, 2, 3, 4, 5, 8, 6, 7, 9, 10, 11
 
 HomeApp slot_app(int i) { return static_cast<HomeApp>(kHomeOrder[i]); }
 
-/** iPhone-style Home: 3 columns of square rounded icons with labels underneath. */
+/** iPhone-style Home: 3 columns of square rounded icons with labels underneath.
+ * v60: content-sized rows (no stretch-to-fill air between label and next icon). */
 constexpr int kHomeCols = 3;
-constexpr int kHomeGapX = 18;
-constexpr int kHomeGapY = 14;
+constexpr int kHomeGapX = 16;
+constexpr int kHomeGapY = 8;
 /** WordMark (49) + hairline rule + air before the grid — must clear the brand. */
-constexpr int kHomeBrandBand = 64;
-constexpr int kHomeBottomPad = 24;
-/** Cap so icons stay calm — a touch above v58 glyphs, not old oversized tiles. */
+constexpr int kHomeBrandBand = 56;
+constexpr int kHomeBottomPad = 16;
+/** Cap so icons stay calm — slight size from v59 OK. */
 constexpr int kHomeIconMax = 100;
-constexpr int kHomeIconMin = 64;
+constexpr int kHomeIconMin = 68;
 
 /** Cell metrics for an iOS-style grid: square icon + label band under it. */
 void home_grid_metrics(int n_focus, int label_band_h, int* out_grid_top, int* out_cell_w,
                        int* out_cell_h, int* out_icon) {
-  const int grid_top = kContentTop + kHomeBrandBand;
+  const int grid_top_min = kContentTop + kHomeBrandBand;
   const int rows = std::max(1, (n_focus + kHomeCols - 1) / kHomeCols);
   const int cell_w = (kCanvasW - 2 * kSideMargin - (kHomeCols - 1) * kHomeGapX) / kHomeCols;
-  const int avail = kCanvasH - grid_top - kHomeBottomPad;
-  const int cell_h = std::max(kHomeIconMin + label_band_h + 8,
-                              (avail - (rows - 1) * kHomeGapY) / rows);
-  // Square icon: nearly fill the cell width (iOS-style plates), leave label air.
-  int icon = std::min(cell_w - 4, cell_h - label_band_h - 8);
-  icon = std::max(kHomeIconMin, std::min(kHomeIconMax, icon));
+  // Size icon from column width — do NOT stretch cell_h to fill leftover canvas height
+  // (that was the loose vertical rhythm on v59).
+  int icon = std::min(cell_w - 4, kHomeIconMax);
+  icon = std::max(kHomeIconMin, icon);
+  const int cell_h = icon + label_band_h + 4;
+  const int grid_h = rows * cell_h + (rows - 1) * kHomeGapY;
+  const int avail = kCanvasH - grid_top_min - kHomeBottomPad;
+  // Pack from the top; only a little leftover air above the grid (never between rows).
+  int grid_top = grid_top_min;
+  if (avail > grid_h) {
+    grid_top = grid_top_min + std::min(20, (avail - grid_h) / 6);
+  }
   *out_grid_top = grid_top;
   *out_cell_w = cell_w;
   *out_cell_h = cell_h;
@@ -314,7 +327,7 @@ void App::render_home() {
   const HomeApp focused = n_focus > 0 ? focusable[focus_.index] : HomeApp::Settings;
 
   const int label_line_h = canvas_.text_height(Canvas::TextRole::Secondary) + 2;
-  const int label_band_h = label_line_h + 8;
+  const int label_band_h = label_line_h + 4;
   int grid_top = 0, cell_w = 0, cell_h = 0, icon = 0;
   home_grid_metrics(n_focus, label_band_h, &grid_top, &cell_w, &cell_h, &icon);
   // iOS corner radius ≈ 22% of icon edge.
@@ -333,10 +346,10 @@ void App::render_home() {
 
     // Square icon centered in the cell width; label band sits under it.
     const int icon_x = cell_x + (cell_w - icon) / 2;
-    const int icon_y = cell_y + 4;
+    const int icon_y = cell_y;
     const int glyph_cx = icon_x + icon / 2;
     const int glyph_cy = icon_y + icon / 2;
-    const int label_top = icon_y + icon + 6;
+    const int label_top = icon_y + icon + 4;
     const int label_max_w = cell_w - 4;
 
     if (is_focus) {
@@ -373,6 +386,7 @@ void App::handle_home(InputEvent e) {
       parental_pin_for_app_ = true;
       pin_entry_.clear();
       pin_digit_working_ = '0';
+      pin_spin_count_ = 0;
       focus_.index = 0;
       nav_.push(ScreenId::Pin);
       after_nav();

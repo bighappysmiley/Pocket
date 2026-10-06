@@ -16,6 +16,28 @@ InputEvent InputMapper::poll() {
   return e;
 }
 
+InputEvent InputMapper::peek() const {
+  if (q_head_ == q_tail_) return InputEvent::None;
+  return queue_[q_head_];
+}
+
+int InputMapper::drain_up_down_net() {
+  int net = 0;
+  while (q_head_ != q_tail_) {
+    const InputEvent e = queue_[q_head_];
+    if (e == InputEvent::Up) {
+      --net;
+      q_head_ = (q_head_ + 1) % kQueue;
+    } else if (e == InputEvent::Down) {
+      ++net;
+      q_head_ = (q_head_ + 1) % kQueue;
+    } else {
+      break;
+    }
+  }
+  return net;
+}
+
 bool InputMapper::debounce(bool& seen, uint32_t& last_ms, uint32_t now_ms) {
   if (seen && (now_ms - last_ms) < InputThresholds::kDebounceMs) return false;
   seen = true;

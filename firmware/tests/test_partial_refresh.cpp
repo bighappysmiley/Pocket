@@ -91,16 +91,46 @@ int main() {
   CHECK(disp.full_or_fast == baseline_full);
   CHECK(disp.last_ry >= 100);  // PIN band, not status-only
 
-  // Prime status-bar chrome tracker, then change minute → status region only
+  // Coalesced net delta (simulate rapid spins) still dirty-presents once.
+  const int after_spin_region = disp.region;
+  app.apply_pin_digit_delta(3);
+  app.flush_dirty();
+  CHECK(disp.region > after_spin_region);
+  CHECK(app.is_pin_entry_screen());
+
+  // While on PIN, status chrome ticks must NOT flash (avoids digit/focus glitch).
   clock.t += 500;
   app.tick(clock.t);
-  const int after_prime_region = disp.region;
-  const int after_prime_full = disp.full_or_fast;
+  const int pin_region = disp.region;
+  const int pin_full = disp.full_or_fast;
   clock.minute = 6;
   clock.t += 1000;
   app.tick(clock.t);
-  CHECK(disp.region > after_prime_region);
-  CHECK(disp.full_or_fast == after_prime_full);
+  CHECK(disp.region == pin_region);
+  CHECK(disp.full_or_fast == pin_full);
+
+  // Spins don't commit — Back with empty entry returns to Lock; re-enter fresh.
+  app.handle(InputEvent::Back);
+  CHECK(app.screen() == ScreenId::Lock);
+  app.handle(InputEvent::Select);
+  CHECK(app.screen() == ScreenId::Pin);
+  // Enter 1234 (working digit is kept after each Select, so +1 per slot).
+  for (int dig = 0; dig < 4; ++dig) {
+    app.handle(InputEvent::Down);
+    app.handle(InputEvent::Select);
+  }
+  CHECK(app.screen() == ScreenId::Home);
+
+  // After unlock, status ticks resume (prime tracker, then change minute).
+  clock.t += 500;
+  app.tick(clock.t);  // prime last_status_* on Home
+  const int home_region = disp.region;
+  const int home_full = disp.full_or_fast;
+  clock.minute = 7;
+  clock.t += 1000;
+  app.tick(clock.t);
+  CHECK(disp.region > home_region);
+  CHECK(disp.full_or_fast == home_full);
   CHECK(disp.last_ry == 0);
   CHECK(disp.last_rh <= 64);
 
@@ -110,7 +140,7 @@ int main() {
   clock.t += 1000;
   app.tick(clock.t);
   CHECK(disp.region > after_min_region);
-  CHECK(disp.full_or_fast == after_prime_full);
+  CHECK(disp.full_or_fast == home_full);
 
   // Lock face starts on the first of the rotating calm motifs (no clock hands).
   CHECK(app.lock_motif_index() == 0);

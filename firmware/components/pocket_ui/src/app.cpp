@@ -175,9 +175,39 @@ void App::pin_band_geometry(int& x, int& y, int& w, int& h) const {
 }
 
 void App::mark_pin_dirty() {
+  ++pin_spin_count_;
+  // Every 4th digit change: content-band partial (clears e-ink ghosts in the PIN band).
+  // Otherwise tight region partial for snappy spins.
+  if ((pin_spin_count_ % 4) == 0) {
+    mark_content_dirty();
+    return;
+  }
   int x = 0, y = 0, w = 0, h = 0;
   pin_band_geometry(x, y, w, h);
   mark_region_dirty(x, y, w, h);
+}
+
+bool App::is_pin_entry_screen() const {
+  const ScreenId s = nav_.current();
+  return s == ScreenId::Pin || s == ScreenId::OnboardingPinSet || s == ScreenId::OnboardingPinConfirm;
+}
+
+void App::apply_pin_digit_delta(int delta) {
+  if (!is_pin_entry_screen()) return;
+  if (now_ms_ < pin_lockout_until_ms_) return;
+  if (delta == 0) return;
+  // Normalize into 0..9 via positive modulo.
+  int v = (pin_digit_working_ - '0') + delta;
+  v %= 10;
+  if (v < 0) v += 10;
+  pin_digit_working_ = static_cast<char>('0' + v);
+  mark_pin_dirty();
+}
+
+void App::flush_dirty() {
+  if (!dirty_) return;
+  present_canvas(false);
+  dirty_ = false;
 }
 
 void App::begin_softap_link() {
@@ -1026,6 +1056,8 @@ void App::draw_lock_motif() {
 void App::handle_lock(InputEvent e) {
   if (e == InputEvent::Select) {
     pin_entry_.clear();
+    pin_digit_working_ = '0';
+    pin_spin_count_ = 0;
     nav_.push(ScreenId::Pin);
     after_nav();
   }
@@ -1041,37 +1073,51 @@ void App::draw_pin_entry(bool mask_completed, int band_top) {
   const int x0 = (kCanvasW - total) / 2;
   const int slot_y = band_top;
 
+  // Wipe the PIN band so region partials never composite stale digit ink.
+  canvas_.fill_rect(0, slot_y - 44, kCanvasW, kSlotH + 140, Gray::G3);
+
   // Progress — which digit we're on (preview slot = next to fill).
   char prog[32];
   const int at = std::min(static_cast<int>(pin_entry_.size()) + 1, n);
   std::snprintf(prog, sizeof(prog), "Digit %d of %d", at, n);
   canvas_.draw_text_centered(kCanvasW / 2, slot_y - 36, prog, Canvas::TextRole::Secondary, Gray::G1);
 
+  // Fixed digit cell width so 1 vs 0 doesn't optically "jump" sideways on spin.
+  int dig_box = 0;
+  for (char d = '0'; d <= '9'; ++d) {
+    char tmp[2] = {d, 0};
+    dig_box = std::max(dig_box, canvas_.text_width(tmp, Canvas::TextRole::PinDigit));
+  }
+
   for (int i = 0; i < n; ++i) {
     const int x = x0 + i * (kSlotW + kGap);
     const bool focused = static_cast<int>(pin_entry_.size()) == i;
     const bool filled = i < static_cast<int>(pin_entry_.size());
 
-    canvas_.stroke_rect(x, slot_y, kSlotW, kSlotH, focused ? Gray::G0 : Gray::G2);
+    // Solid slot fill first — critical for e-ink partial refresh correctness.
     if (focused) {
-      canvas_.stroke_rect(x + 2, slot_y + 2, kSlotW - 4, kSlotH - 4, Gray::G0);
+      canvas_.fill_rect(x, slot_y, kSlotW, kSlotH, Gray::G0);
       char s[2] = {pin_digit_working_, 0};
       const int tw = canvas_.text_width(s, Canvas::TextRole::PinDigit);
-      canvas_.draw_text(x + (kSlotW - tw) / 2, slot_y + 16, s, Canvas::TextRole::PinDigit, Gray::G0);
+      const int tx = x + (kSlotW - dig_box) / 2 + (dig_box - tw) / 2;
+      // White digit on black focus — high contrast; flips cleanly on partials.
+      canvas_.draw_text(tx, slot_y + 16, s, Canvas::TextRole::PinDigit, Gray::G3);
     } else if (filled) {
+      canvas_.fill_rect(x, slot_y, kSlotW, kSlotH, Gray::G3);
+      canvas_.stroke_rect(x, slot_y, kSlotW, kSlotH, Gray::G2);
       if (mask_completed) {
-        // Disk for a locked-in digit.
         const int cx = x + kSlotW / 2;
         const int cy = slot_y + kSlotH / 2;
-        canvas_.fill_rect(cx - 7, cy - 7, 14, 14, Gray::G0);
-        canvas_.fill_rect(cx - 5, cy - 9, 10, 2, Gray::G3);
-        canvas_.fill_rect(cx - 5, cy + 7, 10, 2, Gray::G3);
+        canvas_.fill_round_rect(cx - 8, cy - 8, 16, 16, 8, Gray::G0);
       } else {
         char s[2] = {pin_entry_[i], 0};
         const int tw = canvas_.text_width(s, Canvas::TextRole::PinDigit);
-        canvas_.draw_text(x + (kSlotW - tw) / 2, slot_y + 16, s, Canvas::TextRole::PinDigit, Gray::G0);
+        const int tx = x + (kSlotW - dig_box) / 2 + (dig_box - tw) / 2;
+        canvas_.draw_text(tx, slot_y + 16, s, Canvas::TextRole::PinDigit, Gray::G0);
       }
     } else {
+      canvas_.fill_rect(x, slot_y, kSlotW, kSlotH, Gray::G3);
+      canvas_.stroke_rect(x, slot_y, kSlotW, kSlotH, Gray::G2);
       canvas_.hline(x + 10, slot_y + kSlotH / 2, kSlotW - 20, Gray::G2);
     }
   }
@@ -1112,14 +1158,13 @@ void App::handle_pin(InputEvent e) {
   }
 
   // Preview only — Select commits the digit (avoids slot-jump overwrite).
+  // Net deltas from coalesced rotary events go through apply_pin_digit_delta().
   if (e == InputEvent::Up) {
-    pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 9) % 10));
-    mark_pin_dirty();
+    apply_pin_digit_delta(-1);
     return;
   }
   if (e == InputEvent::Down) {
-    pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 1) % 10));
-    mark_pin_dirty();
+    apply_pin_digit_delta(1);
     return;
   }
   if (e == InputEvent::Select) {
@@ -1130,6 +1175,7 @@ void App::handle_pin(InputEvent e) {
       if (verify_pin(cfg_, pin_entry_)) {
         pin_fail_count_ = 0;
         pin_digit_working_ = '0';
+        pin_spin_count_ = 0;
         parental_session_unlocked_ = true;
         if (parental_pin_for_app_) {
           parental_pin_for_app_ = false;
@@ -1148,6 +1194,7 @@ void App::handle_pin(InputEvent e) {
         pin_entry_.clear();
         focus_.index = 0;
         pin_digit_working_ = '0';
+        pin_spin_count_ = 0;
         if (pin_fail_count_ >= 5) {
           pin_lockout_until_ms_ = now_ms_ + 30000;
           pin_fail_count_ = 0;
@@ -1157,7 +1204,8 @@ void App::handle_pin(InputEvent e) {
     } else {
       focus_.index = static_cast<int>(pin_entry_.size());
       // Keep working digit so consecutive same digits are one press each.
-      mark_pin_dirty();
+      // Force a clean band refresh when the focus slot advances.
+      mark_content_dirty();
     }
   }
 }
@@ -1203,6 +1251,10 @@ void App::maybe_tick_status_chrome() {
   if (!cfg_.onboarding_complete && nav_.current() == ScreenId::OnboardingWelcome) {
     // Welcome is full-bleed brand; still has status bar in onboarding path.
   }
+  // During PIN digit entry, skip status-only region ticks — a status present clears the
+  // framebuffer and re-renders the PIN correctly in RAM but only flashes the top strip,
+  // which can leave the panel looking like the focused digit "jumped" relative to focus.
+  if (is_pin_entry_screen()) return;
   if (!screen_has_status_bar()) {
     // Lock: static art + optional message only — nothing here ticks, so no partial refresh needed.
     return;

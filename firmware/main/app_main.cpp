@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v59-home-ios";
+static const char* kBuildId = "POCKET-LIVE-v60-home-pin";
 
 namespace {
 
@@ -373,7 +373,18 @@ extern "C" void app_main(void) {
     for (;;) {
       const pocket::InputEvent e = mapper.poll();
       if (e == pocket::InputEvent::None) break;
-      if (g_boot.ui_ready) app.handle(e);
+      if (!g_boot.ui_ready) continue;
+      // Coalesce queued Up/Down so PIN digit spins present once with the final value
+      // (avoids intermediate digits lagging / appearing to jump backward on e-ink).
+      if (app.is_pin_entry_screen() &&
+          (e == pocket::InputEvent::Up || e == pocket::InputEvent::Down)) {
+        int delta = (e == pocket::InputEvent::Down) ? 1 : -1;
+        delta += mapper.drain_up_down_net();
+        app.apply_pin_digit_delta(delta);
+        app.flush_dirty();
+        continue;
+      }
+      app.handle(e);
     }
     if (g_boot.ui_ready) app.tick(now);
     vTaskDelay(pdMS_TO_TICKS(50));

@@ -706,6 +706,7 @@ void App::handle_onboarding(InputEvent e) {
       cfg_.pin_length = focus_.index == 0 ? 4 : 6;
       pin_entry_.clear();
       pin_digit_working_ = '0';
+      pin_spin_count_ = 0;
       focus_.index = 0;
       nav_.replace(ScreenId::OnboardingPinSet);
       after_nav();
@@ -715,11 +716,9 @@ void App::handle_onboarding(InputEvent e) {
 
   if (s == ScreenId::OnboardingPinSet || s == ScreenId::OnboardingPinConfirm) {
     if (e == InputEvent::Up) {
-      pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 9) % 10));
-      mark_pin_dirty();
+      apply_pin_digit_delta(-1);
     } else if (e == InputEvent::Down) {
-      pin_digit_working_ = static_cast<char>('0' + ((pin_digit_working_ - '0' + 1) % 10));
-      mark_pin_dirty();
+      apply_pin_digit_delta(1);
     } else if (e == InputEvent::Back) {
       if (pin_entry_.empty()) {
         if (s == ScreenId::OnboardingPinConfirm) {
@@ -770,7 +769,8 @@ void App::handle_onboarding(InputEvent e) {
         }
       } else {
         focus_.index = static_cast<int>(pin_entry_.size());
-        mark_pin_dirty();
+        // Slot advance — content refresh so the previous digit clears cleanly on e-ink.
+        mark_content_dirty();
       }
     }
     return;

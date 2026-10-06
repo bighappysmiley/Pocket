@@ -78,6 +78,16 @@ int main() {
   CHECK(m.poll() == InputEvent::Select);
   CHECK(m.poll() == InputEvent::None);
 
+  // drain_up_down_net collapses a burst of queued rotary events into one net delta.
+  m.on_button_down(true, 9000);
+  m.on_button_down(true, 9200);
+  m.on_button_up(true, 9400);
+  m.on_button_down(true, 9600);
+  CHECK(m.poll() == InputEvent::Down);  // first Down consumed by caller
+  // Remaining: Down, Up, Down → net +1
+  CHECK(m.drain_up_down_net() == 1);
+  CHECK(m.poll() == InputEvent::None);
+
   if (failures) {
     std::printf("%d failures\n", failures);
     return 1;

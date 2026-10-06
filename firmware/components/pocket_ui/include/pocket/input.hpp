@@ -46,6 +46,14 @@ class InputMapper {
   void tick(uint32_t now_ms);
 
   InputEvent poll();
+  /** Peek next queued event without consuming it (None if empty). */
+  InputEvent peek() const;
+  /**
+   * Drain consecutive Up/Down events from the queue. Returns net steps
+   * (Down = +1, Up = −1). Stops at the first non-rotary event.
+   * Used so PIN digit spins present once with the final value.
+   */
+  int drain_up_down_net();
 
  private:
   void push(InputEvent e);

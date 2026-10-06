@@ -278,6 +278,12 @@ class App {
   void set_build_id(std::string_view id);
   void tick(uint32_t now_ms);
   void handle(InputEvent e);
+  /** True while the user is spinning/committing PIN digits (lock or onboarding). */
+  bool is_pin_entry_screen() const;
+  /** Apply a net rotary delta to the working PIN digit (Down=+1) and dirty once. */
+  void apply_pin_digit_delta(int delta);
+  /** Present the canvas if a dirty mark is pending (used after coalesced PIN spins). */
+  void flush_dirty();
 
   ScreenId screen() const { return nav_.current(); }
   const DeviceConfig& config() const { return cfg_; }
@@ -422,6 +428,8 @@ class App {
   std::string pin_entry_;
   std::string pin_pending_;
   char pin_digit_working_ = '0';
+  /** Counts digit spins since PIN enter — every few spins use a wider refresh to clear ghosts. */
+  int pin_spin_count_ = 0;
   int pin_fail_count_ = 0;
   uint32_t pin_lockout_until_ms_ = 0;
   uint32_t error_until_ms_ = 0;
