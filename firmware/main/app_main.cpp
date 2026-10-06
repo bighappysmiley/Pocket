@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v66-icons";
+static const char* kBuildId = "POCKET-LIVE-v67-speed";
 
 namespace {
 
@@ -306,7 +306,7 @@ extern "C" void app_main(void) {
   for (int i = 0; i < 3; ++i) {
     esp_rom_printf("heartbeat %d/3\n", i + 1);
     ESP_LOGI(TAG, "heartbeat %d/3", i + 1);
-    vTaskDelay(pdMS_TO_TICKS(200));
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 
   esp_err_t ret = nvs_flash_init();
@@ -374,8 +374,8 @@ extern "C" void app_main(void) {
       const pocket::InputEvent e = mapper.poll();
       if (e == pocket::InputEvent::None) break;
       if (!g_boot.ui_ready) continue;
-      // Coalesce queued Up/Down so PIN digit / Home focus present once with the final value
-      // (avoids intermediate frames lagging on e-ink during rapid rotary bursts).
+      // Drain already-queued Up/Down from this poll (bounce / extra detents), then
+      // present immediately — do not wait for more clicks to "coalesce".
       if ((app.is_pin_entry_screen() || app.is_home_screen()) &&
           (e == pocket::InputEvent::Up || e == pocket::InputEvent::Down)) {
         int delta = (e == pocket::InputEvent::Down) ? 1 : -1;
@@ -391,6 +391,6 @@ extern "C" void app_main(void) {
       app.handle(e);
     }
     if (g_boot.ui_ready) app.tick(now);
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }

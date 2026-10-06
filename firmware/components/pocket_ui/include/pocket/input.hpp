@@ -29,7 +29,7 @@ struct InputThresholds {
    * Debouncing here (platform-independent, host-testable) collapses a bounce
    * burst from one physical press into exactly one logical edge.
    */
-  static constexpr uint32_t kDebounceMs = 60;
+  static constexpr uint32_t kDebounceMs = 35;
 };
 
 /**

@@ -13,6 +13,7 @@ void pocket_axp_epd_power_on(void);
 
 static spi_device_handle_t spi;
 static const char *TAG = "EPD_DRIVER";
+static bool s_controller_ready = false;
 
 
 static void epaper_gpio_Init(void)
@@ -114,11 +115,11 @@ parameter:
 static void EPD_Reset(void)
 {
     epaper_rst_1;
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(10));
     epaper_rst_0;
     vTaskDelay(pdMS_TO_TICKS(2));
     epaper_rst_1;
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(10));
 }
 
 /******************************************************************************
@@ -177,15 +178,41 @@ parameter:
 static void EPD_ReadBusy(void)
 {
     // HIGH = busy (Waveshare). Soft-timeout so a dead panel cannot stall forever.
+    // Poll immediately — a fixed 100 ms pad before the first sample made every
+    // present feel laggy even when the panel was already idle.
     TickType_t start = xTaskGetTickCount();
-    vTaskDelay(pdMS_TO_TICKS(100));
     while (ReadBusy) {
         if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(8000)) {
             ESP_LOGW(TAG, "BUSY timeout (pin=%d) — continuing", ReadBusy);
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(pdMS_TO_TICKS(2));
     }
+}
+
+static void EPD_SetFullRamWindow(void)
+{
+    EPD_SendCommand(0x11);
+    EPD_SendData(0x01);
+
+    EPD_SendCommand(0x44);
+    EPD_SendData(0x00);
+    EPD_SendData(0x00);
+    EPD_SendData((EPD_WIDTH-1)%256);
+    EPD_SendData((EPD_WIDTH-1)/256);
+
+    EPD_SendCommand(0x45);
+    EPD_SendData((EPD_HEIGHT-1)%256);
+    EPD_SendData((EPD_HEIGHT-1)/256);
+    EPD_SendData(0x00);
+    EPD_SendData(0x00);
+
+    EPD_SendCommand(0x4E);
+    EPD_SendData(0x00);
+    EPD_SendData(0x00);
+    EPD_SendCommand(0x4F);
+    EPD_SendData(0x00);
+    EPD_SendData(0x00);
 }
 
 /******************************************************************************
@@ -285,64 +312,30 @@ void EPD_Init(void)
     EPD_SendCommand(0x4E);   // set RAM x address count to 0;
 	EPD_SendData(0x00);
 	EPD_SendData(0x00);
-	EPD_SendCommand(0x4F);   // set RAM y address count to 0X199;    
+    EPD_SendCommand(0x4F);   // set RAM y address count to 0X199;    
 	EPD_SendData(0x00);
 	EPD_SendData(0x00);
     EPD_ReadBusy();
 
+    s_controller_ready = true;
 }
-//Fast update initialization
+// Fast update: 0x1A/0x6A + 0x22/0xD7 (~1.5 s). Skip SWRESET and the demo's
+// 500 ms pad when the controller is already up — those made every "full"
+// feel like a slow flash.
 void EPD_Init_Fast(void)
 {
-    vTaskDelay(pdMS_TO_TICKS(500));
-	EPD_Reset(); 
-	
-	EPD_ReadBusy();   
-	EPD_SendCommand(0x12);  //SWRESET
-	EPD_ReadBusy();   
-	
-	EPD_SendCommand(0x0C);
-	EPD_SendData(0xAE);
-	EPD_SendData(0xC7);
-	EPD_SendData(0xC3);
-	EPD_SendData(0xC0);
-	EPD_SendData(0x80);
-	
-	EPD_SendCommand(0x01); //Driver output control      
-	EPD_SendData((EPD_HEIGHT-1)%256);   
-	EPD_SendData((EPD_HEIGHT-1)/256);
-	EPD_SendData(0x02);
-
-	EPD_SendCommand(0x11); //data entry mode       
-	EPD_SendData(0x01);
-
-	EPD_SendCommand(0x44); //set Ram-X address start/end position   
-	EPD_SendData(0x00);
-	EPD_SendData(0x00);
-	EPD_SendData((EPD_WIDTH-1)%256);    
-	EPD_SendData((EPD_WIDTH-1)/256);
-
-	EPD_SendCommand(0x45); //set Ram-Y address start/end position    
-    EPD_SendData((EPD_HEIGHT-1)%256);    
-	EPD_SendData((EPD_HEIGHT-1)/256);  
-	EPD_SendData(0x00);
-	EPD_SendData(0x00);
-
-
-	EPD_SendCommand(0x4E);   // set RAM x address count to 0;
-	EPD_SendData(0x00);
-	EPD_SendData(0x00);
-	EPD_SendCommand(0x4F);   // set RAM y address count to 0X199;    
-	EPD_SendData(0x00);
-	EPD_SendData(0x00);
-    EPD_ReadBusy();
+    if (!s_controller_ready) {
+        EPD_Init();
+    } else {
+        EPD_SetFullRamWindow();
+    }
 
 	EPD_SendCommand(0x3C); //BorderWavefrom
 	EPD_SendData(0x01);	
 	
 	EPD_SendCommand(0x18);   
 	EPD_SendData(0x80); 
-	//Fast(1.5s)
+	// Fast LUT temperature (panel OTP, ~1.5s waveform)
 	EPD_SendCommand(0x1A); 
 	EPD_SendData(0x6A);
 
@@ -561,7 +554,9 @@ void EPD_Display_Partial(const UBYTE *Image, UWORD Xstart, UWORD Ystart, UWORD X
     Xend -= 1;
     Yend -= 1;	
 
-    EPD_Reset();
+    // Fast partial (0x22 / 0xFF, ~0.3 s on this 3.97" SSD1683). Do not hardware-reset
+    // per update — RST is 20 ms plus BUSY and reloads OTP, which made every digit
+    // spin / focus move feel like a slow full flash.
 
     EPD_SendCommand(0x18);
     EPD_SendData(0x80);
@@ -694,4 +689,5 @@ void EPD_Sleep(void)
     epaper_cs_0;
     epaper_dc_0;
     vTaskDelay(pdMS_TO_TICKS(10));
+    s_controller_ready = false;
 }

@@ -62,7 +62,7 @@ int main() {
   CHECK(m.poll() == InputEvent::None);
   // Once the bounce settles and the debounce window elapses, the next real
   // press is accepted normally.
-  m.on_button_up(true, 7200);
+  m.on_button_up(true, 7100);  // past 35 ms debounce window
   CHECK(m.poll() == InputEvent::Up);
   CHECK(m.poll() == InputEvent::None);
 

@@ -63,7 +63,7 @@ void EpdDisplay::rotate_canvas_to_mono(const pocket::Canvas& src, uint8_t* dst) 
       }
       dst[static_cast<size_t>(py * (kPanelW / 8) + (px / 8))] = byte;
     }
-    if ((py & 31) == 0) taskYIELD();
+    if ((py & 127) == 0) taskYIELD();
   }
 }
 
@@ -91,15 +91,12 @@ void EpdDisplay::present(const pocket::Canvas& canvas, pocket::RefreshMode mode)
   if (!ready_ && !init()) return;
   rotate_canvas_to_mono(canvas, panel_1bpp_);
 
-  if (mode == pocket::RefreshMode::Full) {
-    ESP_LOGI(TAG, "Waveshare full refresh");
-    EPD_Init();
-    EPD_Display_Base(panel_1bpp_);
-  } else {
-    ESP_LOGI(TAG, "Waveshare fast refresh");
-    EPD_Init_Fast();
-    EPD_Display_Fast(panel_1bpp_);
-  }
+  // Ghosting / screen-enter "full" uses the panel's fastest full LUT (0xD7, ~1.5 s),
+  // not the slow OTP 0xF7 (~3.5 s). Factory wipe in init() still uses 0xF7 once.
+  ESP_LOGI(TAG, "Waveshare fast full LUT (0xD7) mode=%s",
+           mode == pocket::RefreshMode::Full ? "full" : "partial-canvas");
+  EPD_Init_Fast();
+  EPD_Display_Fast_Base(panel_1bpp_);
   ESP_LOGI(TAG, "refresh done");
 }
 

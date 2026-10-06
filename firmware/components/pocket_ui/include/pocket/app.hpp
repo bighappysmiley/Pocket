@@ -329,8 +329,13 @@ class App {
   /** Tight e-ink region update (PIN digits, focus rows, etc.). */
   void mark_region_dirty(int x, int y, int w, int h);
   void mark_pin_dirty();
-  /** Dirty the union of previous/next Home tiles (or content-band every few moves). */
+  void mark_pin_slots_dirty(int slot_a, int slot_b, bool with_chrome);
+  /** Dirty the union of previous/next Home tiles. */
   void mark_home_focus_dirty(int prev_index, int next_index);
+  /** Dirty the union of two Settings-style focus rows. */
+  void mark_list_focus_dirty(int list_top, int prev, int next);
+  void settings_move_focus(int delta);
+  int settings_focus_list_top() const;
   void present_canvas(bool full);
   void play_sound(SoundId id);
   bool mint_pair_session();
@@ -452,6 +457,8 @@ class App {
   std::string pin_entry_;
   std::string pin_pending_;
   char pin_digit_working_ = '0';
+  /** Last `band_top` passed to draw_pin_entry (lock vs onboarding). */
+  int pin_draw_band_top_ = 200;
   /** True after a rotary spin on the current focus slot. */
   bool pin_spun_since_focus_ = false;
   /**

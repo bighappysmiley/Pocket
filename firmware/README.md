@@ -45,7 +45,7 @@ welcome → companion download (QR) → Link (SoftAP + /link) → connecting →
 
 Companion download + pairing are **required** — no Skip.
 
-Refresh: routine focus/list updates use **partial**; full only on Spec §6 enters (Lock/Home/PIN/QR/connecting/app roots) and ghosting every 8 partials.
+Refresh: routine focus/list/PIN/status use **fast partial** (0xFF LUT, dirty rect). Ghosting / QR / Lock use the panel’s fastest full LUT (0xD7).
 
 Default `device_name` = `"Pocket"` until renamed in the Companion PWA.
 

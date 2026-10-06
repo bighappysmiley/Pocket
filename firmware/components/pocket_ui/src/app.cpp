@@ -167,24 +167,36 @@ void App::mark_region_dirty(int x, int y, int w, int h) {
 }
 
 void App::pin_band_geometry(int& x, int& y, int& w, int& h) const {
-  // Covers progress label, digit slots, hint, error, and lockout strip.
+  // Progress + slots + hint (tight). Spins use a single slot via mark_pin_dirty.
   x = 0;
-  y = 140;
+  y = pin_draw_band_top_ - 44;
   w = kCanvasW;
-  h = 360;
+  h = 72 + 140;
+}
+
+void App::mark_pin_slots_dirty(int slot_a, int slot_b, bool with_chrome) {
+  constexpr int kSlotW = 52;
+  constexpr int kSlotH = 72;
+  constexpr int kGap = 14;
+  const int n = std::max(1, static_cast<int>(cfg_.pin_length));
+  const int total = n * kSlotW + (n - 1) * kGap;
+  const int x0 = (kCanvasW - total) / 2;
+  const int slot_y = pin_draw_band_top_;
+  const int i0 = std::clamp(std::min(slot_a, slot_b), 0, n - 1);
+  const int i1 = std::clamp(std::max(slot_a, slot_b), 0, n - 1);
+  const int pad = 8;
+  if (with_chrome) {
+    mark_region_dirty(0, slot_y - 44, kCanvasW, kSlotH + 140);
+    return;
+  }
+  mark_region_dirty(x0 + i0 * (kSlotW + kGap) - pad, slot_y - pad,
+                    (i1 - i0) * (kSlotW + kGap) + kSlotW + 2 * pad, kSlotH + 2 * pad);
 }
 
 void App::mark_pin_dirty() {
   ++pin_spin_count_;
-  // Every 4th digit change: content-band partial (clears e-ink ghosts in the PIN band).
-  // Otherwise tight region partial for snappy spins.
-  if ((pin_spin_count_ % 4) == 0) {
-    mark_content_dirty();
-    return;
-  }
-  int x = 0, y = 0, w = 0, h = 0;
-  pin_band_geometry(x, y, w, h);
-  mark_region_dirty(x, y, w, h);
+  mark_pin_slots_dirty(static_cast<int>(pin_entry_.size()), static_cast<int>(pin_entry_.size()),
+                       false);
 }
 
 bool App::is_pin_entry_screen() const {
@@ -411,14 +423,20 @@ void App::after_nav(bool full_refresh) {
   pin_digit_working_ = '0';
   pin_spun_since_focus_ = false;
   pin_block_select_bounce_ = false;
-  dirty_ = true;
-  dirty_kind_ = DirtyKind::FullCanvas;
-  if (full_refresh) refresh_.on_screen_enter_full();
   if (nav_.current() == ScreenId::OnboardingWelcome && !welcome_sound_played_) {
     welcome_sound_played_ = true;
     play_sound(SoundId::Welcome);
   }
-  redraw(full_refresh);
+  dirty_ = true;
+  if (full_refresh) {
+    dirty_kind_ = DirtyKind::FullCanvas;
+    refresh_.on_screen_enter_full();
+    redraw(true);
+  } else {
+    // Fast 0xFF window of the whole panel — not the 1.5 s 0xD7 LUT.
+    dirty_kind_ = DirtyKind::FullCanvas;
+    redraw(false);
+  }
 }
 
 void App::after_nav() { after_nav(screen_requires_full_enter(nav_.current())); }
@@ -750,15 +768,12 @@ void App::tick(uint32_t now_ms) {
 void App::present_canvas(bool full) {
   canvas_.clear(Gray::G3);
   render();
-  if (full || dirty_kind_ == DirtyKind::FullCanvas) {
-    RefreshMode mode = refresh_.plan(!full);
-    if (full) mode = RefreshMode::Full;
-    display_.present(canvas_, mode);
-    refresh_.on_applied(mode);
+  if (full) {
+    display_.present(canvas_, RefreshMode::Full);
+    refresh_.on_applied(RefreshMode::Full);
     dirty_kind_ = DirtyKind::FullCanvas;
     return;
   }
-  // Region / status / content — honor ghosting budget (N partials → full).
   RefreshMode mode = refresh_.plan(true);
   if (mode == RefreshMode::Full) {
     display_.present(canvas_, RefreshMode::Full);
@@ -771,15 +786,16 @@ void App::present_canvas(bool full) {
     refresh_.on_applied_tiny(RefreshMode::Partial);
   } else if (dirty_kind_ == DirtyKind::Region) {
     display_.present_region(canvas_, dirty_rx_, dirty_ry_, dirty_rw_, dirty_rh_);
-    // Only short strips (status-bar height) discount toward ghosting. Home tile
-    // unions and PIN bands count as full partials so navigation still clears ghosts.
     if (dirty_rh_ <= kStatusBarH + 40) {
       refresh_.on_applied_tiny(RefreshMode::Partial);
     } else {
       refresh_.on_applied(RefreshMode::Partial);
     }
+  } else if (dirty_kind_ == DirtyKind::FullCanvas) {
+    // Whole-panel 0xFF partial (~0.3 s) — fastest valid update that still paints everything.
+    display_.present_region(canvas_, 0, 0, kCanvasW, kCanvasH);
+    refresh_.on_applied(RefreshMode::Partial);
   } else {
-    // Content below status bar — true region partial when one UI piece changes.
     display_.present_region(canvas_, 0, kStatusBarH, kCanvasW, kCanvasH - kStatusBarH);
     refresh_.on_applied(RefreshMode::Partial);
   }
@@ -1111,6 +1127,7 @@ void App::handle_lock(InputEvent e) {
 }
 
 void App::draw_pin_entry(bool mask_completed, int band_top) {
+  pin_draw_band_top_ = band_top;
   const int n = cfg_.pin_length;
   constexpr int kSlotW = 52;
   constexpr int kSlotH = 72;
@@ -1199,8 +1216,9 @@ void App::handle_pin(InputEvent e) {
       nav_.pop();
       after_nav();
     } else {
+      const int prev = static_cast<int>(pin_entry_.size());
       pin_backspace();
-      mark_pin_dirty();
+      mark_pin_slots_dirty(prev, static_cast<int>(pin_entry_.size()), true);
     }
     return;
   }
@@ -1218,6 +1236,7 @@ void App::handle_pin(InputEvent e) {
     return;
   }
   if (e == InputEvent::Select) {
+    const int prev_i = static_cast<int>(pin_entry_.size());
     if (static_cast<int>(pin_entry_.size()) < cfg_.pin_length) {
       if (!pin_commit_working_digit()) return;
     }
@@ -1251,12 +1270,10 @@ void App::handle_pin(InputEvent e) {
           pin_lockout_until_ms_ = now_ms_ + 30000;
           pin_fail_count_ = 0;
         }
-        mark_pin_dirty();
+        mark_pin_slots_dirty(0, cfg_.pin_length - 1, true);
       }
     } else {
-      // Slot advanced: working is already '0' for the new index — content refresh
-      // clears the previous focus glyph so partials can't show a stale spin.
-      mark_content_dirty();
+      mark_pin_slots_dirty(prev_i, static_cast<int>(pin_entry_.size()), true);
     }
   }
 }

@@ -85,11 +85,12 @@ int main() {
   const int baseline_full = disp.full_or_fast;
   const int baseline_region = disp.region;
 
-  // Spinning a digit must use region partial — not a full-panel refresh.
+  // Spinning a digit must use a tight slot region — not a full-panel refresh.
   app.handle(InputEvent::Down);
   CHECK(disp.region > baseline_region);
   CHECK(disp.full_or_fast == baseline_full);
-  CHECK(disp.last_ry >= 100);  // PIN band, not status-only
+  CHECK(disp.last_ry >= 100);  // PIN slot, not status-only
+  CHECK(disp.last_rh <= 120);  // one digit cell, not a 360px band / content-canvas
 
   // Coalesced net delta (simulate rapid spins) still dirty-presents once.
   const int after_spin_region = disp.region;
@@ -153,6 +154,7 @@ int main() {
   CHECK(disp.region > home_focus_region);
   CHECK(disp.full_or_fast == home_focus_full);
   CHECK(disp.last_ry > 0);  // below status bar
+  CHECK(disp.last_rh < 400);  // tile union, not full content band
   CHECK(app.is_home_screen());
 
   // Coalesced Home rotary burst still presents once.

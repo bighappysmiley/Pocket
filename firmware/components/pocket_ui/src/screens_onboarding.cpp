@@ -735,9 +735,11 @@ void App::handle_onboarding(InputEvent e) {
         }
       } else {
         pin_backspace();
-        mark_pin_dirty();
+        mark_pin_slots_dirty(static_cast<int>(pin_entry_.size()) + 1, static_cast<int>(pin_entry_.size()),
+                             true);
       }
     } else if (e == InputEvent::Select) {
+      const int prev_i = static_cast<int>(pin_entry_.size());
       if (static_cast<int>(pin_entry_.size()) < cfg_.pin_length) {
         if (!pin_commit_working_digit()) return;
       }
@@ -771,8 +773,7 @@ void App::handle_onboarding(InputEvent e) {
           }
         }
       } else {
-        // Slot advance — working already reset to '0'; content refresh clears stale ink.
-        mark_content_dirty();
+        mark_pin_slots_dirty(prev_i, static_cast<int>(pin_entry_.size()), true);
       }
     }
     return;

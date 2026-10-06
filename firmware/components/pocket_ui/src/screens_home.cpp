@@ -259,12 +259,6 @@ void App::render_home() {
 
 void App::mark_home_focus_dirty(int prev_index, int next_index) {
   ++home_focus_spin_count_;
-  // Every 6th focus move: content-band partial clears residual tile ghosts.
-  // Otherwise only the union of the two cells — much less panel work than ContentBand.
-  if ((home_focus_spin_count_ % 6) == 0) {
-    mark_content_dirty();
-    return;
-  }
   HomeApp focusable[kHomeGridSlots];
   const int n = count_home_focusable(cfg_, focusable, kHomeGridSlots);
   if (n <= 0) {

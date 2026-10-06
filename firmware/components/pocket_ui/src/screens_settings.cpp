@@ -1,4 +1,5 @@
 #include "pocket/app.hpp"
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -21,6 +22,41 @@ void draw_focus_rows(Canvas& c, FocusModel& focus, const char* const* rows, int 
 }
 
 }  // namespace
+
+int App::settings_focus_list_top() const {
+  switch (nav_.current()) {
+    case ScreenId::SettingsAbout:
+      return 560;
+    case ScreenId::SettingsHomeApps:
+      return kListTop + 28;
+    case ScreenId::SettingsUpdate:
+      return kListTop + 72 + 2 * kBodyLinePitch;
+    case ScreenId::SettingsCloud:
+      return kListTop + 180;
+    case ScreenId::SettingsWifi:
+      if (wifi_ui_page_ == 1) return kListTop + 240;
+      if (wifi_ui_page_ == 2) return below_title(kListTop) - 8;
+      return (cfg_.wifi_known.empty() ? below_title(kListTop) - 8 + kRowPitch
+                                      : below_title(kListTop) - 8);
+    default:
+      return kListTop;
+  }
+}
+
+void App::mark_list_focus_dirty(int list_top, int prev, int next) {
+  const int i0 = std::min(prev, next);
+  const int i1 = std::max(prev, next);
+  const int y = std::max(0, row_y(list_top, i0) - 4);
+  const int bottom = std::min(kCanvasH, row_y(list_top, i1) + kFocusRowH + 4);
+  mark_region_dirty(0, y, kCanvasW, bottom - y);
+}
+
+void App::settings_move_focus(int delta) {
+  const int prev = focus_.index;
+  focus_.move(delta);
+  if (focus_.index == prev) return;
+  mark_list_focus_dirty(settings_focus_list_top(), prev, focus_.index);
+}
 
 static const char* kSettingsRows[] = {
     "PIN & security", "Wi-Fi",           "Display",         "Sound & mic", "Home apps",
@@ -340,12 +376,8 @@ void App::handle_settings(InputEvent e) {
 
   if (s == ScreenId::SettingsRoot) {
     focus_.count = 9;
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       ScreenId dest[] = {ScreenId::SettingsSecurity, ScreenId::SettingsWifi,     ScreenId::SettingsDisplay,
                          ScreenId::SettingsSound,    ScreenId::SettingsHomeApps, ScreenId::SettingsUnits,
@@ -360,8 +392,7 @@ void App::handle_settings(InputEvent e) {
   if (s == ScreenId::SettingsUnits && (e == InputEvent::Select || e == InputEvent::Up || e == InputEvent::Down)) {
     focus_.count = 2;
     if (e == InputEvent::Up || e == InputEvent::Down) {
-      focus_.move(e == InputEvent::Down ? 1 : -1);
-      mark_content_dirty();
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else {
       cfg_.weather_units = static_cast<uint8_t>(focus_.index);
       store_.save(cfg_);
@@ -373,12 +404,8 @@ void App::handle_settings(InputEvent e) {
   if (s == ScreenId::SettingsHomeApps) {
     static const int kOrder[] = {0, 1, 2, 3, 4, 5, 8, 6, 7};
     focus_.count = 9;
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       // Settings + Update (last two rows) always on
       if (focus_.index < 7) {
@@ -392,12 +419,8 @@ void App::handle_settings(InputEvent e) {
 
   if (s == ScreenId::SettingsSecurity) {
     focus_.count = 3;
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       if (focus_.index == 1) go_lock();
       else if (focus_.index == 2) {
@@ -414,8 +437,7 @@ void App::handle_settings(InputEvent e) {
     if (wifi_ui_page_ == 1) {
       focus_.count = 3;
       if (e == InputEvent::Up || e == InputEvent::Down) {
-        focus_.move(e == InputEvent::Down ? 1 : -1);
-        mark_content_dirty();
+        settings_move_focus(e == InputEvent::Down ? 1 : -1);
         return;
       }
       if (e == InputEvent::Select) {
@@ -447,8 +469,7 @@ void App::handle_settings(InputEvent e) {
     if (wifi_ui_page_ == 2) {
       focus_.count = std::max(1, n_known + 1);
       if (e == InputEvent::Up || e == InputEvent::Down) {
-        focus_.move(e == InputEvent::Down ? 1 : -1);
-        mark_content_dirty();
+        settings_move_focus(e == InputEvent::Down ? 1 : -1);
         return;
       }
       if (e == InputEvent::Select) {
@@ -475,12 +496,8 @@ void App::handle_settings(InputEvent e) {
 
     const int n_actions = n_known > 0 ? 3 : 2;
     focus_.count = std::max(1, n_known + n_actions);
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       if (focus_.index < n_known) {
         const auto& net = cfg_.wifi_known[static_cast<size_t>(focus_.index)];
@@ -520,12 +537,8 @@ void App::handle_settings(InputEvent e) {
 
   if (s == ScreenId::SettingsDisplay) {
     focus_.count = 7;
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         const uint16_t opts[] = {30, 60, 120, 300};
@@ -590,12 +603,8 @@ void App::handle_settings(InputEvent e) {
       mark_content_dirty();
       return;
     }
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         int v = cfg_.volume_percent + 10;
@@ -617,12 +626,8 @@ void App::handle_settings(InputEvent e) {
 
   if (s == ScreenId::SettingsAbout) {
     focus_.count = 3;
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         tips_page_ = 1;
@@ -647,12 +652,8 @@ void App::handle_settings(InputEvent e) {
 
   if (s == ScreenId::SettingsCloud) {
     focus_.count = 3;
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       if (focus_.index == 2) {
         // Link companion app — mint pair session + show QR
@@ -681,12 +682,8 @@ void App::handle_settings(InputEvent e) {
 
   if (s == ScreenId::SettingsUpdate) {
     focus_.count = 2;
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) begin_firmware_update();
       else {
@@ -710,12 +707,8 @@ void App::handle_settings(InputEvent e) {
   }
 
   // Generic: Up/Down focus, Select/Back
-  if (e == InputEvent::Up) {
-    focus_.move(-1);
-    mark_content_dirty();
-  } else if (e == InputEvent::Down) {
-    focus_.move(1);
-    mark_content_dirty();
+  if (e == InputEvent::Up || e == InputEvent::Down) {
+    settings_move_focus(e == InputEvent::Down ? 1 : -1);
   } else if (e == InputEvent::Select) {
     nav_.replace(ScreenId::SettingsRoot);
     after_nav();
