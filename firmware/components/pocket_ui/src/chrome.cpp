@@ -9,38 +9,36 @@ namespace pocket {
 namespace {
 
 /**
- * Wi‑Fi status glyph — sized to match StatusBar type (~33px). Three solid
- * ascending bars with a clear offline slash. Weight matches the battery icon.
+ * Wi‑Fi status glyph — refined bars (slightly narrower) with rounded caps.
+ * Offline slash stays bold enough to read on e-ink.
  */
 void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
   const Gray g_on = Gray::G0;
   const Gray g_off = Gray::G2;
-  constexpr int kBarW = 7;
+  constexpr int kBarW = 6;
   constexpr int kGap = 4;
-  constexpr int kBaseY = 28;  // baseline in the 30px-tall icon box
-  const int heights[3] = {10, 18, 28};
+  constexpr int kBaseY = 26;
+  const int heights[3] = {9, 16, 24};
   for (int i = 0; i < 3; ++i) {
-    const int bx = x + i * (kBarW + kGap);
+    const int bx = x + 2 + i * (kBarW + kGap);
     const int bh = heights[i];
     c.fill_round_rect(bx, y + kBaseY - bh, kBarW, bh, 2, active ? g_on : g_off);
   }
   if (!active) {
-    c.line(x - 1, y + 29, x + 29, y - 1, Gray::G0);
-    c.line(x, y + 29, x + 30, y - 1, Gray::G0);
-    c.line(x + 1, y + 29, x + 31, y - 1, Gray::G0);
+    c.line(x, y + 27, x + 28, y + 1, Gray::G0);
+    c.line(x + 1, y + 27, x + 29, y + 1, Gray::G0);
   }
 }
 
 /**
- * Battery gauge — body tall enough to sit beside StatusBar text; four solid
- * segments so charge reads at a glance on e-ink.
+ * Battery gauge — slightly shorter body; four segments; rounded terminal nub.
  */
 void draw_battery_icon(Canvas& c, int x, int y, int pct) {
-  constexpr int kW = 36;
-  constexpr int kH = 20;
+  constexpr int kW = 34;
+  constexpr int kH = 18;
   constexpr int kSegs = 4;
   c.stroke_round_rect(x, y, kW, kH, 4, Gray::G0, 2);
-  c.fill_round_rect(x + kW, y + 5, 5, 10, 2, Gray::G0);
+  c.fill_round_rect(x + kW, y + 4, 4, 10, 2, Gray::G0);
 
   const int pad = 3;
   const int inner_w = kW - 2 * pad;
@@ -77,10 +75,10 @@ void draw_status_bar_impl(Canvas& c, const DeviceConfig& cfg, int hour, int minu
   const int text_y = (kStatusBarH - text_h) / 2;
   c.draw_text(kSideMargin, text_y, timebuf, Canvas::TextRole::StatusBar, Gray::G0);
 
-  constexpr int kBattW = 36;
-  constexpr int kBattH = 20;
-  constexpr int kWifiW = 30;
-  constexpr int kWifiH = 30;
+  constexpr int kBattW = 34;
+  constexpr int kBattH = 18;
+  constexpr int kWifiW = 28;
+  constexpr int kWifiH = 28;
   const int batt_y = (kStatusBarH - kBattH) / 2;
   const int wifi_y = (kStatusBarH - kWifiH) / 2;
 

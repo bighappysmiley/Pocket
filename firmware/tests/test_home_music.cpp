@@ -93,6 +93,8 @@ int main() {
   TDisp disp;
   TStorage storage;
   TAudio audio;
+  // Offline local scan loads whatever is already on disk — start clean.
+  std::system(("rm -rf " + storage.root + " && mkdir -p " + storage.root).c_str());
   App app(store, clock, wifi, cloud, disp, &storage, &audio);
   app.boot();
 
