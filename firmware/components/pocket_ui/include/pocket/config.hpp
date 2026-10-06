@@ -38,7 +38,7 @@ struct DeviceConfig {
   bool companion_linked = false;
   std::string fw_channel = "stable";
   /** Consumer-facing semver shown in About / Update — never a POCKET-LIVE flash marker. */
-  std::string fw_version = "1.3.5";
+  std::string fw_version = "1.3.6";
   std::string fw_build_id;  // internal OTA id e.g. POCKET-LIVE-v38-… (not shown to users)
   std::string device_id;  // UUID
   std::string device_token;
@@ -69,7 +69,7 @@ struct DeviceConfig {
 
 /** Consumer product branding (UI). Flash markers stay in `fw_build_id` only. */
 inline constexpr const char* kProductName = "Pocket Classic";
-inline constexpr const char* kConsumerVersion = "1.3.5";
+inline constexpr const char* kConsumerVersion = "1.3.6";
 /** Spec §E: keep last known entitlement for local use while offline this long. */
 inline constexpr uint32_t kCloudOfflineGraceSec = 72u * 3600u;
 
