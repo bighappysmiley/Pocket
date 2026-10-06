@@ -16,12 +16,29 @@ let pipelinePromise = null;
 async function ensureVendor() {
   if (existsSync(MARKER)) return;
   mkdirSync(join(VENDOR, "node_modules"), { recursive: true });
-  // Install with npm into vendor dir (Neon Functions include npm).
-  execSync("npm install --omit=dev --no-audit --no-fund @xenova/transformers@2.17.2 onnxruntime-node@1.14.0", {
+  writeFileSync(
+    join(VENDOR, "package.json"),
+    JSON.stringify({
+      name: "pocket-whisper-vendor",
+      private: true,
+      type: "commonjs",
+      dependencies: {
+        "@xenova/transformers": "2.17.2",
+        "onnxruntime-node": "1.14.0",
+      },
+    }),
+  );
+  const pathEnv = ["/usr/local/bin", "/usr/bin", process.env.PATH || ""].filter(Boolean).join(":");
+  execSync("npm install --omit=dev --no-audit --no-fund", {
     cwd: VENDOR,
-    env: { ...process.env, npm_config_cache: join(VENDOR, ".npm-cache"), NODE_ENV: "production" },
+    env: {
+      ...process.env,
+      PATH: pathEnv,
+      npm_config_cache: join(VENDOR, ".npm-cache"),
+      NODE_ENV: "production",
+    },
     stdio: "pipe",
-    timeout: 180000,
+    timeout: 240000,
   });
   writeFileSync(MARKER, "ok");
 }
