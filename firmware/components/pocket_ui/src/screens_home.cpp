@@ -186,23 +186,24 @@ void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
       break;
     }
     case HomeApp::Reading: {
-      // Closed book with bookmark ribbon — distinct from open-spread.
-      const int w = s * 11 / 16;
-      const int h = s * 13 / 16;
-      const int x = cx - w / 2;
+      // Closed hardcover + bookmark ribbon peeking from the fore-edge.
+      const int w = s * 5 / 8;
+      const int h = s * 3 / 4;
+      const int x = cx - w / 2 - s / 20;
       const int y = cy - h / 2;
       c.fill_round_rect(x, y, w, h, s / 12, g);
-      // Cover margin / binding strip.
-      c.fill_rect(x + w / 6, y + stroke, stroke + 1, h - stroke * 2, bg);
-      // Title rules.
-      c.fill_rect(x + w / 3, y + h * 5 / 16, w / 2, stroke, bg);
-      c.fill_rect(x + w / 3, y + h * 5 / 16 + stroke * 2 + 1, w / 3, stroke, bg);
-      // Bookmark ribbon hanging from top.
-      const int bm_x = x + w * 2 / 3;
-      c.fill_rect(bm_x, y - 1, stroke + 2, h / 2, bg);
-      // V-notch at ribbon tip.
-      c.fill_rect(bm_x, y + h / 2 - stroke, stroke + 2, stroke, g);
-      c.hline(bm_x, y + h / 2 - stroke - 1, stroke + 2, g);
+      // Binding stripe.
+      c.fill_rect(x + w / 5, y + stroke, std::max(2, stroke), h - stroke * 2, bg);
+      // Cover title rules.
+      c.fill_rect(x + w * 2 / 5, y + h * 5 / 16, w * 2 / 5, stroke, bg);
+      c.fill_rect(x + w * 2 / 5, y + h * 5 / 16 + stroke * 2 + 1, w / 4, stroke, bg);
+      // Bookmark ribbon — solid strip hanging past the bottom edge.
+      const int bm_w = std::max(4, s / 9);
+      const int bm_x = x + w - bm_w - s / 14;
+      c.fill_rect(bm_x, y + h * 2 / 3, bm_w, h / 3 + s / 10, g);
+      // Forked tip.
+      c.fill_rect(bm_x, y + h + s / 10 - stroke, bm_w, stroke, bg);
+      c.fill_rect(bm_x + bm_w / 2 - 1, y + h + s / 14, 2, stroke + 1, bg);
       break;
     }
     default:
