@@ -1,16 +1,22 @@
 /**
  * Durable on-Neon Whisper STT (no external API keys).
- * Fits Neon Function /tmp (256MB tmpfs): wasm onnxruntime only, then wipe npm cache.
- * Marker: pocket-whisper-runtime-v1
+ * Downloads a prebuilt wasm vendor+model tarball (fits Neon /tmp 256MB).
+ * Marker: pocket-whisper-runtime-v2
+ *
+ * Vendor release: github.com/bighappysmiley/Pocket/releases/tag/whisper-vendor-v2
  */
-import { mkdirSync, writeFileSync, existsSync, rmSync } from "fs";
+import { mkdirSync, writeFileSync, existsSync, rmSync, createWriteStream } from "fs";
 import { execSync } from "child_process";
 import { join } from "path";
 import { tmpdir } from "os";
 import { createRequire } from "module";
+import { pipeline as streamPipeline } from "stream/promises";
+import { Readable } from "stream";
 
 const VENDOR = join(tmpdir(), "pocket-whisper-vendor-v2");
 const MARKER = join(VENDOR, ".ready");
+const VENDOR_URL =
+  "https://github.com/bighappysmiley/Pocket/releases/download/whisper-vendor-v2/pocket-whisper-vendor-v2.tgz";
 let pipelinePromise = null;
 
 const PATH_ENV = ["/usr/local/bin", "/usr/bin", process.env.PATH || ""].filter(Boolean).join(":");
@@ -25,38 +31,38 @@ function run(cmd, opts = {}) {
   });
 }
 
+async function downloadTo(url, dest) {
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`vendor download ${res.status}`);
+  if (!res.body) throw new Error("vendor download empty body");
+  const nodeStream = Readable.fromWeb(res.body);
+  await streamPipeline(nodeStream, createWriteStream(dest));
+}
+
 async function ensureVendor() {
   if (existsSync(MARKER)) return;
-  try {
-    rmSync(VENDOR, { recursive: true, force: true });
-  } catch {
-    /* ignore */
+  // Drop prior failed npm installs / old vendor dirs so /tmp stays under budget.
+  for (const name of ["pocket-whisper-vendor-v1", "pocket-whisper-vendor-v2", "pocket-whisper-vendor-v2.tgz"]) {
+    try {
+      rmSync(join(tmpdir(), name), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   }
-  mkdirSync(join(VENDOR, "node_modules"), { recursive: true });
-  writeFileSync(
-    join(VENDOR, "package.json"),
-    JSON.stringify({
-      name: "pocket-whisper-vendor",
-      private: true,
-      dependencies: {
-        "@xenova/transformers": "2.17.2",
-        "onnxruntime-web": "1.14.0",
-      },
-    }),
-  );
-  // Install without scripts; wasm only — stays under Neon /tmp budget.
-  run("npm install --omit=dev --no-audit --no-fund --ignore-scripts", {
-    cwd: VENDOR,
-    env: {
-      npm_config_cache: join(VENDOR, ".npm-cache"),
-      NODE_ENV: "production",
-    },
-    timeout: 240000,
-  });
+  mkdirSync(VENDOR, { recursive: true });
+  const tgz = join(tmpdir(), "pocket-whisper-vendor-v2-dl.tgz");
   try {
-    rmSync(join(VENDOR, ".npm-cache"), { recursive: true, force: true });
-  } catch {
-    /* ignore */
+    await downloadTo(VENDOR_URL, tgz);
+    run(`tar -xzf ${JSON.stringify(tgz)} -C ${JSON.stringify(VENDOR)}`, { timeout: 180000 });
+  } finally {
+    try {
+      rmSync(tgz, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!existsSync(join(VENDOR, "package.json")) || !existsSync(join(VENDOR, "node_modules"))) {
+    throw new Error("vendor tarball missing package.json/node_modules");
   }
   writeFileSync(MARKER, "ok");
 }
@@ -71,7 +77,6 @@ async function getPipeline() {
     env.allowLocalModels = false;
     env.useBrowserCache = false;
     env.cacheDir = join(VENDOR, "model-cache");
-    // Force wasm backend (no native onnxruntime-node).
     if (env.backends?.onnx?.wasm) {
       env.backends.onnx.wasm.numThreads = 1;
       env.backends.onnx.wasm.proxy = false;
@@ -79,7 +84,10 @@ async function getPipeline() {
     return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en", {
       quantized: true,
     });
-  })();
+  })().catch((e) => {
+    pipelinePromise = null;
+    throw e;
+  });
   return pipelinePromise;
 }
 
@@ -129,7 +137,12 @@ export default {
     if (r.method === "OPTIONS") return new Response(null, { status: 204, headers: cors() });
     if (r.method === "GET") {
       return Response.json(
-        { ok: true, service: "pocket-whisper-runtime-v1", vendor: existsSync(MARKER) },
+        {
+          ok: true,
+          service: "pocket-whisper-runtime-v2",
+          vendor: existsSync(MARKER),
+          vendorUrl: VENDOR_URL,
+        },
         { headers: cors() },
       );
     }

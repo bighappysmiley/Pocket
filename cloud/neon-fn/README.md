@@ -25,7 +25,8 @@ Env (carried across deploys; set on change):
 - `DATABASE_URL` injected by Neon
 - **STT (device dictation `/v1/stt`):** prefer `GROQ_API_KEY` (free Whisper) or `OPENAI_API_KEY`.
   Optional: `STT_PROXY_URL` (+ `STT_PROXY_KEY`) — production uses the Neon Function slug `stt`
-  (`whisper-runtime.mjs`, on-function Whisper tiny, no external key). Also:
+  (`whisper-runtime.mjs` downloads prebuilt wasm Whisper vendor from the
+  `whisper-vendor-v2` GitHub release — no npm on Neon `/tmp`). Also:
   `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` for Workers AI, or Neon AI Gateway Gemini
   (paid plan). Admins can `PUT /v1/admin/stt` with `{ "groq_api_key": "gsk_…" }` /
   `{ "openai_api_key": "sk-…" }` / `{ "stt_proxy_url": "…" }` (stored in `app_settings`).
