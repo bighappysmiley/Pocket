@@ -349,7 +349,7 @@ fi
 
 say ""
 say "Done. Unplug USB for 2 seconds, plug back in, wait up to ~20s."
-say "Serial MUST show:  *** POCKET-LIVE-v63-icons ***"
+say "Serial MUST show:  *** POCKET-LIVE-v64-pin-icons ***"
 say "Then: Welcome with larger Pocket wordmark; Wi-Fi scan lists real SSIDs."
 say "If you only see a PSRAM line, you flashed an old UART build — re-download."
 say "Rotary Up/Down moves focus; press selects Continue."

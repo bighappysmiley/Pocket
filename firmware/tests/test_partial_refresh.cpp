@@ -114,9 +114,12 @@ int main() {
   CHECK(app.screen() == ScreenId::Lock);
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::Pin);
-  // Enter 1234 (working digit is kept after each Select, so +1 per slot).
-  for (int dig = 0; dig < 4; ++dig) {
-    app.handle(InputEvent::Down);
+  // Enter 1234 — each new slot starts at '0'; spin to the target digit, then Select.
+  for (int dig = 1; dig <= 4; ++dig) {
+    app.apply_pin_digit_delta(dig);
+    app.flush_dirty();
+    CHECK(app.pin_working_digit() == static_cast<char>('0' + dig));
+    CHECK(app.pin_focus_index() == dig - 1);
     app.handle(InputEvent::Select);
   }
   CHECK(app.screen() == ScreenId::Home);

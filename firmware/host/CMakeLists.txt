@@ -74,3 +74,8 @@ add_executable(test_refresh_thrash ../tests/test_refresh_thrash.cpp ${POCKET_UI_
 target_include_directories(test_refresh_thrash PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_refresh_thrash PRIVATE POCKET_HOST=1)
 add_test(NAME test_refresh_thrash COMMAND test_refresh_thrash)
+
+add_executable(test_pin_state ../tests/test_pin_state.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_pin_state PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_pin_state PRIVATE POCKET_HOST=1)
+add_test(NAME test_pin_state COMMAND test_pin_state)

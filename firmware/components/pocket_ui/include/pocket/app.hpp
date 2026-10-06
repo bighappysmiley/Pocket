@@ -289,6 +289,18 @@ class App {
   /** Present the canvas if a dirty mark is pending (used after coalesced PIN/Home spins). */
   void flush_dirty();
 
+  /** Committed PIN digits so far (length == focus index). */
+  const std::string& pin_entry() const { return pin_entry_; }
+  /** Working spin glyph for the focused (next) slot — always matches what draw paints there. */
+  char pin_working_digit() const { return pin_digit_working_; }
+  /** Focused slot index (== pin_entry().size()); never skips ahead of committed digits. */
+  int pin_focus_index() const { return static_cast<int>(pin_entry_.size()); }
+  /**
+   * Logical value shown for slot `i`: committed digit, working digit if focused,
+   * or `'0'` when the slot is still unset (empty, not focused).
+   */
+  char pin_slot_value(int i) const;
+
   ScreenId screen() const { return nav_.current(); }
   const DeviceConfig& config() const { return cfg_; }
   /** Which of kLockMotifCount calm designs the lock/sleep face is currently showing. */
@@ -329,6 +341,12 @@ class App {
   /** Draw PIN slots; mask_completed hides entered digits as dots (unlock). */
   void draw_pin_entry(bool mask_completed, int band_top);
   void pin_band_geometry(int& x, int& y, int& w, int& h) const;
+  /** Enter a fresh empty slot: focus = entry size, working digit = '0', spin latch clear. */
+  void pin_enter_empty_slot();
+  /** Commit working digit (if room); returns true if a digit was appended. */
+  bool pin_commit_working_digit();
+  /** Erase last committed digit and refocus that slot at '0'. */
+  void pin_backspace();
 
   // Screen handlers
   void render_lock();
@@ -434,6 +452,13 @@ class App {
   std::string pin_entry_;
   std::string pin_pending_;
   char pin_digit_working_ = '0';
+  /** True after a rotary spin on the current focus slot. */
+  bool pin_spun_since_focus_ = false;
+  /**
+   * After committing a spun digit, ignore the next Select once — mechanical bounce
+   * otherwise commits '0' into the following slot and skips focus.
+   */
+  bool pin_block_select_bounce_ = false;
   /** Counts digit spins since PIN enter — every few spins use a wider refresh to clear ghosts. */
   int pin_spin_count_ = 0;
   /** Counts Home focus moves — every few moves use content-band to clear tile ghosts. */

@@ -196,12 +196,52 @@ void App::apply_pin_digit_delta(int delta) {
   if (!is_pin_entry_screen()) return;
   if (now_ms_ < pin_lockout_until_ms_) return;
   if (delta == 0) return;
+  // A real spin after a commit means the next Select is intentional — drop bounce guard.
+  pin_block_select_bounce_ = false;
   // Normalize into 0..9 via positive modulo.
   int v = (pin_digit_working_ - '0') + delta;
   v %= 10;
   if (v < 0) v += 10;
   pin_digit_working_ = static_cast<char>('0' + v);
+  pin_spun_since_focus_ = true;
+  focus_.index = static_cast<int>(pin_entry_.size());
   mark_pin_dirty();
+}
+
+char App::pin_slot_value(int i) const {
+  if (i < 0 || i >= cfg_.pin_length) return '?';
+  if (i < static_cast<int>(pin_entry_.size())) return pin_entry_[static_cast<size_t>(i)];
+  if (i == static_cast<int>(pin_entry_.size())) return pin_digit_working_;
+  return '0';
+}
+
+void App::pin_enter_empty_slot() {
+  // New / cleared slot must show 0 — never a stale spin from the previous index.
+  pin_digit_working_ = '0';
+  pin_spun_since_focus_ = false;
+  focus_.index = static_cast<int>(pin_entry_.size());
+}
+
+bool App::pin_commit_working_digit() {
+  if (static_cast<int>(pin_entry_.size()) >= cfg_.pin_length) return false;
+  if (pin_block_select_bounce_) {
+    // Consume the post-spin bounce Select; do not advance focus again.
+    pin_block_select_bounce_ = false;
+    return false;
+  }
+  const bool spun = pin_spun_since_focus_;
+  pin_entry_.push_back(pin_digit_working_);
+  pin_enter_empty_slot();
+  // Only arm bounce-guard after a spun commit (0000 via repeated Select stays OK).
+  pin_block_select_bounce_ = spun;
+  return true;
+}
+
+void App::pin_backspace() {
+  if (pin_entry_.empty()) return;
+  pin_entry_.pop_back();
+  pin_block_select_bounce_ = false;
+  pin_enter_empty_slot();
 }
 
 void App::flush_dirty() {
@@ -367,7 +407,10 @@ bool App::mint_pair_session() {
 
 void App::after_nav(bool full_refresh) {
   focus_.index = 0;
+  // Fresh screen: clear PIN spin latch so a prior slot's digit can't leak in.
   pin_digit_working_ = '0';
+  pin_spun_since_focus_ = false;
+  pin_block_select_bounce_ = false;
   dirty_ = true;
   dirty_kind_ = DirtyKind::FullCanvas;
   if (full_refresh) refresh_.on_screen_enter_full();
@@ -1058,8 +1101,9 @@ void App::draw_lock_motif() {
 void App::handle_lock(InputEvent e) {
   if (e == InputEvent::Select) {
     pin_entry_.clear();
-    pin_digit_working_ = '0';
     pin_spin_count_ = 0;
+    pin_block_select_bounce_ = false;
+    pin_enter_empty_slot();
     nav_.push(ScreenId::Pin);
     after_nav();
   }
@@ -1091,14 +1135,18 @@ void App::draw_pin_entry(bool mask_completed, int band_top) {
     dig_box = std::max(dig_box, canvas_.text_width(tmp, Canvas::TextRole::PinDigit));
   }
 
+  // Invariant: focus index == committed length; focused glyph == pin_digit_working_.
+  focus_.index = static_cast<int>(pin_entry_.size());
+
   for (int i = 0; i < n; ++i) {
     const int x = x0 + i * (kSlotW + kGap);
-    const bool focused = static_cast<int>(pin_entry_.size()) == i;
+    const bool focused = focus_.index == i;
     const bool filled = i < static_cast<int>(pin_entry_.size());
 
     // Solid slot fill first — critical for e-ink partial refresh correctness.
     if (focused) {
       canvas_.fill_rect(x, slot_y, kSlotW, kSlotH, Gray::G0);
+      // Always paint the live working digit (equals pin_slot_value(i)).
       char s[2] = {pin_digit_working_, 0};
       const int tw = canvas_.text_width(s, Canvas::TextRole::PinDigit);
       const int tx = x + (kSlotW - dig_box) / 2 + (dig_box - tw) / 2;
@@ -1112,7 +1160,7 @@ void App::draw_pin_entry(bool mask_completed, int band_top) {
         const int cy = slot_y + kSlotH / 2;
         canvas_.fill_round_rect(cx - 8, cy - 8, 16, 16, 8, Gray::G0);
       } else {
-        char s[2] = {pin_entry_[i], 0};
+        char s[2] = {pin_entry_[static_cast<size_t>(i)], 0};
         const int tw = canvas_.text_width(s, Canvas::TextRole::PinDigit);
         const int tx = x + (kSlotW - dig_box) / 2 + (dig_box - tw) / 2;
         canvas_.draw_text(tx, slot_y + 16, s, Canvas::TextRole::PinDigit, Gray::G0);
@@ -1151,9 +1199,7 @@ void App::handle_pin(InputEvent e) {
       nav_.pop();
       after_nav();
     } else {
-      pin_entry_.pop_back();
-      pin_digit_working_ = '0';
-      focus_.index = static_cast<int>(pin_entry_.size());
+      pin_backspace();
       mark_pin_dirty();
     }
     return;
@@ -1162,31 +1208,35 @@ void App::handle_pin(InputEvent e) {
   // Preview only — Select commits the digit (avoids slot-jump overwrite).
   // Net deltas from coalesced rotary events go through apply_pin_digit_delta().
   if (e == InputEvent::Up) {
+    pin_block_select_bounce_ = false;
     apply_pin_digit_delta(-1);
     return;
   }
   if (e == InputEvent::Down) {
+    pin_block_select_bounce_ = false;
     apply_pin_digit_delta(1);
     return;
   }
   if (e == InputEvent::Select) {
     if (static_cast<int>(pin_entry_.size()) < cfg_.pin_length) {
-      pin_entry_.push_back(pin_digit_working_);
+      if (!pin_commit_working_digit()) return;
     }
     if (static_cast<int>(pin_entry_.size()) >= cfg_.pin_length) {
       if (verify_pin(cfg_, pin_entry_)) {
         pin_fail_count_ = 0;
-        pin_digit_working_ = '0';
         pin_spin_count_ = 0;
+        pin_block_select_bounce_ = false;
         parental_session_unlocked_ = true;
         if (parental_pin_for_app_) {
           parental_pin_for_app_ = false;
           const HomeApp pending = parental_pending_app_;
           pin_entry_.clear();
+          pin_enter_empty_slot();
           nav_.pop();
           launch_home_app(pending);
         } else {
           pin_entry_.clear();
+          pin_enter_empty_slot();
           go_home();
         }
       } else {
@@ -1194,9 +1244,9 @@ void App::handle_pin(InputEvent e) {
         error_until_ms_ = now_ms_ + 2000;
         ++pin_fail_count_;
         pin_entry_.clear();
-        focus_.index = 0;
-        pin_digit_working_ = '0';
         pin_spin_count_ = 0;
+        pin_block_select_bounce_ = false;
+        pin_enter_empty_slot();
         if (pin_fail_count_ >= 5) {
           pin_lockout_until_ms_ = now_ms_ + 30000;
           pin_fail_count_ = 0;
@@ -1204,9 +1254,8 @@ void App::handle_pin(InputEvent e) {
         mark_pin_dirty();
       }
     } else {
-      focus_.index = static_cast<int>(pin_entry_.size());
-      // Keep working digit so consecutive same digits are one press each.
-      // Force a clean band refresh when the focus slot advances.
+      // Slot advanced: working is already '0' for the new index — content refresh
+      // clears the previous focus glyph so partials can't show a stale spin.
       mark_content_dirty();
     }
   }
