@@ -78,5 +78,9 @@ On boot, SD is preferred when present and valid; otherwise NVS. Onboarding survi
 
 Pairing QR encodes `https://bighappysmiley.github.io/Pocket/pair?code={CODE}` (TTL 10 minutes).
 Device registers sessions with Pocket Cloud (`POST /v1/pair/sessions` + `x-device-key: DEVICE_API_KEY`) and polls
-`GET /v1/pair/sessions/:code`. Defaults: `POCKET_CLOUD_BASE=https://br-super-hill-b40yvyrj-api.compute.c-6.us-east-2.aws.neon.tech`,
+`GET /v1/pair/sessions/:code`. Defaults: `POCKET_CLOUD_BASE=https://br-super-hill-b40yvyrj-api.compute.c-6.us-east-2.aws.neon.tech`.
+
+**OTA discovery:** Home → Update calls `GET /v1/firmware/latest`, then falls back to
+`https://bighappysmiley.github.io/Pocket/firmware-manifest.json` and the
+`firmware-latest` release manifest if Cloud is unreachable.
 `POCKET_PWA_ORIGIN=https://bighappysmiley.github.io/Pocket` (override at compile time).

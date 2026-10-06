@@ -14,6 +14,18 @@ namespace pocket {
 #define POCKET_CLOUD_BASE "https://br-super-hill-b40yvyrj-api.compute.c-6.us-east-2.aws.neon.tech"
 #endif
 
+/**
+ * Static OTA discovery mirrors (no Neon cold-start). Tried after Cloud if Cloud fails.
+ * Pages is published by Deploy; GitHub release is the firmware-latest asset.
+ */
+#ifndef POCKET_FW_MANIFEST_PAGES
+#define POCKET_FW_MANIFEST_PAGES "https://bighappysmiley.github.io/Pocket/firmware-manifest.json"
+#endif
+#ifndef POCKET_FW_MANIFEST_RELEASE
+#define POCKET_FW_MANIFEST_RELEASE \
+  "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/firmware-manifest.json"
+#endif
+
 #ifndef POCKET_DEVICE_API_KEY
 #define POCKET_DEVICE_API_KEY "dev-device-api-key"
 #endif

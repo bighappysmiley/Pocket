@@ -1707,17 +1707,29 @@ export default {
       }
 
       // Device OTA discovery — points at firmware-latest app image (A/B OTA, not merged USB bin).
+      // Prefer Pages mirror (no GitHub 302 / release-delete race), then the release asset.
       if (req.method === "GET" && path === "/v1/firmware/latest") {
-        const manifestUrl =
-          "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/firmware-manifest.json";
-        try {
-          const r = await fetch(manifestUrl, { headers: { Accept: "application/json" } });
-          if (r.ok) {
-            const body = await r.json();
-            if (body && body.url) return json(req, { ok: true, ...body });
+        const manifestUrls = [
+          "https://bighappysmiley.github.io/Pocket/firmware-manifest.json",
+          "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/firmware-manifest.json",
+        ];
+        for (const manifestUrl of manifestUrls) {
+          try {
+            const r = await fetch(manifestUrl, {
+              headers: { Accept: "application/json" },
+              redirect: "follow",
+            });
+            if (r.ok) {
+              const body = await r.json();
+              if (body && body.url) {
+                return json(req, { ok: true, ...body }, 200, {
+                  "cache-control": "public, max-age=60",
+                });
+              }
+            }
+          } catch (_) {
+            /* try next */
           }
-        } catch (_) {
-          /* fall through */
         }
         return json(req, {
           ok: true,
@@ -1726,7 +1738,7 @@ export default {
           url: "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/pocket.bin",
           size: 0,
           channel: "stable",
-        });
+        }, 200, { "cache-control": "public, max-age=30" });
       }
 
       // Device dictation — raw PCM s16le → Whisper / Gemini multimodal.

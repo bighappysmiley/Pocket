@@ -81,7 +81,8 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-companion-pages:
     name: Companion → GitHub Pages
-    needs: build
+    # Wait for firmware-esp32 so firmware-manifest.json matches the just-published release.
+    needs: [build, firmware-esp32]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -108,6 +109,18 @@ jobs:
           npm ci
           npm run build
           # spa-pages-fallback.mjs (via npm run build) writes 404.html + admin/index.html etc.
+          # Device OTA discovery mirror (no Neon). Prefer fresh release asset; keep public/ seed.
+          if curl -fsSL -L \
+              "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/firmware-manifest.json" \
+              -o dist/firmware-manifest.json; then
+            echo "Synced firmware-manifest.json from firmware-latest release"
+          elif [ -f public/firmware-manifest.json ]; then
+            cp -f public/firmware-manifest.json dist/firmware-manifest.json
+            echo "Used companion/public/firmware-manifest.json seed"
+          else
+            echo "::warning::No firmware-manifest.json for Pages OTA mirror"
+          fi
+          ls -la dist/firmware-manifest.json || true
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

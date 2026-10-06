@@ -1,0 +1,9 @@
+{
+  "build_id": "POCKET-LIVE-v53-stt",
+  "version": "POCKET-LIVE-v53-stt",
+  "url": "https://github.com/bighappysmiley/Pocket/releases/download/firmware-latest/pocket.bin",
+  "size": 1652688,
+  "sha256": "fff0e1e0712b2e6b299bb69c74ad8a567f0ca3f527ba1fdc00da348d86d6716d",
+  "channel": "stable",
+  "git_sha": "0eb2b91bbe59cad88c471d9a95864a62ab6ae2ac"
+}

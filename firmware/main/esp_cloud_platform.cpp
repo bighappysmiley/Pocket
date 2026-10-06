@@ -12,6 +12,8 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_random.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 namespace {
 
@@ -49,6 +51,8 @@ bool http_request(const char* method, const std::string& url, const char* auth_b
   cfg.event_handler = http_event;
   cfg.user_data = &buf;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
+  // GitHub release assets 302 → release-assets.githubusercontent.com.
+  cfg.max_redirection_count = 8;
   // Large STT uploads need a bigger buffer; default is fine for JSON APIs.
   cfg.buffer_size = 4096;
   cfg.buffer_size_tx = 4096;
@@ -219,14 +223,48 @@ std::vector<uint8_t> EspCloud::book_download(const std::string& device_id, const
 }
 
 std::string EspCloud::firmware_latest_json() {
-  const std::string url = std::string(POCKET_CLOUD_BASE) + "/v1/firmware/latest";
-  int status = 0;
-  std::string resp;
-  if (!http_request("GET", url, nullptr, {}, status, resp, 20000) || status != 200) {
-    ESP_LOGW(TAG, "firmware latest HTTP %d", status);
-    return {};
+  // TLS fails when RTC is still ~1970 (pre-SNTP). Wait briefly after GOT_IP.
+  {
+    time_t now = time(nullptr);
+    struct tm t {};
+    gmtime_r(&now, &t);
+    for (int i = 0; i < 40 && (t.tm_year + 1900) < 2024; ++i) {
+      vTaskDelay(pdMS_TO_TICKS(200));
+      now = time(nullptr);
+      gmtime_r(&now, &t);
+    }
+    if ((t.tm_year + 1900) < 2024) {
+      ESP_LOGW(TAG, "firmware latest: wall clock not synced yet");
+    }
   }
-  return resp;
+
+  // Prefer Pocket Cloud, then static mirrors so Update still works when Neon is
+  // cold-starting, mid-redeploy, or unreachable on the current Wi‑Fi path.
+  const std::string cloud_url = std::string(POCKET_CLOUD_BASE) + "/v1/firmware/latest";
+  const char* urls[] = {
+      cloud_url.c_str(),
+      POCKET_FW_MANIFEST_PAGES,
+      POCKET_FW_MANIFEST_RELEASE,
+  };
+
+  for (const char* url : urls) {
+    if (!url || !url[0]) continue;
+    int status = 0;
+    std::string resp;
+    // 45s: Neon bootstrap may fetch scram-api from GitHub on cold start.
+    if (!http_request("GET", url, nullptr, {}, status, resp, 45000) || status != 200) {
+      ESP_LOGW(TAG, "firmware latest HTTP %d url=%s", status, url);
+      continue;
+    }
+    // Require a download URL field so we don't accept an empty/error HTML body.
+    if (resp.find("\"url\"") == std::string::npos) {
+      ESP_LOGW(TAG, "firmware latest missing url field url=%s", url);
+      continue;
+    }
+    ESP_LOGI(TAG, "firmware latest ok (%u bytes) via %s", static_cast<unsigned>(resp.size()), url);
+    return resp;
+  }
+  return {};
 }
 
 std::string EspCloud::stt_transcribe(const std::vector<uint8_t>& pcm) {
