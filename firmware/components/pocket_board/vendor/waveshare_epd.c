@@ -149,7 +149,8 @@ static void EPD_SendDataBuffer(const UBYTE* buffer, UDOUBLE length)
     epaper_dc_1;
 
     esp_err_t ret;
-    const size_t chunk_size = 4096;
+    // Larger chunks → fewer SPI setup round-trips on full/partial paints.
+    const size_t chunk_size = 8192;
 
     for (size_t i = 0; i < length; i += chunk_size) {
         size_t current_chunk = (i + chunk_size > length) ? (length - i) : chunk_size;
@@ -165,7 +166,10 @@ static void EPD_SendDataBuffer(const UBYTE* buffer, UDOUBLE length)
             ESP_LOGE(TAG, "SPI transmission failed: %s", esp_err_to_name(ret));
             return;
         }
-        taskYIELD();
+        // Yield between chunks so Wi‑Fi can breathe; skip after the last chunk.
+        if (i + current_chunk < length) {
+            taskYIELD();
+        }
     }
 
     ESP_LOGD(TAG, "All %lu bytes transmitted successfully", (unsigned long)length);

@@ -93,11 +93,12 @@ void EpdDisplay::present(const pocket::Canvas& canvas, pocket::RefreshMode mode)
 
   // Ghosting / screen-enter "full" uses the panel's fastest full LUT (0xD7, ~1.5 s),
   // not the slow OTP 0xF7 (~3.5 s). Factory wipe in init() still uses 0xF7 once.
-  ESP_LOGI(TAG, "Waveshare fast full LUT (0xD7) mode=%s",
+  // Hot path: LOGD — serial INFO on every refresh added measurable lag.
+  ESP_LOGD(TAG, "Waveshare fast full LUT (0xD7) mode=%s",
            mode == pocket::RefreshMode::Full ? "full" : "partial-canvas");
   EPD_Init_Fast();
   EPD_Display_Fast_Base(panel_1bpp_);
-  ESP_LOGI(TAG, "refresh done");
+  ESP_LOGD(TAG, "refresh done");
 }
 
 void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, int lw, int lh) {
@@ -150,19 +151,23 @@ void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, in
   // only this window directly — a status-bar tick or a PIN digit no longer
   // pays for re-scanning the full 480×800 canvas just to keep a small strip.
   const size_t region_bytes = static_cast<size_t>(byte_w) * static_cast<size_t>(rows);
-  uint8_t* region = static_cast<uint8_t*>(malloc(region_bytes));
+  // Full-panel partials reuse the standing framebuffer — avoid malloc/free churn
+  // on every screen enter (common 0xFF whole-panel path).
+  const bool full_panel = (px0 == 0 && py0 == 0 && px1 == kPanelW && py1 == kPanelH &&
+                           region_bytes == kMonoBytes);
+  uint8_t* region = full_panel ? panel_1bpp_ : static_cast<uint8_t*>(malloc(region_bytes));
   if (!region) {
     present(canvas, pocket::RefreshMode::Partial);
     return;
   }
   rotate_canvas_to_mono_region(canvas, region, px0, px1, py0, py1);
 
-  ESP_LOGI(TAG, "Waveshare region partial px=%d..%d py=%d..%d bytes=%u", px0, px1, py0, py1,
+  ESP_LOGD(TAG, "Waveshare region partial px=%d..%d py=%d..%d bytes=%u", px0, px1, py0, py1,
            static_cast<unsigned>(region_bytes));
   EPD_Display_Partial(region, static_cast<UWORD>(px0), static_cast<UWORD>(py0),
                       static_cast<UWORD>(px1), static_cast<UWORD>(py1));
-  free(region);
-  ESP_LOGI(TAG, "region refresh done");
+  if (!full_panel) free(region);
+  ESP_LOGD(TAG, "region refresh done");
 }
 
 void EpdDisplay::set_brightness(int percent) {

@@ -561,7 +561,7 @@ void App::render_notes() {
       canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No notes yet", Canvas::TextRole::Body,
                                  Gray::G0);
       canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                                "Select New note to create one locally. Dictation needs Wi‑Fi.",
+                                "Select New note — works offline. Dictation needs Wi‑Fi.",
                                 Canvas::TextRole::Secondary, Gray::G1);
     } else {
       focus_.count = static_cast<int>(data_.notes.size()) + 1;
@@ -591,8 +591,16 @@ void App::render_notes() {
       canvas_.draw_text_fit(kSideMargin, kContentTop, kContentW, n.title, Canvas::TextRole::ScreenTitle,
                             Gray::G0);
       const int body_top = below_title(kContentTop);
-      canvas_.draw_text_wrapped(kSideMargin, body_top, kContentW, kWrapGap, n.body,
-                                Canvas::TextRole::Body, Gray::G0);
+      if (n.body.empty()) {
+        canvas_.draw_text_wrapped(
+            kSideMargin, body_top, kContentW, kWrapGap,
+            wifi_.connected() ? "Empty note — hold the side button to dictate."
+                              : "Empty note — saved on device. Dictation needs Wi‑Fi.",
+            Canvas::TextRole::Secondary, Gray::G1);
+      } else {
+        canvas_.draw_text_wrapped(kSideMargin, body_top, kContentW, kWrapGap, n.body,
+                                  Canvas::TextRole::Body, Gray::G0);
+      }
     }
     focus_.count = 2;
     const char* acts[] = {"Dictate", "Delete"};
@@ -720,7 +728,7 @@ void App::handle_notes(InputEvent e) {
     mic_capturing_ = false;
     const MicCaptureResult cap = audio_ ? audio_->stop_capture() : MicCaptureResult{};
     if (!wifi_.connected() && cfg_.stt_path == 0) {
-      error_msg_ = "Dictation needs Wi‑Fi. Notes still open and save offline.";
+      error_msg_ = "Dictation needs Wi‑Fi. Notes still save offline.";
       error_until_ms_ = now_ms_ + 3500;
       mark_content_dirty();
       return;
@@ -807,7 +815,7 @@ void App::handle_notes(InputEvent e) {
       mark_content_dirty();
     } else if (e == InputEvent::Select && focus_.index == 0) {
       if (!wifi_.connected() && cfg_.stt_path == 0) {
-        error_msg_ = "Dictation needs Wi‑Fi. This note is saved on device.";
+        error_msg_ = "Dictation needs Wi‑Fi. This note stays on device.";
       } else {
         error_msg_ = "Hold the side button to dictate.";
       }
@@ -908,7 +916,7 @@ void App::render_clock() {
     if (!clock_.time_valid()) {
       canvas_.draw_text_wrapped(
           kSideMargin, kFooterY - 4, kContentW, kWrapGap,
-          wifi_.connected() ? "Syncing time…" : "Connect to Wi‑Fi once to set the clock.",
+          wifi_.connected() ? "Syncing time…" : "Connect to Wi‑Fi once to set the time.",
           Canvas::TextRole::Secondary, Gray::G1);
     } else if (wd >= 0 && wd < 7) {
       static const char* kWd[] = {"Sunday", "Monday", "Tuesday", "Wednesday",

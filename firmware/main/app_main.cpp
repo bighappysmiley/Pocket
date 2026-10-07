@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v71-refine";
+static const char* kBuildId = "POCKET-LIVE-v72-polish";
 
 namespace {
 
@@ -400,6 +400,7 @@ extern "C" void app_main(void) {
       app.handle(e);
     }
     if (g_boot.ui_ready) app.tick(now);
-    vTaskDelay(pdMS_TO_TICKS(10));
+    // 5 ms — snappier input without busy-spinning the core (was 10 ms after v67).
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
