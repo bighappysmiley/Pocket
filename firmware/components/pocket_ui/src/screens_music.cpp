@@ -108,7 +108,7 @@ void App::music_sync_from_cloud() {
   if (!wifi_.connected()) {
     music_load_local();
     if (music_tracks_.empty())
-      music_status_ = "Wi-Fi required to sync.";
+      music_status_ = "Wi‑Fi required to sync.";
     else
       music_status_ = "Offline · " + std::to_string(music_tracks_.size()) + " local";
     return;
@@ -211,6 +211,15 @@ void App::render_music() {
   const int list_top = kListTopWithMeta;
   const int n = static_cast<int>(music_tracks_.size());
   focus_.count = n + 2;  // tracks + Sync + Back
+  if (n == 0) {
+    canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No music yet", Canvas::TextRole::Body,
+                               Gray::G0);
+    canvas_.draw_text_wrapped(
+        kSideMargin, kEmptyHintY, kContentW, kWrapGap,
+        wifi_.connected() ? "Select Sync from Companion to download tracks."
+                          : "Connect to Wi‑Fi, then Sync from Companion.",
+        Canvas::TextRole::Secondary, Gray::G1);
+  }
   for (int i = 0; i < n && i < 8; ++i) {
     const int y = list_top + i * kRowPitch;
     const char* label = music_tracks_[i].title.c_str();
@@ -220,7 +229,8 @@ void App::render_music() {
       canvas_.draw_text_fit(kSideMargin + kRowLabelInset, y + kRowTextPad, kRowLabelW, label, Canvas::TextRole::Body, Gray::G0);
   }
   {
-    const int y = list_top + std::min(n, 8) * kRowPitch;
+    // Keep Sync / Back near the bottom when the library is empty so they don't collide with copy.
+    const int y = n == 0 ? kBottomCtaY - kRowPitch : list_top + std::min(n, 8) * kRowPitch;
     if (focus_.index == n)
       canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, "Sync from Companion",
                               Canvas::TextRole::Body);

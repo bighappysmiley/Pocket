@@ -620,6 +620,9 @@ void App::render_notes() {
     if (data_.lists.empty()) {
       canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No lists yet", Canvas::TextRole::Body,
                                  Gray::G0);
+      canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
+                                "Select New list — works offline.", Canvas::TextRole::Secondary,
+                                Gray::G1);
     }
     focus_.count = static_cast<int>(data_.lists.size()) + 1;
     const int list_top = kContentTop + kTabBand;
@@ -891,10 +894,10 @@ void App::handle_notes(InputEvent e) {
 void App::render_ledger() {
   draw_status_bar();
   canvas_.draw_text(kSideMargin, kContentTop, "Ledger", Canvas::TextRole::ScreenTitle, Gray::G0);
-  canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop), kContentW, kWrapGap, "Coming soon",
-                            Canvas::TextRole::Body, Gray::G0);
+  canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop), kContentW, kWrapGap,
+                            "Ledger is on the way", Canvas::TextRole::Body, Gray::G0);
   canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop) + kBodyLinePitch, kContentW, kWrapGap,
-                            "IOU tracking will arrive in a free update.", Canvas::TextRole::Secondary,
+                            "IOU tracking arrives in a free update.", Canvas::TextRole::Secondary,
                             Gray::G1);
   canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Back", Canvas::TextRole::Body);
 }
@@ -946,17 +949,17 @@ void App::render_clock() {
                                  datebuf, Canvas::TextRole::Secondary, Gray::G1);
     }
   } else if (clock_tab_ == 1) {
-    canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "Coming soon", Canvas::TextRole::Body,
+    canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No alarms yet", Canvas::TextRole::Body,
                                Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                              "Alarms will arrive in a free update.", Canvas::TextRole::Secondary,
-                              Gray::G1);
+                              "Alarms arrive in a free update. Clock face works offline.",
+                              Canvas::TextRole::Secondary, Gray::G1);
   } else {
-    canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "Coming soon", Canvas::TextRole::Body,
+    canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No timers yet", Canvas::TextRole::Body,
                                Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                              "Timers will arrive in a free update.", Canvas::TextRole::Secondary,
-                              Gray::G1);
+                              "Timers arrive in a free update. Clock face works offline.",
+                              Canvas::TextRole::Secondary, Gray::G1);
   }
 }
 
@@ -1011,7 +1014,7 @@ void App::render_pass() {
     canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No passes yet", Canvas::TextRole::Body,
                                Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                              "Add passes from the Pocket companion when available.",
+                              "Add passes in Companion on your phone.",
                               Canvas::TextRole::Secondary, Gray::G1);
   } else {
     focus_.count = static_cast<int>(data_.passes.size());
@@ -1053,9 +1056,9 @@ void App::render_weather() {
   if (data_.weather.city.empty()) {
     canvas_.draw_text(kSideMargin, kContentTop, "Weather", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop), kContentW, kWrapGap,
-                              "Can't load weather", Canvas::TextRole::Body, Gray::G0);
+                              "No city set", Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop) + kBodyLinePitch, kContentW, kWrapGap,
-                              "Set a city in Settings → Units / Weather.", Canvas::TextRole::Secondary,
+                              "Set your city in Companion, then try again.", Canvas::TextRole::Secondary,
                               Gray::G1);
     focus_.count = 1;
     canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Try again",
