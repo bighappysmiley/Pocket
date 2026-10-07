@@ -48,16 +48,16 @@ bool glyph_ink(const uint8_t* bits, int sx, int sy) {
 }
 
 /**
- * Home app glyphs (v71): packed 1-bit bitmaps from Apple-quality GenerateImage
- * SF Symbol–style filled marks (tools/pack_home_glyphs.py).
- * Majority-vote scale keeps thin creases / ticks from vanishing.
+ * Home app glyphs (v73): packed 1-bit reMarkable stroke marks
+ * (tools/gen_remarkable_glyphs.py) — thin stationery e-ink lines, not SF fills.
+ * Majority-vote scale keeps thin strokes from vanishing at small size.
  */
 void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
   const int idx = home_glyph_index(app);
   if (idx < 0) return;
   const uint8_t* bits = kHomeGlyphBits[idx];
-  // ~68% of tile — rim air like iOS glyphs inside the rounded squircle.
-  const int dest = std::max(24, size * 68 / 100);
+  // ~60% of tile — generous reMarkable padding, still legible at panel size.
+  const int dest = std::max(24, size * 60 / 100);
   const int src = kHomeGlyphSize;
   const int x0 = cx - dest / 2;
   const int y0 = cy - dest / 2;
