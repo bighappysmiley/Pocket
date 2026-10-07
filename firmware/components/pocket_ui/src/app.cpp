@@ -1008,8 +1008,8 @@ void App::draw_lock_motif() {
   constexpr int cx = kCanvasW / 2;
   const int motif = ((lock_motif_index_ % kLockMotifCount) + kLockMotifCount) % kLockMotifCount;
 
-  // Designed compositions (v69): filled masses + thick bands — calm e-ink silhouettes
-  // with a story. No 1px scribble webs. Helpers are local and cheap on 2bpp.
+  // Designed compositions (v71): denser filled scenes — layered masses, clear hierarchy,
+  // no sparse scribble webs. Helpers are local and cheap on 2bpp.
   auto fill_disc = [this](int ox, int oy, int r, Gray g) {
     for (int yy = -r; yy <= r; ++yy) {
       const int half_w = static_cast<int>(std::sqrt(static_cast<double>(r * r - yy * yy)));
@@ -1028,7 +1028,6 @@ void App::draw_lock_motif() {
     }
   };
   auto thick_band = [this](int x0, int y0, int x1, int y1, int thickness, Gray g) {
-    // Stamp small discs along the segment — solid e-ink band, no hatch junk.
     const int dx = x1 - x0;
     const int dy = y1 - y0;
     const int steps = std::max(1, std::max(std::abs(dx), std::abs(dy)));
@@ -1039,116 +1038,163 @@ void App::draw_lock_motif() {
       canvas_.fill_round_rect(x - r, y - r, 2 * r + 1, 2 * r + 1, r, g);
     }
   };
+  auto fill_peak = [this](int peak_x, int peak_y, int half_w, int base_y, Gray g) {
+    for (int y = peak_y; y < base_y; ++y) {
+      const int t = y - peak_y;
+      const int span = half_w * t / std::max(1, base_y - peak_y);
+      canvas_.hline(peak_x - span, y, 2 * span + 1, g);
+    }
+  };
 
   switch (motif) {
     case 0: {
-      // "Horizon" — solid sun resting on a filled land mass; calm water bands below.
-      const int horizon_y = kTop + 250;
-      // Soft corona first, then solid sun on top (must not punch a hole through the disc).
-      fill_ring(cx, horizon_y - 72, 74, 64, Gray::G2);
-      fill_disc(cx, horizon_y - 72, 54, Gray::G0);
-      // Land — a solid band with a gentle hill.
-      canvas_.fill_rect(0, horizon_y, kCanvasW, kBot - horizon_y + 20, Gray::G1);
-      for (int x = 40; x < kCanvasW - 40; ++x) {
-        const int rise = 28 - std::abs(x - cx) / 8;
+      // "Horizon" — layered hills, resting sun, graduated water mirror.
+      const int horizon_y = kTop + 230;
+      // Soft sky wash bands.
+      canvas_.fill_rect(0, kTop + 20, kCanvasW, 36, Gray::G2);
+      canvas_.fill_rect(0, kTop + 56, kCanvasW, 28, Gray::G2);
+      // Far ridge silhouette.
+      for (int x = 0; x < kCanvasW; ++x) {
+        const int rise = 18 + static_cast<int>(12.0 * std::sin((x + 40) * 0.035));
+        canvas_.vline(x, horizon_y - 70 - rise, rise + 70, Gray::G2);
+      }
+      // Mid hill.
+      for (int x = 0; x < kCanvasW; ++x) {
+        const int rise = 36 - std::abs(x - (cx - 40)) / 7;
         if (rise > 0) canvas_.vline(x, horizon_y - rise, rise, Gray::G1);
       }
-      // Water reflections — short solid bars, fading.
-      for (int i = 0; i < 5; ++i) {
-        const int y = horizon_y + 36 + i * 34;
-        const int inset = 70 + i * 38;
-        const int h = (i < 2) ? 6 : 4;
+      // Near shore band + soft crest.
+      canvas_.fill_rect(0, horizon_y, kCanvasW, kBot - horizon_y + 20, Gray::G1);
+      for (int x = 24; x < kCanvasW - 24; ++x) {
+        const int rise = 22 - std::abs(x - (cx + 30)) / 10;
+        if (rise > 0) canvas_.vline(x, horizon_y - rise, rise, Gray::G0);
+      }
+      // Sun with soft corona — sits on the mid ridge, not a lonely blob.
+      fill_ring(cx + 20, horizon_y - 96, 62, 52, Gray::G2);
+      fill_disc(cx + 20, horizon_y - 96, 42, Gray::G0);
+      // Water reflections — wider bars stepping narrower.
+      for (int i = 0; i < 6; ++i) {
+        const int y = horizon_y + 28 + i * 30;
+        const int inset = 48 + i * 32;
+        const int h = (i < 2) ? 8 : (i < 4 ? 6 : 4);
         canvas_.fill_round_rect(inset, y, kCanvasW - 2 * inset, h, 2,
                                 (i % 2 == 0) ? Gray::G0 : Gray::G2);
       }
       break;
     }
     case 1: {
-      // "Tide" — a drop in calm water: thick annular ripples, solid center.
-      const int oy = (kTop + kBot) / 2;
-      // Outer soft rings first (light), then darker toward the center.
+      // "Tide" — moon over calm concentric ripples; solid drop at the focus.
+      const int oy = kTop + 270;
+      // Moon sits clear of the ripples (not a padlock shackle on the outer ring).
+      fill_ring(cx - 150, kTop + 55, 34, 28, Gray::G2);
+      fill_disc(cx - 150, kTop + 55, 24, Gray::G0);
       fill_ring(cx, oy, 200, 186, Gray::G2);
-      fill_ring(cx, oy, 156, 140, Gray::G1);
-      fill_ring(cx, oy, 112, 94, Gray::G1);
-      fill_ring(cx, oy, 70, 52, Gray::G0);
-      fill_disc(cx, oy, 22, Gray::G0);
+      fill_ring(cx, oy, 168, 152, Gray::G1);
+      fill_ring(cx, oy, 126, 108, Gray::G1);
+      fill_ring(cx, oy, 84, 64, Gray::G0);
+      fill_disc(cx, oy, 26, Gray::G0);
+      // Soft vertical highlight — like a moon path on water.
+      for (int i = 0; i < 4; ++i) {
+        const int y = oy + 40 + i * 28;
+        const int w = 18 - i * 3;
+        canvas_.fill_round_rect(cx - w / 2, y, w, 5, 2, Gray::G2);
+      }
       break;
     }
     case 2: {
-      // "Ridge" — three filled mountain peaks over a still valley floor.
-      const int base_y = kBot - 40;
-      canvas_.fill_rect(32, base_y, kCanvasW - 64, 10, Gray::G0);
-      auto fill_peak = [this, base_y](int peak_x, int peak_y, int half_w, Gray g) {
-        for (int y = peak_y; y < base_y; ++y) {
-          const int t = y - peak_y;
-          const int span = half_w * t / std::max(1, base_y - peak_y);
-          canvas_.hline(peak_x - span, y, 2 * span + 1, g);
-        }
-      };
-      fill_peak(cx - 110, kTop + 120, 130, Gray::G2);
-      fill_peak(cx + 100, kTop + 90, 140, Gray::G1);
-      fill_peak(cx - 10, kTop + 40, 110, Gray::G0);
-      // Small sun disc over the far ridge.
-      fill_disc(cx + 130, kTop + 70, 22, Gray::G0);
+      // "Ridge" — overlapping peaks, snow caps, valley floor, high sun.
+      const int base_y = kBot - 48;
+      canvas_.fill_rect(0, base_y, kCanvasW, 18, Gray::G1);
+      canvas_.fill_rect(40, base_y + 6, kCanvasW - 80, 8, Gray::G0);
+      fill_peak(cx - 130, kTop + 150, 150, base_y, Gray::G2);
+      fill_peak(cx + 120, kTop + 110, 160, base_y, Gray::G1);
+      fill_peak(cx - 8, kTop + 50, 125, base_y, Gray::G0);
+      // Snow caps on the two taller peaks.
+      fill_peak(cx + 120, kTop + 110, 42, kTop + 170, Gray::G3);
+      fill_peak(cx - 8, kTop + 50, 38, kTop + 120, Gray::G3);
+      fill_disc(cx + 150, kTop + 60, 20, Gray::G0);
       break;
     }
     case 3: {
-      // "Constellation" — solid diamond stars joined by thick calm bands.
+      // "Constellation" — clear ladle figure + supporting field (dense, intentional).
       struct Pt { int x, y; };
-      const Pt pts[] = {
-          {cx - 100, kTop + 70},  {cx + 50, kTop + 50},   {cx + 140, kTop + 150},
-          {cx - 20, kTop + 200},  {cx - 140, kTop + 270}, {cx + 90, kTop + 290},
-          {cx + 10, kTop + 370},  {cx - 80, kTop + 430},  {cx + 130, kTop + 410},
+      // Background field — small diamonds, not random noise.
+      const Pt field[] = {
+          {cx - 160, kTop + 90},  {cx + 170, kTop + 80},  {cx - 40, kTop + 40},
+          {cx + 40, kTop + 420},  {cx - 150, kTop + 360}, {cx + 160, kTop + 300},
+          {cx + 20, kTop + 160},  {cx - 90, kTop + 200},
       };
-      constexpr int kEdges[][2] = {{0, 1}, {1, 2}, {1, 3}, {3, 4}, {3, 5},
-                                   {2, 5}, {5, 6}, {4, 7}, {6, 8}, {6, 7}};
+      for (const auto& p : field) fill_diamond(p.x, p.y, 5, Gray::G1);
+      // Main figure: calm ladle / dipper.
+      const Pt pts[] = {
+          {cx - 130, kTop + 140}, {cx - 40, kTop + 110}, {cx + 50, kTop + 130},
+          {cx + 120, kTop + 180}, {cx + 90, kTop + 260}, {cx + 10, kTop + 290},
+          {cx - 70, kTop + 270},
+      };
+      constexpr int kEdges[][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6}, {6, 3}};
       for (const auto& e : kEdges) {
-        thick_band(pts[e[0]].x, pts[e[0]].y, pts[e[1]].x, pts[e[1]].y, 3, Gray::G1);
+        thick_band(pts[e[0]].x, pts[e[0]].y, pts[e[1]].x, pts[e[1]].y, 5, Gray::G1);
       }
       for (size_t i = 0; i < sizeof(pts) / sizeof(pts[0]); ++i) {
-        const int r = (i == 3 || i == 6) ? 12 : 9;
+        const int r = (i == 3) ? 14 : 10;
         fill_diamond(pts[i].x, pts[i].y, r, Gray::G0);
       }
       break;
     }
     case 4: {
-      // "Harbor dusk" — filled skyline silhouettes on a still waterline.
-      const int base_y = kBot - 36;
-      canvas_.fill_rect(28, base_y, kCanvasW - 56, 8, Gray::G0);
-      // Soft water mirror band.
-      canvas_.fill_rect(48, base_y + 18, kCanvasW - 96, 4, Gray::G2);
-      struct Bldg { int x, w, h; };
+      // "Harbor dusk" — dense skyline silhouette, moon, mirrored water.
+      const int base_y = kBot - 70;
+      fill_ring(cx - 140, kTop + 70, 36, 30, Gray::G2);
+      fill_disc(cx - 140, kTop + 70, 26, Gray::G0);
+      // Water body.
+      canvas_.fill_rect(0, base_y, kCanvasW, kBot - base_y + 20, Gray::G1);
+      canvas_.fill_rect(24, base_y, kCanvasW - 48, 10, Gray::G0);
+      struct Bldg { int x, w, h; Gray g; };
       const Bldg blds[] = {
-          {52, 48, 200}, {108, 32, 140}, {148, 56, 260}, {212, 36, 170},
-          {256, 64, 300}, {328, 34, 150}, {370, 52, 220}, {430, 30, 120},
+          {40, 44, 180, Gray::G1},  {90, 28, 120, Gray::G2},  {124, 50, 240, Gray::G1},
+          {180, 34, 160, Gray::G2}, {220, 58, 280, Gray::G0}, {286, 30, 140, Gray::G1},
+          {322, 46, 210, Gray::G1}, {374, 28, 130, Gray::G2}, {408, 52, 190, Gray::G1},
+          {466, 26, 110, Gray::G2},
       };
       for (const auto& b : blds) {
         const int y0 = base_y - b.h;
-        canvas_.fill_rect(b.x, y0, b.w, b.h, Gray::G1);
-        // A few lit windows as paper cutouts.
-        for (int wy = y0 + 24; wy < base_y - 24; wy += 44) {
-          canvas_.fill_rect(b.x + b.w / 2 - 5, wy, 10, 10, Gray::G3);
+        canvas_.fill_rect(b.x, y0, b.w, b.h, b.g);
+        // Lit windows as small G2 insets (paper, not punched holes).
+        for (int wy = y0 + 20; wy < base_y - 20; wy += 36) {
+          for (int wx = b.x + 8; wx + 8 < b.x + b.w - 4; wx += 16) {
+            canvas_.fill_rect(wx, wy, 6, 8, Gray::G2);
+          }
         }
       }
-      // Tall center tower accent.
-      canvas_.fill_rect(cx - 10, base_y - 340, 20, 340, Gray::G0);
-      canvas_.fill_rect(cx - 6, base_y - 360, 12, 24, Gray::G0);
+      // Spire accent on the tallest block.
+      canvas_.fill_rect(220 + 24, base_y - 310, 10, 30, Gray::G0);
+      // Reflections — short bars under a few buildings.
+      for (int i = 0; i < 5; ++i) {
+        const int bx = 90 + i * 70;
+        canvas_.fill_round_rect(bx, base_y + 22 + (i % 2) * 10, 36 - i * 2, 5, 2, Gray::G0);
+      }
       break;
     }
     default: {
-      // "Aperture" — nested filled frames closing on one still point (lens settling).
-      constexpr int kSteps = 5;
-      const int max_size = kBot - kTop - 20;
+      // "Aperture" — nested frames with even frame weight; iris settling on a point.
+      constexpr int kSteps = 4;
+      const int max_size = kBot - kTop - 40;
+      const int cy = kTop + 20 + max_size / 2;
       for (int i = 0; i < kSteps; ++i) {
-        const int size = max_size - i * 78;
-        if (size <= 48) break;
+        const int size = max_size - i * 90;
+        if (size <= 56) break;
         const int x = cx - size / 2;
-        const int y = kTop + 10 + (max_size - size) / 2;
+        const int y = cy - size / 2;
         const Gray g = (i % 2 == 0) ? Gray::G1 : Gray::G2;
-        canvas_.fill_round_rect(x, y, size, size, 28, g);
-        canvas_.fill_round_rect(x + 14, y + 14, size - 28, size - 28, 22, Gray::G3);
+        const int rad = 24 - i * 2;
+        canvas_.fill_round_rect(x, y, size, size, rad, g);
+        const int inset = 16;
+        canvas_.fill_round_rect(x + inset, y + inset, size - 2 * inset, size - 2 * inset,
+                                std::max(8, rad - 6), Gray::G3);
       }
-      fill_disc(cx, kTop + 10 + max_size / 2, 18, Gray::G0);
+      // Soft outer ring + solid pupil.
+      fill_ring(cx, cy, 48, 36, Gray::G1);
+      fill_disc(cx, cy, 20, Gray::G0);
       break;
     }
   }

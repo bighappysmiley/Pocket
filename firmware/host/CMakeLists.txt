@@ -88,3 +88,7 @@ add_test(NAME test_offline_notes COMMAND test_offline_notes)
 add_executable(dump_home_png dump_home_png.cpp ${POCKET_UI_SRCS})
 target_include_directories(dump_home_png PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(dump_home_png PRIVATE POCKET_HOST=1)
+
+add_executable(dump_lock_png dump_lock_png.cpp ${POCKET_UI_SRCS})
+target_include_directories(dump_lock_png PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(dump_lock_png PRIVATE POCKET_HOST=1)
