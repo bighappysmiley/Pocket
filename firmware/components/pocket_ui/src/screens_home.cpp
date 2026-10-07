@@ -48,7 +48,7 @@ bool glyph_ink(const uint8_t* bits, int sx, int sy) {
 }
 
 /**
- * Home app glyphs (v66): packed 1-bit bitmaps from Apple-quality GenerateImage
+ * Home app glyphs (v68): packed 1-bit bitmaps from Apple-quality GenerateImage
  * SF Symbol–style filled marks (tools/pack_home_glyphs.py).
  * Majority-vote scale keeps thin creases / ticks from vanishing.
  */
