@@ -359,8 +359,10 @@ void App::handle_reading(InputEvent e) {
       return;
     }
     if (e == InputEvent::Up || e == InputEvent::Down) {
+      const int prev = focus_.index;
       focus_.move(e == InputEvent::Down ? 1 : -1);
-      mark_content_dirty();
+      if (focus_.index == prev) return;
+      mark_list_focus_dirty(kBottomCtaY - 2 * kRowPitch, prev, focus_.index);
     } else if (e == InputEvent::Select) {
       if (focus_.index == 0) {
         if (reading_page_ > 0) {
@@ -390,12 +392,11 @@ void App::handle_reading(InputEvent e) {
     after_nav();
     return;
   }
-  if (e == InputEvent::Up) {
-    focus_.move(-1);
-    mark_content_dirty();
-  } else if (e == InputEvent::Down) {
-    focus_.move(1);
-    mark_content_dirty();
+  if (e == InputEvent::Up || e == InputEvent::Down) {
+    const int prev = focus_.index;
+    focus_.move(e == InputEvent::Down ? 1 : -1);
+    if (focus_.index == prev) return;
+    mark_list_focus_dirty(kListTopWithMeta, prev, focus_.index);
   } else if (e == InputEvent::Select) {
     if (focus_.index < n) {
       reading_open_book(focus_.index);

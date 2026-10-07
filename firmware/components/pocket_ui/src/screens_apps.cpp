@@ -784,12 +784,17 @@ void App::handle_notes(InputEvent e) {
 
   if (s == ScreenId::NotesList) {
     focus_.count = std::max(1, static_cast<int>(data_.notes.size()) + 1);
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      const int prev = focus_.index;
+      focus_.move(e == InputEvent::Down ? 1 : -1);
+      if (focus_.index == prev) return;
+      const int n_notes = static_cast<int>(data_.notes.size());
+      // List↔list: tight row region. Involving the FAB → content band (non-contiguous).
+      if (prev < n_notes && focus_.index < n_notes) {
+        mark_list_focus_dirty(kContentTop + kTabBand, prev, focus_.index);
+      } else {
+        mark_content_dirty();
+      }
     } else if (e == InputEvent::Select) {
       if (focus_.index < static_cast<int>(data_.notes.size())) {
         note_index_ = focus_.index;
@@ -811,8 +816,10 @@ void App::handle_notes(InputEvent e) {
   } else if (s == ScreenId::NotesDetail) {
     focus_.count = 2;
     if (e == InputEvent::Up || e == InputEvent::Down) {
+      const int prev = focus_.index;
       focus_.move(e == InputEvent::Down ? 1 : -1);
-      mark_content_dirty();
+      if (focus_.index == prev) return;
+      mark_list_focus_dirty(bottom_action_y(1), prev, focus_.index);
     } else if (e == InputEvent::Select && focus_.index == 0) {
       if (!wifi_.connected() && cfg_.stt_path == 0) {
         error_msg_ = "Dictation needs Wi‑Fi. This note stays on device.";
@@ -831,12 +838,16 @@ void App::handle_notes(InputEvent e) {
     }
   } else if (s == ScreenId::ListsList) {
     focus_.count = std::max(1, static_cast<int>(data_.lists.size()) + 1);
-    if (e == InputEvent::Up) {
-      focus_.move(-1);
-      mark_content_dirty();
-    } else if (e == InputEvent::Down) {
-      focus_.move(1);
-      mark_content_dirty();
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      const int prev = focus_.index;
+      focus_.move(e == InputEvent::Down ? 1 : -1);
+      if (focus_.index == prev) return;
+      const int n_lists = static_cast<int>(data_.lists.size());
+      if (prev < n_lists && focus_.index < n_lists) {
+        mark_list_focus_dirty(kContentTop + kTabBand, prev, focus_.index);
+      } else {
+        mark_content_dirty();
+      }
     } else if (e == InputEvent::Select) {
       if (focus_.index < static_cast<int>(data_.lists.size())) {
         note_index_ = focus_.index;
@@ -858,8 +869,15 @@ void App::handle_notes(InputEvent e) {
       auto& L = data_.lists[note_index_];
       focus_.count = static_cast<int>(L.items.size()) + 1;
       if (e == InputEvent::Up || e == InputEvent::Down) {
+        const int prev = focus_.index;
         focus_.move(e == InputEvent::Down ? 1 : -1);
-        mark_content_dirty();
+        if (focus_.index == prev) return;
+        const int n_items = static_cast<int>(L.items.size());
+        if (prev < n_items && focus_.index < n_items) {
+          mark_list_focus_dirty(below_title(kContentTop), prev, focus_.index);
+        } else {
+          mark_content_dirty();
+        }
       } else if (e == InputEvent::Select && focus_.index < static_cast<int>(L.items.size())) {
         L.items[static_cast<size_t>(focus_.index)].checked =
             !L.items[static_cast<size_t>(focus_.index)].checked;

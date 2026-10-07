@@ -265,6 +265,11 @@ void App::mark_home_focus_dirty(int prev_index, int next_index) {
     mark_content_dirty();
     return;
   }
+  // Periodic content-band clears residual focus ghosts without slowing LUTs.
+  if (home_focus_spin_count_ % 4 == 0) {
+    mark_content_dirty();
+    return;
+  }
   const int label_band_h = canvas_.text_height(Canvas::TextRole::Secondary) + 6;
   int x0 = 0, y0 = 0, w0 = 0, h0 = 0;
   int x1 = 0, y1 = 0, w1 = 0, h1 = 0;
@@ -275,6 +280,11 @@ void App::mark_home_focus_dirty(int prev_index, int next_index) {
   const int ry = std::max(0, std::min(y0, y1) - pad);
   const int r2 = std::min(kCanvasW, std::max(x0 + w0, x1 + w1) + pad);
   const int b2 = std::min(kCanvasH, std::max(y0 + h0, y1 + h1) + pad);
+  // Diagonal / row-wrap (different row AND column) → content band; same-row/col stay tight.
+  if (y0 != y1 && x0 != x1) {
+    mark_content_dirty();
+    return;
+  }
   mark_region_dirty(rx, ry, r2 - rx, b2 - ry);
 }
 

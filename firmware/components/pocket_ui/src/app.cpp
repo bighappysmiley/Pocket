@@ -167,11 +167,11 @@ void App::mark_region_dirty(int x, int y, int w, int h) {
 }
 
 void App::pin_band_geometry(int& x, int& y, int& w, int& h) const {
-  // Progress + slots + hint (tight). Spins use a single slot via mark_pin_dirty.
+  // Progress + slots + hint + error/lockout lines (must cover "Incorrect PIN").
   x = 0;
   y = pin_draw_band_top_ - 44;
   w = kCanvasW;
-  h = 72 + 140;
+  h = std::min(kCanvasH - y, 460 - y);
 }
 
 void App::mark_pin_slots_dirty(int slot_a, int slot_b, bool with_chrome) {
@@ -186,7 +186,9 @@ void App::mark_pin_slots_dirty(int slot_a, int slot_b, bool with_chrome) {
   const int i1 = std::clamp(std::max(slot_a, slot_b), 0, n - 1);
   const int pad = 8;
   if (with_chrome) {
-    mark_region_dirty(0, slot_y - 44, kCanvasW, kSlotH + 140);
+    // Include error / lockout copy under the slots (y≈420–448).
+    const int top = slot_y - 44;
+    mark_region_dirty(0, top, kCanvasW, std::min(kCanvasH - top, 460 - top));
     return;
   }
   mark_region_dirty(x0 + i0 * (kSlotW + kGap) - pad, slot_y - pad,
@@ -442,6 +444,10 @@ void App::after_nav(bool full_refresh) {
 void App::after_nav() { after_nav(screen_requires_full_enter(nav_.current())); }
 
 void App::go_home() {
+  // Already on Home — keep focus; a remount flash feels like navigation jank.
+  if (nav_.current() == ScreenId::Home && nav_.depth == 1) {
+    return;
+  }
   nav_.reset(ScreenId::Home);
   home_focus_spin_count_ = 0;
   after_nav();
@@ -1222,8 +1228,11 @@ void App::draw_pin_entry(bool mask_completed, int band_top) {
   const int x0 = (kCanvasW - total) / 2;
   const int slot_y = band_top;
 
-  // Wipe the PIN band so region partials never composite stale digit ink.
-  canvas_.fill_rect(0, slot_y - 44, kCanvasW, kSlotH + 140, Gray::G3);
+  // Wipe the PIN band (incl. error/lockout) so region partials never composite stale ink.
+  {
+    const int wipe_top = slot_y - 44;
+    canvas_.fill_rect(0, wipe_top, kCanvasW, std::min(kCanvasH - wipe_top, 460 - wipe_top), Gray::G3);
+  }
 
   // Progress — which digit we're on (preview slot = next to fill).
   char prog[32];
