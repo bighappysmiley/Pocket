@@ -1008,107 +1008,147 @@ void App::draw_lock_motif() {
   constexpr int cx = kCanvasW / 2;
   const int motif = ((lock_motif_index_ % kLockMotifCount) + kLockMotifCount) % kLockMotifCount;
 
-  // Each motif below is a fixed composition with a name and a story — not a
-  // randomized abstract pattern. `stroke_circle` is a tiny local helper: circles are
-  // drawn as a per-row left/right edge pair (cheap, crisp on 2bpp e-ink, no font).
-  auto stroke_circle = [this](int ox, int oy, int r, Gray g) {
+  // Designed compositions (v69): filled masses + thick bands — calm e-ink silhouettes
+  // with a story. No 1px scribble webs. Helpers are local and cheap on 2bpp.
+  auto fill_disc = [this](int ox, int oy, int r, Gray g) {
     for (int yy = -r; yy <= r; ++yy) {
       const int half_w = static_cast<int>(std::sqrt(static_cast<double>(r * r - yy * yy)));
-      canvas_.set_pixel(ox - half_w, oy + yy, g);
-      canvas_.set_pixel(ox + half_w, oy + yy, g);
+      canvas_.hline(ox - half_w, oy + yy, 2 * half_w + 1, g);
+    }
+  };
+  auto fill_ring = [this, &fill_disc](int ox, int oy, int r_outer, int r_inner, Gray g) {
+    if (r_outer <= r_inner) return;
+    fill_disc(ox, oy, r_outer, g);
+    fill_disc(ox, oy, r_inner, Gray::G3);
+  };
+  auto fill_diamond = [this](int ox, int oy, int r, Gray g) {
+    for (int yy = -r; yy <= r; ++yy) {
+      const int half_w = r - std::abs(yy);
+      canvas_.hline(ox - half_w, oy + yy, 2 * half_w + 1, g);
+    }
+  };
+  auto thick_band = [this](int x0, int y0, int x1, int y1, int thickness, Gray g) {
+    // Stamp small discs along the segment — solid e-ink band, no hatch junk.
+    const int dx = x1 - x0;
+    const int dy = y1 - y0;
+    const int steps = std::max(1, std::max(std::abs(dx), std::abs(dy)));
+    const int r = std::max(1, thickness / 2);
+    for (int s = 0; s <= steps; ++s) {
+      const int x = x0 + dx * s / steps;
+      const int y = y0 + dy * s / steps;
+      canvas_.fill_round_rect(x - r, y - r, 2 * r + 1, 2 * r + 1, r, g);
     }
   };
 
   switch (motif) {
     case 0: {
-      // "Horizon" — a still line where sky meets ground, one quiet marker above it.
-      const int horizon_y = kTop + 260;
-      canvas_.hline(48, horizon_y, kCanvasW - 96, Gray::G0);
-      stroke_circle(cx, horizon_y - 64, 46, Gray::G0);
-      // Reflection — a calm echo of the line below, shorter as it recedes.
-      for (int i = 0; i < 4; ++i) {
-        const int y = horizon_y + 26 + i * 30;
-        const int inset = 90 + i * 34;
-        canvas_.hline(inset, y, kCanvasW - 2 * inset, (i % 2 == 0) ? Gray::G1 : Gray::G2);
+      // "Horizon" — solid sun resting on a filled land mass; calm water bands below.
+      const int horizon_y = kTop + 250;
+      // Soft corona first, then solid sun on top (must not punch a hole through the disc).
+      fill_ring(cx, horizon_y - 72, 74, 64, Gray::G2);
+      fill_disc(cx, horizon_y - 72, 54, Gray::G0);
+      // Land — a solid band with a gentle hill.
+      canvas_.fill_rect(0, horizon_y, kCanvasW, kBot - horizon_y + 20, Gray::G1);
+      for (int x = 40; x < kCanvasW - 40; ++x) {
+        const int rise = 28 - std::abs(x - cx) / 8;
+        if (rise > 0) canvas_.vline(x, horizon_y - rise, rise, Gray::G1);
+      }
+      // Water reflections — short solid bars, fading.
+      for (int i = 0; i < 5; ++i) {
+        const int y = horizon_y + 36 + i * 34;
+        const int inset = 70 + i * 38;
+        const int h = (i < 2) ? 6 : 4;
+        canvas_.fill_round_rect(inset, y, kCanvasW - 2 * inset, h, 2,
+                                (i % 2 == 0) ? Gray::G0 : Gray::G2);
       }
       break;
     }
     case 1: {
-      // "Tide rings" — ripples settling outward from one still point in the water.
+      // "Tide" — a drop in calm water: thick annular ripples, solid center.
       const int oy = (kTop + kBot) / 2;
-      constexpr int kRadii[] = {30, 68, 108, 150, 194};
-      for (size_t i = 0; i < 5; ++i) {
-        const Gray g = (i % 2 == 0) ? Gray::G1 : Gray::G2;
-        stroke_circle(cx, oy, kRadii[i], g);
-      }
-      canvas_.fill_round_rect(cx - 6, oy - 6, 12, 12, 6, Gray::G0);
+      // Outer soft rings first (light), then darker toward the center.
+      fill_ring(cx, oy, 200, 186, Gray::G2);
+      fill_ring(cx, oy, 156, 140, Gray::G1);
+      fill_ring(cx, oy, 112, 94, Gray::G1);
+      fill_ring(cx, oy, 70, 52, Gray::G0);
+      fill_disc(cx, oy, 22, Gray::G0);
       break;
     }
     case 2: {
-      // "Folded paper plane" — a still, angular fuselage with one raised wing fold.
-      struct Pt { int x, y; };
-      const Pt nose{cx + 90, kTop + 60};
-      const Pt tail{cx - 110, kBot - 60};
-      const Pt wing_l{cx - 170, kBot - 130};
-      const Pt wing_r{cx + 140, kBot - 190};
-      const Pt fold{cx - 10, kBot - 110};
-      canvas_.line(nose.x, nose.y, tail.x, tail.y, Gray::G0);      // spine
-      canvas_.line(nose.x, nose.y, wing_l.x, wing_l.y, Gray::G1);  // left edge
-      canvas_.line(nose.x, nose.y, wing_r.x, wing_r.y, Gray::G1);  // right edge
-      canvas_.line(wing_l.x, wing_l.y, fold.x, fold.y, Gray::G2);  // left wing fold
-      canvas_.line(wing_r.x, wing_r.y, fold.x, fold.y, Gray::G2);  // raised wing fold
-      canvas_.line(fold.x, fold.y, tail.x, tail.y, Gray::G1);
-      canvas_.fill_round_rect(nose.x - 5, nose.y - 5, 10, 10, 5, Gray::G0);
+      // "Ridge" — three filled mountain peaks over a still valley floor.
+      const int base_y = kBot - 40;
+      canvas_.fill_rect(32, base_y, kCanvasW - 64, 10, Gray::G0);
+      auto fill_peak = [this, base_y](int peak_x, int peak_y, int half_w, Gray g) {
+        for (int y = peak_y; y < base_y; ++y) {
+          const int t = y - peak_y;
+          const int span = half_w * t / std::max(1, base_y - peak_y);
+          canvas_.hline(peak_x - span, y, 2 * span + 1, g);
+        }
+      };
+      fill_peak(cx - 110, kTop + 120, 130, Gray::G2);
+      fill_peak(cx + 100, kTop + 90, 140, Gray::G1);
+      fill_peak(cx - 10, kTop + 40, 110, Gray::G0);
+      // Small sun disc over the far ridge.
+      fill_disc(cx + 130, kTop + 70, 22, Gray::G0);
       break;
     }
     case 3: {
-      // "Quiet constellation" — a scatter of stars joined by thin lines. No clock hands.
+      // "Constellation" — solid diamond stars joined by thick calm bands.
       struct Pt { int x, y; };
       const Pt pts[] = {
-          {cx - 120, kTop + 60},  {cx + 40, kTop + 30},   {cx + 130, kTop + 140},
-          {cx - 30, kTop + 190},  {cx - 150, kTop + 260}, {cx + 90, kTop + 280},
-          {cx, kTop + 360},       {cx - 90, kTop + 420},  {cx + 150, kTop + 400},
+          {cx - 100, kTop + 70},  {cx + 50, kTop + 50},   {cx + 140, kTop + 150},
+          {cx - 20, kTop + 200},  {cx - 140, kTop + 270}, {cx + 90, kTop + 290},
+          {cx + 10, kTop + 370},  {cx - 80, kTop + 430},  {cx + 130, kTop + 410},
       };
-      constexpr int kEdges[][2] = {{0, 1}, {1, 2}, {1, 3}, {3, 4}, {3, 5}, {2, 5}, {5, 6}, {4, 7}, {6, 8}, {6, 7}};
+      constexpr int kEdges[][2] = {{0, 1}, {1, 2}, {1, 3}, {3, 4}, {3, 5},
+                                   {2, 5}, {5, 6}, {4, 7}, {6, 8}, {6, 7}};
       for (const auto& e : kEdges) {
-        canvas_.line(pts[e[0]].x, pts[e[0]].y, pts[e[1]].x, pts[e[1]].y, Gray::G2);
+        thick_band(pts[e[0]].x, pts[e[0]].y, pts[e[1]].x, pts[e[1]].y, 3, Gray::G1);
       }
-      for (const auto& p : pts) {
-        canvas_.fill_round_rect(p.x - 5, p.y - 5, 10, 10, 5, Gray::G0);
+      for (size_t i = 0; i < sizeof(pts) / sizeof(pts[0]); ++i) {
+        const int r = (i == 3 || i == 6) ? 12 : 9;
+        fill_diamond(pts[i].x, pts[i].y, r, Gray::G0);
       }
       break;
     }
     case 4: {
-      // "City grid at dusk" — a quiet skyline resting on a still baseline.
-      const int base_y = kBot - 20;
-      canvas_.hline(40, base_y, kCanvasW - 80, Gray::G0);
+      // "Harbor dusk" — filled skyline silhouettes on a still waterline.
+      const int base_y = kBot - 36;
+      canvas_.fill_rect(28, base_y, kCanvasW - 56, 8, Gray::G0);
+      // Soft water mirror band.
+      canvas_.fill_rect(48, base_y + 18, kCanvasW - 96, 4, Gray::G2);
       struct Bldg { int x, w, h; };
       const Bldg blds[] = {
-          {56, 44, 210}, {108, 28, 150}, {144, 52, 270}, {204, 34, 180},
-          {246, 58, 310}, {312, 32, 160}, {352, 48, 230}, {408, 28, 140},
+          {52, 48, 200}, {108, 32, 140}, {148, 56, 260}, {212, 36, 170},
+          {256, 64, 300}, {328, 34, 150}, {370, 52, 220}, {430, 30, 120},
       };
       for (const auto& b : blds) {
         const int y0 = base_y - b.h;
-        canvas_.stroke_rect(b.x, y0, b.w, b.h, Gray::G1);
-        for (int wy = y0 + 22; wy < base_y - 18; wy += 40) {
-          canvas_.fill_round_rect(b.x + b.w / 2 - 4, wy, 8, 8, 2, Gray::G2);
+        canvas_.fill_rect(b.x, y0, b.w, b.h, Gray::G1);
+        // A few lit windows as paper cutouts.
+        for (int wy = y0 + 24; wy < base_y - 24; wy += 44) {
+          canvas_.fill_rect(b.x + b.w / 2 - 5, wy, 10, 10, Gray::G3);
         }
       }
+      // Tall center tower accent.
+      canvas_.fill_rect(cx - 10, base_y - 340, 20, 340, Gray::G0);
+      canvas_.fill_rect(cx - 6, base_y - 360, 12, 24, Gray::G0);
       break;
     }
     default: {
-      // "Aperture" — concentric frames closing evenly toward one still point.
-      constexpr int kSteps = 6;
-      const int max_size = kBot - kTop;
+      // "Aperture" — nested filled frames closing on one still point (lens settling).
+      constexpr int kSteps = 5;
+      const int max_size = kBot - kTop - 20;
       for (int i = 0; i < kSteps; ++i) {
-        const int size = max_size - i * 70;
-        if (size <= 40) break;
+        const int size = max_size - i * 78;
+        if (size <= 48) break;
         const int x = cx - size / 2;
-        const int y = kTop + (max_size - size) / 2;
+        const int y = kTop + 10 + (max_size - size) / 2;
         const Gray g = (i % 2 == 0) ? Gray::G1 : Gray::G2;
-        canvas_.stroke_round_rect(x, y, size, size, 24, g, 2);
+        canvas_.fill_round_rect(x, y, size, size, 28, g);
+        canvas_.fill_round_rect(x + 14, y + 14, size - 28, size - 28, 22, Gray::G3);
       }
-      canvas_.fill_round_rect(cx - 8, kTop + max_size / 2 - 8, 16, 16, 8, Gray::G0);
+      fill_disc(cx, kTop + 10 + max_size / 2, 18, Gray::G0);
       break;
     }
   }
