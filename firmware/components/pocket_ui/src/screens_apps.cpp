@@ -132,13 +132,21 @@ void App::load_local_notes() {
   }
 }
 
-void App::save_local_notes() {
-  if (!storage_ || !storage_->data_ensure_root()) return;
+bool App::save_local_notes() {
+  if (!storage_ || !storage_->data_ensure_root()) {
+    error_msg_ = "Can't save notes — no local storage.";
+    error_until_ms_ = now_ms_ + 3000;
+    return false;
+  }
   const std::string dir = storage_->data_root() + "/notes";
   ::mkdir(dir.c_str(), 0755);
   const std::string path = dir + "/index.json";
   std::ofstream out(path, std::ios::trunc);
-  if (!out) return;
+  if (!out) {
+    error_msg_ = "Couldn't write notes to local storage.";
+    error_until_ms_ = now_ms_ + 3000;
+    return false;
+  }
   out << "[";
   for (size_t i = 0; i < data_.notes.size(); ++i) {
     const auto& n = data_.notes[i];
@@ -148,6 +156,7 @@ void App::save_local_notes() {
         << ",\"updated_at\":" << n.updated_at << "}";
   }
   out << "]";
+  return static_cast<bool>(out);
 }
 
 void App::load_local_lists() {
@@ -207,13 +216,21 @@ void App::load_local_lists() {
   }
 }
 
-void App::save_local_lists() {
-  if (!storage_ || !storage_->data_ensure_root()) return;
+bool App::save_local_lists() {
+  if (!storage_ || !storage_->data_ensure_root()) {
+    error_msg_ = "Can't save lists — no local storage.";
+    error_until_ms_ = now_ms_ + 3000;
+    return false;
+  }
   const std::string dir = storage_->data_root() + "/lists";
   ::mkdir(dir.c_str(), 0755);
   const std::string path = dir + "/index.json";
   std::ofstream out(path, std::ios::trunc);
-  if (!out) return;
+  if (!out) {
+    error_msg_ = "Couldn't write lists to local storage.";
+    error_until_ms_ = now_ms_ + 3000;
+    return false;
+  }
   out << "[";
   for (size_t i = 0; i < data_.lists.size(); ++i) {
     const auto& L = data_.lists[i];
@@ -228,6 +245,7 @@ void App::save_local_lists() {
     out << "]}";
   }
   out << "]";
+  return static_cast<bool>(out);
 }
 
 void App::load_local_passes() {
@@ -543,7 +561,7 @@ void App::render_notes() {
       canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No notes yet", Canvas::TextRole::Body,
                                  Gray::G0);
       canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                                "Hold the side button to dictate a note",
+                                "Select New note to create one locally. Dictation needs Wi‑Fi.",
                                 Canvas::TextRole::Secondary, Gray::G1);
     } else {
       focus_.count = static_cast<int>(data_.notes.size()) + 1;
@@ -702,8 +720,8 @@ void App::handle_notes(InputEvent e) {
     mic_capturing_ = false;
     const MicCaptureResult cap = audio_ ? audio_->stop_capture() : MicCaptureResult{};
     if (!wifi_.connected() && cfg_.stt_path == 0) {
-      error_msg_ = "You're offline. Dictation needs Wi-Fi.";
-      error_until_ms_ = now_ms_ + 3000;
+      error_msg_ = "Dictation needs Wi‑Fi. Notes still open and save offline.";
+      error_until_ms_ = now_ms_ + 3500;
       mark_content_dirty();
       return;
     }
@@ -788,8 +806,12 @@ void App::handle_notes(InputEvent e) {
       focus_.move(e == InputEvent::Down ? 1 : -1);
       mark_content_dirty();
     } else if (e == InputEvent::Select && focus_.index == 0) {
-      error_msg_ = "Hold the side button to dictate.";
-      error_until_ms_ = now_ms_ + 2500;
+      if (!wifi_.connected() && cfg_.stt_path == 0) {
+        error_msg_ = "Dictation needs Wi‑Fi. This note is saved on device.";
+      } else {
+        error_msg_ = "Hold the side button to dictate.";
+      }
+      error_until_ms_ = now_ms_ + 3000;
       mark_content_dirty();
     } else if (e == InputEvent::Select && focus_.index == 1) {
       if (note_index_ < static_cast<int>(data_.notes.size())) {
@@ -882,6 +904,21 @@ void App::render_clock() {
     }
     canvas_.draw_text_centered(kCanvasW / 2, kContentTop + kTabBand + 80, tbuf,
                                Canvas::TextRole::HugeClock, Gray::G0);
+    // Clock face is fully local once the RTC has been set (SNTP). No Cloud needed.
+    if (!clock_.time_valid()) {
+      canvas_.draw_text_wrapped(
+          kSideMargin, kFooterY - 4, kContentW, kWrapGap,
+          wifi_.connected() ? "Syncing time…" : "Connect to Wi‑Fi once to set the clock.",
+          Canvas::TextRole::Secondary, Gray::G1);
+    } else if (wd >= 0 && wd < 7) {
+      static const char* kWd[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
+                                  "Thursday", "Friday", "Saturday"};
+      char datebuf[48];
+      std::snprintf(datebuf, sizeof(datebuf), "%s · %d/%d", kWd[wd], mo + 1, d);
+      canvas_.draw_text_centered(kCanvasW / 2, kContentTop + kTabBand + 80 +
+                                                   canvas_.text_height(Canvas::TextRole::HugeClock) + 16,
+                                 datebuf, Canvas::TextRole::Secondary, Gray::G1);
+    }
   } else if (clock_tab_ == 1) {
     canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "Coming soon", Canvas::TextRole::Body,
                                Gray::G0);

@@ -133,7 +133,8 @@ struct PlatformStorage {
   /** Prefer SD when mounted; else LittleFS internal. Empty if neither usable. */
   virtual std::string book_root() { return {}; }
   virtual bool book_ensure_root() { return false; }
-  /** Local user-data root for Notes/Lists JSON (LittleFS). Empty if unavailable. */
+  /** Local user-data root for Notes/Lists/Passes/weather JSON.
+   * Prefer LittleFS; may fall back to SD (`/sdcard/pocket`). Empty if unavailable. */
   virtual std::string data_root() { return {}; }
   virtual bool data_ensure_root() { return false; }
 };
@@ -376,9 +377,10 @@ class App {
   void render_notes();
   void handle_notes(InputEvent e);
   void load_local_notes();
-  void save_local_notes();
+  /** Persist notes to LittleFS/SD. Returns false and sets a short error toast on failure. */
+  bool save_local_notes();
   void load_local_lists();
-  void save_local_lists();
+  bool save_local_lists();
   void load_local_passes();
   void save_local_passes();
   void load_weather_cache();

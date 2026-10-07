@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v69-lock";
+static const char* kBuildId = "POCKET-LIVE-v70-offline-basics";
 
 namespace {
 
@@ -185,13 +185,22 @@ struct EspStorage : pocket::PlatformStorage {
   }
 
   std::string data_root() override {
+    // Prefer internal LittleFS; fall back to SD so Notes/Lists/Passes/weather
+    // cache stay usable offline when the data partition isn't mounted.
     if (pocket::board::littlefs_mounted() || pocket::board::littlefs_mount()) return "/littlefs";
+    if (pocket::board::sd_present()) return "/sdcard/pocket";
     return {};
   }
   bool data_ensure_root() override {
-    if (data_root().empty()) return false;
-    mkdir("/littlefs/notes", 0755);
-    mkdir("/littlefs/lists", 0755);
+    const std::string root = data_root();
+    if (root.empty()) return false;
+    if (root.rfind("/sdcard", 0) == 0) {
+      mkdir("/sdcard/pocket", 0755);
+    }
+    mkdir((root + "/notes").c_str(), 0755);
+    mkdir((root + "/lists").c_str(), 0755);
+    mkdir((root + "/passes").c_str(), 0755);
+    mkdir((root + "/weather").c_str(), 0755);
     return true;
   }
 };
