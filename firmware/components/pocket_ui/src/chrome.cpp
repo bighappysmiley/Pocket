@@ -9,36 +9,37 @@ namespace pocket {
 namespace {
 
 /**
- * Wi‑Fi status glyph — refined bars (slightly narrower) with rounded caps.
+ * Wi‑Fi status glyph — three rising bars with even optical weight.
  * Offline slash stays bold enough to read on e-ink.
  */
 void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
   const Gray g_on = Gray::G0;
   const Gray g_off = Gray::G2;
-  constexpr int kBarW = 6;
-  constexpr int kGap = 4;
+  constexpr int kBarW = 5;
+  constexpr int kGap = 5;
   constexpr int kBaseY = 26;
-  const int heights[3] = {9, 16, 24};
+  const int heights[3] = {10, 17, 24};
   for (int i = 0; i < 3; ++i) {
-    const int bx = x + 2 + i * (kBarW + kGap);
+    const int bx = x + 3 + i * (kBarW + kGap);
     const int bh = heights[i];
     c.fill_round_rect(bx, y + kBaseY - bh, kBarW, bh, 2, active ? g_on : g_off);
   }
   if (!active) {
-    c.line(x, y + 27, x + 28, y + 1, Gray::G0);
-    c.line(x + 1, y + 27, x + 29, y + 1, Gray::G0);
+    // Slightly inset slash so it clears the shortest bar cleanly.
+    c.line(x + 1, y + 26, x + 27, y + 2, Gray::G0);
+    c.line(x + 2, y + 26, x + 28, y + 2, Gray::G0);
   }
 }
 
 /**
- * Battery gauge — slightly shorter body; four segments; rounded terminal nub.
+ * Battery gauge — rounded body, four segments, clear low-battery wash.
  */
 void draw_battery_icon(Canvas& c, int x, int y, int pct) {
   constexpr int kW = 34;
   constexpr int kH = 18;
   constexpr int kSegs = 4;
   c.stroke_round_rect(x, y, kW, kH, 4, Gray::G0, 2);
-  c.fill_round_rect(x + kW, y + 4, 4, 10, 2, Gray::G0);
+  c.fill_round_rect(x + kW, y + 5, 4, 8, 2, Gray::G0);
 
   const int pad = 3;
   const int inner_w = kW - 2 * pad;
@@ -58,7 +59,8 @@ void draw_battery_icon(Canvas& c, int x, int y, int pct) {
 void draw_status_bar_impl(Canvas& c, const DeviceConfig& cfg, int hour, int minute, bool wifi_ok,
                           int battery_pct, bool time_ok) {
   c.fill_rect(0, 0, kCanvasW, kStatusBarH, Gray::G3);
-  c.hline(0, kStatusBarH - 1, kCanvasW, Gray::G2);
+  // Hairline rule — G1 reads cleaner on partial refreshes than soft G2.
+  c.hline(0, kStatusBarH - 1, kCanvasW, Gray::G1);
 
   char timebuf[16];
   if (!time_ok || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
