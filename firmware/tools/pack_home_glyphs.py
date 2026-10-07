@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Pack GenerateImage SF-style glyphs into crisp 1-bit firmware bitmaps.
+"""DEPRECATED for Home glyphs as of v73 — use gen_remarkable_glyphs.py instead.
 
-Reads firmware/tools/home_glyphs/glyph-*.jpg, writes:
-  firmware/components/pocket_ui/src/home_glyphs.inc
-  firmware/tools/home_glyphs/preview-1bit.png  (4× sheet for QA)
+Legacy packer for GenerateImage SF-style filled glyphs → 1-bit bitmaps.
+v73+ Home icons are hand-authored reMarkable strokes via gen_remarkable_glyphs.py.
 """
 from __future__ import annotations
 
