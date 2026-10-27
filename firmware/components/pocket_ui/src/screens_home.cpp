@@ -48,7 +48,7 @@ bool glyph_ink(const uint8_t* bits, int sx, int sy) {
 }
 
 /**
- * Home app glyphs (v74): packed 1-bit reMarkable stroke marks
+ * Home app glyphs (v79): packed 1-bit reMarkable stroke marks
  * (tools/gen_remarkable_glyphs.py) — thin stationery e-ink lines, not SF fills.
  * Soft majority scale keeps thin strokes visible without filling cutouts shut.
  */
@@ -56,8 +56,8 @@ void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
   const int idx = home_glyph_index(app);
   if (idx < 0) return;
   const uint8_t* bits = kHomeGlyphBits[idx];
-  // ~64% of tile — a touch more presence than v73, still generous padding.
-  const int dest = std::max(24, size * 64 / 100);
+  // ~66% of tile — firmer presence; padding still clears the rounded plate.
+  const int dest = std::max(24, size * 66 / 100);
   const int src = kHomeGlyphSize;
   const int x0 = cx - dest / 2;
   const int y0 = cy - dest / 2;
@@ -75,8 +75,8 @@ void draw_app_glyph(Canvas& c, HomeApp app, int cx, int cy, int size, Gray g) {
           if (glyph_ink(bits, sx, sy)) ++ink;
         }
       }
-      // Soft majority (~40%) — thin strokes survive; cutouts (hub, rules) stay open.
-      if (ink * 5 >= tot * 2) {
+      // Soft majority (~37%) — thin strokes survive; cutouts (hub, rules) stay open.
+      if (ink * 8 >= tot * 3) {
         c.set_pixel(x0 + dx, y0 + dy, g);
       }
     }

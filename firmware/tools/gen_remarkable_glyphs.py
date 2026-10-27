@@ -4,7 +4,8 @@
 Draws vector-like stroke marks at high res, thresholds to crisp 1-bit 96×96,
 packs firmware/components/pocket_ui/src/home_glyphs.inc, writes 1bit-*.png + preview.
 
-Style brief (v74):
+Style brief (v79 extreme refine):
+  - Stroke-only language — no solid SF-style fills (note heads, hubs = rings)
   - Even stroke weights with optical balance across the set
   - Clearer metaphors (Pass badge, Reading book, Settings gear teeth)
   - Generous padding inside the rounded-square plate
@@ -26,8 +27,8 @@ SIZE = 96
 # Draw large then BOX-downsample so strokes stay even after 1-bit.
 HI = 384  # 4×
 # Stroke weight at HI res → ~2.5–3 px at 96 after BOX (survives home downsample).
-SW = 12  # confident at ~55 px panel size; even across set
-PAD = 56  # HI-space margin → ~14 px at 96 — a touch tighter than v73 for optical presence
+SW = 13  # v79: slightly firmer strokes; still open cutouts after soft-majority
+PAD = 54  # HI-space margin → ~13.5 px at 96 — optical presence without crowding plate
 
 NAMES = [
     ("notes", "Notes"),
@@ -85,8 +86,8 @@ def rounded_rect_outline(
 
 def draw_notes(draw: ImageDraw.ImageDraw) -> None:
     """Page outline + dog-ear crease + three calm rules — stationery sheet."""
-    x0, y0, x1, y1 = PAD + 36, PAD + 12, HI - PAD - 36, HI - PAD - 12
-    fold = 40
+    x0, y0, x1, y1 = PAD + 34, PAD + 10, HI - PAD - 34, HI - PAD - 10
+    fold = 42
     pts = [
         (x0, y0),
         (x1 - fold, y0),
@@ -99,7 +100,7 @@ def draw_notes(draw: ImageDraw.ImageDraw) -> None:
     # Dog-ear crease (two segments meeting at the fold corner)
     ink(draw, [(x1 - fold, y0), (x1 - fold, y0 + fold), (x1, y0 + fold)], width=SW)
     # Three rules — even length, optically centered in the page body
-    lx0, lx1 = x0 + 30, x1 - 30
+    lx0, lx1 = x0 + 28, x1 - 28
     for t in (0.36, 0.52, 0.68):
         y = y0 + (y1 - y0) * t
         ink(draw, [(lx0, y), (lx1, y)], width=SW - 1)
@@ -107,23 +108,23 @@ def draw_notes(draw: ImageDraw.ImageDraw) -> None:
 
 def draw_ledger(draw: ImageDraw.ImageDraw) -> None:
     """Bound notebook: cover + spine + three open rings + two ledger rules."""
-    x0, y0, x1, y1 = PAD + 44, PAD + 16, HI - PAD - 24, HI - PAD - 16
+    x0, y0, x1, y1 = PAD + 42, PAD + 14, HI - PAD - 22, HI - PAD - 14
     rounded_rect_outline(draw, x0, y0, x1, y1, r=16, w=SW)
     # Spine rule
-    sx = x0 + 38
+    sx = x0 + 40
     ink(draw, [(sx, y0 + 12), (sx, y1 - 12)], width=SW - 1)
     # Three binder rings — open circles centered on the spine
     for t in (0.26, 0.50, 0.74):
         cy = y0 + (y1 - y0) * t
-        circle_outline(draw, sx, cy, 13, w=SW - 1)
+        circle_outline(draw, sx, cy, 14, w=SW - 1)
     # Two calm ledger lines in the page body
     for t in (0.40, 0.58):
         y = y0 + (y1 - y0) * t
-        ink(draw, [(sx + 30, y), (x1 - 26, y)], width=SW - 1)
+        ink(draw, [(sx + 28, y), (x1 - 24, y)], width=SW - 1)
 
 
 def draw_clock(draw: ImageDraw.ImageDraw) -> None:
-    """Analog face: outer ring, four ticks, distinct hands at ~10:10, hub."""
+    """Analog face: outer ring, four ticks, distinct hands at ~10:10, open hub ring."""
     cx = cy = HI / 2
     r = (HI - 2 * PAD) / 2 - 4
     circle_outline(draw, cx, cy, r, w=SW)
@@ -132,56 +133,57 @@ def draw_clock(draw: ImageDraw.ImageDraw) -> None:
         rad = math.radians(clock_h * 30 - 90)
         x_o = cx + (r - 4) * math.cos(rad)
         y_o = cy + (r - 4) * math.sin(rad)
-        x_i = cx + (r - 36) * math.cos(rad)
-        y_i = cy + (r - 36) * math.sin(rad)
+        x_i = cx + (r - 40) * math.cos(rad)
+        y_i = cy + (r - 40) * math.sin(rad)
         ink(draw, [(x_i, y_i), (x_o, y_o)], width=SW + 1)
 
     def hand(clock_deg: float, length: float, w: int) -> None:
         rad = math.radians(clock_deg - 90)
-        x0 = cx + 10 * math.cos(rad)
-        y0 = cy + 10 * math.sin(rad)
+        # Hands stop at hub ring — no solid blob at center
+        x0 = cx + 14 * math.cos(rad)
+        y0 = cy + 14 * math.sin(rad)
         ink(draw, [(x0, y0), (cx + length * math.cos(rad), cy + length * math.sin(rad))], width=w)
 
-    hand(60, r * 0.64, SW + 1)  # minute at :10 → 2
-    hand(305, r * 0.44, SW)  # hour at 10:10
-    draw.ellipse([cx - 8, cy - 8, cx + 8, cy + 8], fill=0)
+    hand(60, r * 0.66, SW + 1)  # minute at :10 → 2
+    hand(305, r * 0.46, SW)  # hour at 10:10
+    # Open hub ring (stroke) — not a filled SF-style disc
+    circle_outline(draw, cx, cy, 11, w=SW - 1)
 
 
 def draw_pass(draw: ImageDraw.ImageDraw) -> None:
     """ID badge: clip bar + rounded plate + photo window + two identity rules."""
     cx = HI / 2
     # Clip tab — short bar above the plate (readable at small size)
-    tab_w, tab_h = 42, 24
-    tab_y0 = PAD + 14
+    tab_w, tab_h = 44, 26
+    tab_y0 = PAD + 12
     rounded_rect_outline(draw, cx - tab_w / 2, tab_y0, cx + tab_w / 2, tab_y0 + tab_h, r=7, w=SW)
     # Small clip slot inside the tab
-    ink(draw, [(cx - 10, tab_y0 + tab_h / 2), (cx + 10, tab_y0 + tab_h / 2)], width=SW - 2)
+    ink(draw, [(cx - 12, tab_y0 + tab_h / 2), (cx + 12, tab_y0 + tab_h / 2)], width=SW - 2)
     # Badge body
-    x0, y0 = PAD + 48, PAD + 52
-    x1, y1 = HI - PAD - 48, HI - PAD - 14
+    x0, y0 = PAD + 46, PAD + 50
+    x1, y1 = HI - PAD - 46, HI - PAD - 12
     rounded_rect_outline(draw, x0, y0, x1, y1, r=18, w=SW)
     # Photo window (square-ish, centered upper third)
-    px0, py0 = cx - 42, y0 + 22
-    px1, py1 = cx + 42, y0 + 100
+    px0, py0 = cx - 44, y0 + 20
+    px1, py1 = cx + 44, y0 + 102
     rounded_rect_outline(draw, px0, py0, px1, py1, r=10, w=SW - 1)
-    # Simple head silhouette hint inside photo (calm, not a fill blob)
-    head_cy = py0 + 28
-    circle_outline(draw, cx, head_cy, 16, w=SW - 2)
-    # Shoulder arc under the head
-    arc_outline(draw, cx, py1 - 8, 28, start=200, end=340, w=SW - 2)
+    # Head + shoulder as open strokes (never a silhouette fill)
+    head_cy = py0 + 30
+    circle_outline(draw, cx, head_cy, 17, w=SW - 2)
+    arc_outline(draw, cx, py1 - 6, 30, start=200, end=340, w=SW - 2)
     # Two identity rules under the photo
-    for i, t in enumerate((0.0, 1.0)):
-        ry = py1 + 28 + i * 28
-        half = 52 - i * 10  # second rule shorter — name + subtitle
+    for i, _t in enumerate((0.0, 1.0)):
+        ry = py1 + 26 + i * 28
+        half = 54 - i * 12  # second rule shorter — name + subtitle
         ink(draw, [(cx - half, ry), (cx + half, ry)], width=SW - 1)
 
 
 def draw_weather(draw: ImageDraw.ImageDraw) -> None:
-    """Sun: open circle + eight short rays — even gaps, no cloud blob."""
+    """Sun: open circle + eight even rays — no cloud blob, no fill disc."""
     cx = cy = HI / 2
-    r = 62
+    r = 58
     circle_outline(draw, cx, cy, r, w=SW)
-    ray_in, ray_out = r + 18, r + 52
+    ray_in, ray_out = r + 20, r + 56
     for i in range(8):
         ang = math.radians(i * 45 - 90)
         x0 = cx + ray_in * math.cos(ang)
@@ -192,21 +194,21 @@ def draw_weather(draw: ImageDraw.ImageDraw) -> None:
 
 
 def draw_music(draw: ImageDraw.ImageDraw) -> None:
-    """Eighth note: solid oval head + thick stem + single flag — optically centered."""
+    """Eighth note: open oval head (stroke) + stem + single flag — no solid fill."""
     hx, hy = HI / 2 - 14, HI / 2 + 56
-    # Head — solid oval, slightly larger so it matches stroke-set presence
-    draw.ellipse([hx - 40, hy - 28, hx + 40, hy + 28], outline=0, fill=0, width=SW)
-    # Stem — SW+2 so it survives BOX downsample
-    sx = hx + 34
-    top = hy - 172
-    ink(draw, [(sx, hy - 2), (sx, top)], width=SW + 2)
+    # Head — stroke ellipse only (reMarkable language; not an SF filled blob)
+    draw.ellipse([hx - 42, hy - 30, hx + 42, hy + 30], outline=0, fill=None, width=SW + 1)
+    # Stem — SW+2 so it survives BOX downsample; meets the head rim
+    sx = hx + 36
+    top = hy - 176
+    ink(draw, [(sx, hy - 8), (sx, top)], width=SW + 2)
     # Flag — single calm curve from stem top
     flag = [
         (sx, top),
-        (sx + 30, top + 16),
-        (sx + 54, top + 42),
-        (sx + 62, top + 72),
-        (sx + 44, top + 102),
+        (sx + 28, top + 14),
+        (sx + 52, top + 40),
+        (sx + 60, top + 70),
+        (sx + 42, top + 100),
     ]
     ink(draw, flag, width=SW + 1, joint="curve")
 
@@ -214,24 +216,24 @@ def draw_music(draw: ImageDraw.ImageDraw) -> None:
 def draw_settings(draw: ImageDraw.ImageDraw) -> None:
     """Gear: hollow hub + six flat-top teeth (not a ship-wheel of bars)."""
     cx = cy = HI / 2
-    r_hub = 34
-    r_rim = 72
-    r_tooth = 98
-    # Hub ring
+    r_hub = 32
+    r_rim = 70
+    r_tooth = 100
+    # Hub ring (open — never filled)
     circle_outline(draw, cx, cy, r_hub, w=SW)
     # Rim ring
     circle_outline(draw, cx, cy, r_rim, w=SW)
-    # Six flat-top teeth: short radial rectangle stubs (read as gear, not spokes)
-    tooth_half_ang = math.radians(11)
+    # Six flat-top teeth: closed stubs that meet the rim cleanly
+    tooth_half_ang = math.radians(12)
     for i in range(6):
         mid = math.radians(i * 60 - 90)
-        # Outer flat
         a0, a1 = mid - tooth_half_ang, mid + tooth_half_ang
         pts = [
             (cx + r_rim * math.cos(a0), cy + r_rim * math.sin(a0)),
             (cx + r_tooth * math.cos(a0), cy + r_tooth * math.sin(a0)),
             (cx + r_tooth * math.cos(a1), cy + r_tooth * math.sin(a1)),
             (cx + r_rim * math.cos(a1), cy + r_rim * math.sin(a1)),
+            (cx + r_rim * math.cos(a0), cy + r_rim * math.sin(a0)),
         ]
         ink(draw, pts, width=SW, joint="curve")
 
@@ -239,66 +241,64 @@ def draw_settings(draw: ImageDraw.ImageDraw) -> None:
 def draw_update(draw: ImageDraw.ImageDraw) -> None:
     """Circular refresh: open clockwise arc + clear chevron tip."""
     cx = cy = HI / 2
-    r = 92
+    r = 94
     # Nearly full ring; gap near 12–1 o'clock
-    arc_outline(draw, cx, cy, r, start=345, end=295, w=SW)
-    # Tip at the clockwise end of the arc (~295°)
-    tip_pil = 295
+    arc_outline(draw, cx, cy, r, start=350, end=290, w=SW)
+    # Tip at the clockwise end of the arc (~290°)
+    tip_pil = 290
     tip = math.radians(tip_pil)
     tx = cx + r * math.cos(tip)
     ty = cy + r * math.sin(tip)
     # Back along the arc for chevron base
-    back_pil = 275
+    back_pil = 268
     back = math.radians(back_pil)
     bx = cx + r * math.cos(back)
     by = cy + r * math.sin(back)
-    # Radial normal at tip
+    # Radial normal at tip — slightly longer chevron for small-size readability
     nx, ny = math.cos(tip), math.sin(tip)
-    ink(draw, [(bx + nx * 30, by + ny * 30), (tx, ty)], width=SW)
-    ink(draw, [(bx - nx * 30, by - ny * 30), (tx, ty)], width=SW)
+    ink(draw, [(bx + nx * 34, by + ny * 34), (tx, ty)], width=SW)
+    ink(draw, [(bx - nx * 34, by - ny * 34), (tx, ty)], width=SW)
 
 
 def draw_reading(draw: ImageDraw.ImageDraw) -> None:
-    """Open book: two pages with curved bottoms + shared spine (not a window)."""
+    """Open book: two pages with curved bottoms + shared spine (stroke only)."""
     cx = HI / 2
-    top = PAD + 44
-    bot = HI - PAD - 28
-    left, right = PAD + 22, HI - PAD - 22
+    top = PAD + 40
+    bot = HI - PAD - 24
+    left, right = PAD + 20, HI - PAD - 20
     mid = cx
     # Left page: top edge, outer side, curved bottom (page droop), spine
-    # Approximate curve with polyline points
     left_bot = []
-    for i in range(9):
-        t = i / 8.0
+    for i in range(11):
+        t = i / 10.0
         x = mid - 4 - t * ((mid - 4) - left)
-        # Parabola droop: deepest at outer edge
-        y = bot - 22 * math.sin(t * math.pi * 0.55)
+        y = bot - 26 * math.sin(t * math.pi * 0.55)
         left_bot.append((x, y))
     left_pts = (
-        [(mid - 4, top), (left + 14, top), (left, top + 20)]
+        [(mid - 4, top), (left + 16, top), (left, top + 18)]
         + left_bot
-        + [(mid - 4, bot - 6), (mid - 4, top)]
+        + [(mid - 4, bot - 4), (mid - 4, top)]
     )
     ink(draw, left_pts, width=SW, joint="curve")
     # Right page (mirror)
     right_bot = []
-    for i in range(9):
-        t = i / 8.0
+    for i in range(11):
+        t = i / 10.0
         x = mid + 4 + t * (right - (mid + 4))
-        y = bot - 22 * math.sin(t * math.pi * 0.55)
+        y = bot - 26 * math.sin(t * math.pi * 0.55)
         right_bot.append((x, y))
     right_pts = (
-        [(mid + 4, top), (right - 14, top), (right, top + 20)]
+        [(mid + 4, top), (right - 16, top), (right, top + 18)]
         + right_bot
-        + [(mid + 4, bot - 6), (mid + 4, top)]
+        + [(mid + 4, bot - 4), (mid + 4, top)]
     )
     ink(draw, right_pts, width=SW, joint="curve")
     # Spine
-    ink(draw, [(mid, top + 2), (mid, bot - 8)], width=SW)
+    ink(draw, [(mid, top + 2), (mid, bot - 6)], width=SW)
     # One calm rule per page
     mid_y = top + (bot - top) * 0.48
-    ink(draw, [(left + 30, mid_y), (mid - 18, mid_y)], width=SW - 1)
-    ink(draw, [(mid + 18, mid_y), (right - 30, mid_y)], width=SW - 1)
+    ink(draw, [(left + 32, mid_y), (mid - 16, mid_y)], width=SW - 1)
+    ink(draw, [(mid + 16, mid_y), (right - 32, mid_y)], width=SW - 1)
 
 
 DRAWERS = {
@@ -359,7 +359,7 @@ def pack_bits(mask: Image.Image) -> list[int]:
 def emit_c(arrays: list[tuple[str, list[int]]]) -> str:
     row_bytes = (SIZE + 7) // 8
     lines = [
-        "// Auto-generated 1-bit Home glyphs (v74 reMarkable strokes). Do not edit by hand.",
+        "// Auto-generated 1-bit Home glyphs (v79 reMarkable strokes). Do not edit by hand.",
         f"// {SIZE}×{SIZE}, MSB packed, 1 = ink. Regenerated by tools/gen_remarkable_glyphs.py",
         f"static constexpr int kHomeGlyphSize = {SIZE};",
         f"static constexpr int kHomeGlyphRowBytes = {row_bytes};",
