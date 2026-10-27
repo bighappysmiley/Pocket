@@ -1056,71 +1056,70 @@ void App::draw_lock_motif() {
 
   switch (motif) {
     case 0: {
-      // "Horizon" — layered hills, resting sun, calm water mirror (v77 polish).
+      // "Horizon" — quieter sky, clearer sun placement, even water mirror (v81).
       const int horizon_y = kTop + 230;
-      // Soft sky wash — two bands, not a flat slab.
-      canvas_.fill_rect(0, kTop + 24, kCanvasW, 32, Gray::G2);
-      canvas_.fill_rect(0, kTop + 56, kCanvasW, 24, Gray::G2);
+      // Soft sky wash — one calm band (less noise than stacked slabs).
+      canvas_.fill_rect(0, kTop + 36, kCanvasW, 40, Gray::G2);
       // Far ridge silhouette.
       for (int x = 0; x < kCanvasW; ++x) {
-        const int rise = 16 + static_cast<int>(10.0 * std::sin((x + 40) * 0.032));
-        canvas_.vline(x, horizon_y - 68 - rise, rise + 68, Gray::G2);
+        const int rise = 14 + static_cast<int>(9.0 * std::sin((x + 40) * 0.030));
+        canvas_.vline(x, horizon_y - 64 - rise, rise + 64, Gray::G2);
       }
       // Mid hill.
       for (int x = 0; x < kCanvasW; ++x) {
-        const int rise = 34 - std::abs(x - (cx - 36)) / 7;
+        const int rise = 32 - std::abs(x - (cx - 40)) / 7;
         if (rise > 0) canvas_.vline(x, horizon_y - rise, rise, Gray::G1);
       }
       // Near shore band + soft crest.
       canvas_.fill_rect(0, horizon_y, kCanvasW, kBot - horizon_y + 20, Gray::G1);
       for (int x = 28; x < kCanvasW - 28; ++x) {
-        const int rise = 20 - std::abs(x - (cx + 28)) / 11;
+        const int rise = 18 - std::abs(x - (cx + 24)) / 11;
         if (rise > 0) canvas_.vline(x, horizon_y - rise, rise, Gray::G0);
       }
-      // Sun with soft corona — rests on the mid ridge.
-      fill_ring(cx + 18, horizon_y - 92, 58, 48, Gray::G2);
-      fill_disc(cx + 18, horizon_y - 92, 40, Gray::G0);
+      // Sun with soft corona — sits just above the mid ridge.
+      fill_ring(cx + 14, horizon_y - 100, 56, 46, Gray::G2);
+      fill_disc(cx + 14, horizon_y - 100, 38, Gray::G0);
       // Water reflections — even cadence, stepping narrower.
       for (int i = 0; i < 5; ++i) {
-        const int y = horizon_y + 32 + i * 34;
-        const int inset = 56 + i * 36;
-        const int h = (i < 2) ? 7 : 5;
+        const int y = horizon_y + 30 + i * 34;
+        const int inset = 60 + i * 34;
+        const int h = (i < 2) ? 6 : 4;
         canvas_.fill_round_rect(inset, y, kCanvasW - 2 * inset, h, 2,
                                 (i % 2 == 0) ? Gray::G0 : Gray::G2);
       }
       break;
     }
     case 1: {
-      // "Tide" — moon clear of ripples; calm concentric rings; soft path.
+      // "Tide" — moon clear of ripples; calmer rings; soft path (v81).
       const int oy = kTop + 270;
       // Moon high and left — never reads as a padlock shackle on the outer ring.
-      fill_ring(cx - 155, kTop + 48, 32, 26, Gray::G2);
-      fill_disc(cx - 155, kTop + 48, 22, Gray::G0);
-      fill_ring(cx, oy, 196, 182, Gray::G2);
-      fill_ring(cx, oy, 164, 148, Gray::G1);
-      fill_ring(cx, oy, 122, 104, Gray::G1);
-      fill_ring(cx, oy, 80, 60, Gray::G0);
-      fill_disc(cx, oy, 24, Gray::G0);
+      fill_ring(cx - 160, kTop + 44, 30, 24, Gray::G2);
+      fill_disc(cx - 160, kTop + 44, 20, Gray::G0);
+      fill_ring(cx, oy, 192, 178, Gray::G2);
+      fill_ring(cx, oy, 158, 142, Gray::G1);
+      fill_ring(cx, oy, 116, 98, Gray::G1);
+      fill_ring(cx, oy, 74, 54, Gray::G0);
+      fill_disc(cx, oy, 22, Gray::G0);
       // Soft vertical highlight — moon path on water.
       for (int i = 0; i < 4; ++i) {
-        const int y = oy + 44 + i * 30;
-        const int w = 16 - i * 3;
-        if (w > 0) canvas_.fill_round_rect(cx - w / 2, y, w, 5, 2, Gray::G2);
+        const int y = oy + 42 + i * 28;
+        const int w = 14 - i * 3;
+        if (w > 0) canvas_.fill_round_rect(cx - w / 2, y, w, 4, 2, Gray::G2);
       }
       break;
     }
     case 2: {
-      // "Ridge" — overlapping peaks, snow caps, valley floor, high sun.
+      // "Ridge" — tighter peaks, clearer snow caps, quieter sun (v81).
       const int base_y = kBot - 48;
-      canvas_.fill_rect(0, base_y, kCanvasW, 18, Gray::G1);
-      canvas_.fill_rect(48, base_y + 6, kCanvasW - 96, 8, Gray::G0);
-      fill_peak(cx - 128, kTop + 148, 146, base_y, Gray::G2);
-      fill_peak(cx + 118, kTop + 108, 156, base_y, Gray::G1);
-      fill_peak(cx - 6, kTop + 48, 122, base_y, Gray::G0);
+      canvas_.fill_rect(0, base_y, kCanvasW, 16, Gray::G1);
+      canvas_.fill_rect(56, base_y + 5, kCanvasW - 112, 7, Gray::G0);
+      fill_peak(cx - 124, kTop + 152, 140, base_y, Gray::G2);
+      fill_peak(cx + 114, kTop + 112, 150, base_y, Gray::G1);
+      fill_peak(cx - 4, kTop + 52, 116, base_y, Gray::G0);
       // Snow caps on the two taller peaks.
-      fill_peak(cx + 118, kTop + 108, 40, kTop + 168, Gray::G3);
-      fill_peak(cx - 6, kTop + 48, 36, kTop + 118, Gray::G3);
-      fill_disc(cx + 148, kTop + 58, 18, Gray::G0);
+      fill_peak(cx + 114, kTop + 112, 36, kTop + 168, Gray::G3);
+      fill_peak(cx - 4, kTop + 52, 32, kTop + 118, Gray::G3);
+      fill_disc(cx + 152, kTop + 52, 16, Gray::G0);
       break;
     }
     case 3: {

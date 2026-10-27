@@ -9,37 +9,39 @@ namespace pocket {
 namespace {
 
 /**
- * Wi‑Fi status glyph — three rising bars with even optical weight.
+ * Wi‑Fi status glyph — three rising bars with even optical weight (v81).
  * Offline slash stays bold enough to read on e-ink.
  */
 void draw_wifi_icon(Canvas& c, int x, int y, bool active) {
   const Gray g_on = Gray::G0;
   const Gray g_off = Gray::G2;
   constexpr int kBarW = 5;
-  constexpr int kGap = 5;
+  constexpr int kGap = 4;  // tighter → more even silhouette
   constexpr int kBaseY = 26;
-  const int heights[3] = {10, 17, 24};
+  // Optical heights: short bar a touch taller so the set reads as one glyph.
+  const int heights[3] = {11, 17, 24};
   for (int i = 0; i < 3; ++i) {
-    const int bx = x + 3 + i * (kBarW + kGap);
+    const int bx = x + 4 + i * (kBarW + kGap);
     const int bh = heights[i];
     c.fill_round_rect(bx, y + kBaseY - bh, kBarW, bh, 2, active ? g_on : g_off);
   }
   if (!active) {
-    // Slightly inset slash so it clears the shortest bar cleanly.
-    c.line(x + 1, y + 26, x + 27, y + 2, Gray::G0);
-    c.line(x + 2, y + 26, x + 28, y + 2, Gray::G0);
+    // Inset slash clears the shortest bar without clipping the tall one.
+    c.line(x + 2, y + 25, x + 26, y + 3, Gray::G0);
+    c.line(x + 3, y + 25, x + 27, y + 3, Gray::G0);
   }
 }
 
 /**
- * Battery gauge — rounded body, four segments, clear low-battery wash.
+ * Battery gauge — rounded body, four segments, tidy terminal nub (v81).
  */
 void draw_battery_icon(Canvas& c, int x, int y, int pct) {
   constexpr int kW = 34;
   constexpr int kH = 18;
   constexpr int kSegs = 4;
   c.stroke_round_rect(x, y, kW, kH, 4, Gray::G0, 2);
-  c.fill_round_rect(x + kW, y + 5, 4, 8, 2, Gray::G0);
+  // Terminal nub — slightly inset vertically so it reads as a tip, not a blob.
+  c.fill_round_rect(x + kW, y + 6, 3, 6, 1, Gray::G0);
 
   const int pad = 3;
   const int inner_w = kW - 2 * pad;
@@ -59,8 +61,8 @@ void draw_battery_icon(Canvas& c, int x, int y, int pct) {
 void draw_status_bar_impl(Canvas& c, const DeviceConfig& cfg, int hour, int minute, bool wifi_ok,
                           int battery_pct, bool time_ok) {
   c.fill_rect(0, 0, kCanvasW, kStatusBarH, Gray::G3);
-  // Hairline rule — G1 reads cleaner on partial refreshes than soft G2.
-  c.hline(0, kStatusBarH - 1, kCanvasW, Gray::G1);
+  // Hairline rule — single G1 pixel; inset 8px so it doesn't collide with side icons.
+  c.hline(8, kStatusBarH - 1, kCanvasW - 16, Gray::G1);
 
   char timebuf[16];
   if (!time_ok || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
