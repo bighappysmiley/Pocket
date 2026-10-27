@@ -373,6 +373,10 @@ class App {
   void maybe_tick_status_chrome();
   /** Clock app huge time — region partial on minute change. */
   void maybe_tick_clock_face();
+  /** Clear PIN error/lockout chrome when the timer expires (avoids stale ink). */
+  void maybe_tick_pin_chrome();
+  /** Clear footer error toasts (Notes/Weather/etc.) when error_until_ms_ elapses. */
+  void maybe_tick_transient_error();
   bool screen_has_status_bar() const;
   void render_notes();
   void handle_notes(InputEvent e);
@@ -475,6 +479,10 @@ class App {
   int pin_fail_count_ = 0;
   uint32_t pin_lockout_until_ms_ = 0;
   uint32_t error_until_ms_ = 0;
+  /** Armed while PIN error/lockout chrome is painted — cleared on expiry tick. */
+  bool pin_chrome_armed_ = false;
+  /** Armed while a non-PIN error toast is painted — cleared on expiry tick. */
+  bool transient_error_armed_ = false;
   std::string error_msg_;
   std::string wifi_password_;
   std::vector<std::string> wifi_networks_;

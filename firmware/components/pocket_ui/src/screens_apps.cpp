@@ -969,11 +969,9 @@ void App::handle_clock(InputEvent e) {
     after_nav();
     return;
   }
-  if (e == InputEvent::Up) {
-    clock_tab_ = (clock_tab_ + 2) % 3;
-    mark_content_dirty();
-  } else if (e == InputEvent::Down) {
-    clock_tab_ = (clock_tab_ + 1) % 3;
+  if (e == InputEvent::Up || e == InputEvent::Down) {
+    // Tab change redraws the body (clock face ↔ empty states) — content band, not full panel.
+    clock_tab_ = e == InputEvent::Down ? (clock_tab_ + 1) % 3 : (clock_tab_ + 2) % 3;
     mark_content_dirty();
   }
 }
@@ -1043,10 +1041,20 @@ void App::handle_pass(InputEvent e) {
     return;
   }
   if (cfg_.parental_hide_pass_share) return;
-  if (nav_.current() == ScreenId::PassList && e == InputEvent::Select && !data_.passes.empty()) {
-    note_index_ = focus_.index;
-    nav_.push(ScreenId::PassDetail);
-    after_nav();
+  if (nav_.current() == ScreenId::PassList && !data_.passes.empty()) {
+    focus_.count = static_cast<int>(data_.passes.size());
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      const int prev = focus_.index;
+      focus_.move(e == InputEvent::Down ? 1 : -1);
+      if (focus_.index == prev) return;
+      mark_list_focus_dirty(below_title(kContentTop), prev, focus_.index);
+      return;
+    }
+    if (e == InputEvent::Select) {
+      note_index_ = focus_.index;
+      nav_.push(ScreenId::PassDetail);
+      after_nav();
+    }
   }
 }
 

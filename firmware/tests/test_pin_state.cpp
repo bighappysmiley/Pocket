@@ -199,6 +199,29 @@ int main() {
     assert_pin_consistency(app2);
   }
 
+  // Lockout: after 5 wrong PINs, digit entry is blocked but Back still leaves.
+  {
+    MemoryConfigStore store3;
+    TClock clock3;
+    TWifi wifi3;
+    TCloud cloud3;
+    TDisp disp3;
+    App app3 = make_app(store3, clock3, wifi3, cloud3, disp3);
+    app3.handle(InputEvent::Select);  // Lock → Pin
+    for (int attempt = 0; attempt < 5; ++attempt) {
+      // Enter 0000 (wrong vs 1234)
+      for (int i = 0; i < 4; ++i) app3.handle(InputEvent::Select);
+      CHECK(app3.screen() == ScreenId::Pin);
+    }
+    // Digits ignored during lockout
+    app3.handle(InputEvent::Down);
+    CHECK(app3.pin_working_digit() == '0');
+    CHECK(app3.pin_entry().empty());
+    // Back escapes lockout → Lock
+    app3.handle(InputEvent::Back);
+    CHECK(app3.screen() == ScreenId::Lock);
+  }
+
   if (failures) {
     std::printf("%d failures\n", failures);
     return 1;

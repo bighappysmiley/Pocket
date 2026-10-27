@@ -265,6 +265,11 @@ void App::mark_home_focus_dirty(int prev_index, int next_index) {
     mark_content_dirty();
     return;
   }
+  // End-wrap (last↔first) spans the whole grid — content band avoids a huge ghosting rect.
+  if (n > 1 && ((prev_index == 0 && next_index == n - 1) || (prev_index == n - 1 && next_index == 0))) {
+    mark_content_dirty();
+    return;
+  }
   // Periodic content-band clears residual focus ghosts without slowing LUTs.
   if (home_focus_spin_count_ % 4 == 0) {
     mark_content_dirty();
@@ -275,7 +280,7 @@ void App::mark_home_focus_dirty(int prev_index, int next_index) {
   int x1 = 0, y1 = 0, w1 = 0, h1 = 0;
   home_cell_rect(std::clamp(prev_index, 0, n - 1), n, label_band_h, &x0, &y0, &w0, &h0);
   home_cell_rect(std::clamp(next_index, 0, n - 1), n, label_band_h, &x1, &y1, &w1, &h1);
-  const int pad = 6;
+  const int pad = 8;  // focus stroke + label ink bleed on e-ink
   const int rx = std::max(0, std::min(x0, x1) - pad);
   const int ry = std::max(0, std::min(y0, y1) - pad);
   const int r2 = std::min(kCanvasW, std::max(x0 + w0, x1 + w1) + pad);

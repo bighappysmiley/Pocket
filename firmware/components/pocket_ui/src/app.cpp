@@ -766,6 +766,8 @@ void App::tick(uint32_t now_ms) {
     present_canvas(false);
     dirty_ = false;
   }
+  maybe_tick_pin_chrome();
+  maybe_tick_transient_error();
   maybe_tick_status_chrome();
   maybe_tick_clock_face();
   maybe_tick_home_clock();
@@ -1304,7 +1306,20 @@ void App::render_pin() {
 }
 
 void App::handle_pin(InputEvent e) {
-  if (now_ms_ < pin_lockout_until_ms_) return;
+  // Lockout blocks digit entry — but Back still leaves so the user is never stuck.
+  if (now_ms_ < pin_lockout_until_ms_) {
+    if (e == InputEvent::Back) {
+      parental_pin_for_app_ = false;
+      pin_entry_.clear();
+      pin_enter_empty_slot();
+      pin_lockout_until_ms_ = 0;
+      error_msg_.clear();
+      error_until_ms_ = 0;
+      nav_.pop();
+      after_nav();
+    }
+    return;
+  }
   if (e == InputEvent::Back) {
     if (pin_entry_.empty()) {
       parental_pin_for_app_ = false;
@@ -1482,6 +1497,49 @@ void App::maybe_tick_clock_face() {
 void App::maybe_tick_home_clock() {
   // Home no longer hosts a large clock — time updates live in the status bar only.
   (void)0;
+}
+
+void App::maybe_tick_pin_chrome() {
+  if (!is_pin_entry_screen()) {
+    pin_chrome_armed_ = false;
+    return;
+  }
+  const bool err_live = now_ms_ < error_until_ms_ && !error_msg_.empty();
+  const bool lock_live = now_ms_ < pin_lockout_until_ms_;
+  if (err_live || lock_live) {
+    pin_chrome_armed_ = true;
+    return;
+  }
+  // Error / lockout just expired — wipe the chrome band so stale ink doesn't linger.
+  if (!pin_chrome_armed_) return;
+  pin_chrome_armed_ = false;
+  mark_pin_slots_dirty(0, std::max(0, cfg_.pin_length - 1), true);
+  if (dirty_) {
+    present_canvas(false);
+    dirty_ = false;
+  }
+}
+
+void App::maybe_tick_transient_error() {
+  if (is_pin_entry_screen()) return;  // PIN chrome path owns expiry on that screen.
+  if (error_msg_.empty() || error_until_ms_ == 0) {
+    transient_error_armed_ = false;
+    return;
+  }
+  if (now_ms_ < error_until_ms_) {
+    transient_error_armed_ = true;
+    return;
+  }
+  if (!transient_error_armed_) return;
+  transient_error_armed_ = false;
+  error_msg_.clear();
+  error_until_ms_ = 0;
+  // Footer / toast band — clear residual "offline" / dictation toasts.
+  mark_region_dirty(0, kFooterY - 12, kCanvasW, kCanvasH - (kFooterY - 12));
+  if (dirty_) {
+    present_canvas(false);
+    dirty_ = false;
+  }
 }
 
 }  // namespace pocket
