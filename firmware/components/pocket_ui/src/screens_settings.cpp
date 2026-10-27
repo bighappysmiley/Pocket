@@ -36,7 +36,8 @@ int App::settings_focus_list_top() const {
     case ScreenId::SettingsWifi:
       if (wifi_ui_page_ == 1) return kListTop + 240;
       if (wifi_ui_page_ == 2) return below_title(kListTop) - 8;
-      return (cfg_.wifi_known.empty() ? below_title(kListTop) - 8 + kRowPitch
+      // Empty state inserts a wrapped hint (+kRowPitch+16) before Add/Back.
+      return (cfg_.wifi_known.empty() ? below_title(kListTop) - 8 + kRowPitch + 16
                                       : below_title(kListTop) - 8);
     default:
       return kListTop;
@@ -85,7 +86,7 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, kWrapGap,
-        "reMarkable-style Home icons, smoother focus and PIN refresh, and clearer offline Notes & Clock.",
+        "Firmer reMarkable Home strokes, Pass focus and PIN chrome fixes, and clearer empty Music & Reading.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);
@@ -215,9 +216,11 @@ void App::render_settings() {
     char ver[48];
     std::snprintf(ver, sizeof(ver), "Version %s", kConsumerVersion);
     canvas_.draw_text(kSideMargin, kListTop + kBodyLinePitch, ver, Canvas::TextRole::Secondary, Gray::G1);
-    canvas_.draw_text_wrapped(kSideMargin, kListTop + 2 * kBodyLinePitch, kContentW, kWrapGap,
-                              "Check Pocket Cloud for the latest software.",
-                              Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text_wrapped(
+        kSideMargin, kListTop + 2 * kBodyLinePitch, kContentW, kWrapGap,
+        wifi_.connected() ? "Check for the latest Pocket Classic software."
+                          : "Connect to Wi‑Fi to check for software updates.",
+        Canvas::TextRole::Secondary, Gray::G1);
     const char* rows[] = {"Update Pocket", "Back"};
     draw_focus_rows(canvas_, focus_, rows, 2, kListTop + 72 + 2 * kBodyLinePitch);
     return;
@@ -302,8 +305,10 @@ void App::render_settings() {
     focus_.count = std::max(1, n_known + n_actions);
     int y = below_title(kListTop) - 8;
     if (n_known == 0) {
-      canvas_.draw_text(kSideMargin, y, "No saved networks yet", Canvas::TextRole::Secondary, Gray::G1);
-      y += kRowPitch;
+      canvas_.draw_text_wrapped(kSideMargin, y, kContentW, kWrapGap,
+                                "No saved networks yet — Add network… uses Companion on your phone.",
+                                Canvas::TextRole::Secondary, Gray::G1);
+      y += kRowPitch + 16;
     }
     for (int i = 0; i < n_known; ++i) {
       const auto& net = cfg_.wifi_known[static_cast<size_t>(i)];

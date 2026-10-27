@@ -561,7 +561,7 @@ void App::render_notes() {
       canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No notes yet", Canvas::TextRole::Body,
                                  Gray::G0);
       canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                                "Select New note — works offline. Dictation needs Wi‑Fi.",
+                                "Select New note — notes stay on device offline. Dictation needs Wi‑Fi.",
                                 Canvas::TextRole::Secondary, Gray::G1);
     } else {
       focus_.count = static_cast<int>(data_.notes.size()) + 1;
@@ -952,13 +952,13 @@ void App::render_clock() {
     canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No alarms yet", Canvas::TextRole::Body,
                                Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                              "Alarms arrive in a free update. Clock face works offline.",
+                              "Alarms arrive in a free update. The clock face keeps working offline.",
                               Canvas::TextRole::Secondary, Gray::G1);
   } else {
     canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No timers yet", Canvas::TextRole::Body,
                                Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                              "Timers arrive in a free update. Clock face works offline.",
+                              "Timers arrive in a free update. The clock face keeps working offline.",
                               Canvas::TextRole::Secondary, Gray::G1);
   }
 }
@@ -1012,7 +1012,7 @@ void App::render_pass() {
     canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No passes yet", Canvas::TextRole::Body,
                                Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                              "Add passes in Companion on your phone.",
+                              "Add passes in Companion on your phone. They sync when Pocket is online.",
                               Canvas::TextRole::Secondary, Gray::G1);
   } else {
     focus_.count = static_cast<int>(data_.passes.size());

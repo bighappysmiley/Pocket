@@ -216,8 +216,8 @@ void App::render_music() {
                                Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-        wifi_.connected() ? "Select Sync from Companion to download tracks."
-                          : "Connect to Wi‑Fi, then Sync from Companion.",
+        wifi_.connected() ? "Select Sync below to pull tracks from Companion on your phone."
+                          : "Offline — connect to Wi‑Fi, then Sync tracks from Companion.",
         Canvas::TextRole::Secondary, Gray::G1);
   }
   for (int i = 0; i < n && i < 8; ++i) {
@@ -279,7 +279,9 @@ void App::handle_music(InputEvent e) {
     const int prev = focus_.index;
     focus_.move(e == InputEvent::Down ? 1 : -1);
     if (focus_.index == prev) return;
-    mark_list_focus_dirty(kListTopWithMeta, prev, focus_.index);
+    // Empty library parks Sync/Back at the bottom CTA band — not list_top.
+    const int dirty_top = (n == 0) ? (kBottomCtaY - kRowPitch) : kListTopWithMeta;
+    mark_list_focus_dirty(dirty_top, prev, focus_.index);
   } else if (e == InputEvent::Select) {
     if (focus_.index < n) {
       music_index_ = focus_.index;
