@@ -259,38 +259,13 @@ void App::render_home() {
 
 void App::mark_home_focus_dirty(int prev_index, int next_index) {
   ++home_focus_spin_count_;
-  HomeApp focusable[kHomeGridSlots];
-  const int n = count_home_focusable(cfg_, focusable, kHomeGridSlots);
-  if (n <= 0) {
-    mark_content_dirty();
-    return;
-  }
-  // End-wrap (last↔first) spans the whole grid — content band avoids a huge ghosting rect.
-  if (n > 1 && ((prev_index == 0 && next_index == n - 1) || (prev_index == n - 1 && next_index == 0))) {
-    mark_content_dirty();
-    return;
-  }
-  // Periodic content-band clears residual focus ghosts without slowing LUTs.
-  if (home_focus_spin_count_ % 4 == 0) {
-    mark_content_dirty();
-    return;
-  }
-  const int label_band_h = canvas_.text_height(Canvas::TextRole::Secondary) + 6;
-  int x0 = 0, y0 = 0, w0 = 0, h0 = 0;
-  int x1 = 0, y1 = 0, w1 = 0, h1 = 0;
-  home_cell_rect(std::clamp(prev_index, 0, n - 1), n, label_band_h, &x0, &y0, &w0, &h0);
-  home_cell_rect(std::clamp(next_index, 0, n - 1), n, label_band_h, &x1, &y1, &w1, &h1);
-  const int pad = 8;  // focus stroke + label ink bleed on e-ink
-  const int rx = std::max(0, std::min(x0, x1) - pad);
-  const int ry = std::max(0, std::min(y0, y1) - pad);
-  const int r2 = std::min(kCanvasW, std::max(x0 + w0, x1 + w1) + pad);
-  const int b2 = std::min(kCanvasH, std::max(y0 + h0, y1 + h1) + pad);
-  // Diagonal / row-wrap (different row AND column) → content band; same-row/col stay tight.
-  if (y0 != y1 && x0 != x1) {
-    mark_content_dirty();
-    return;
-  }
-  mark_region_dirty(rx, ry, r2 - rx, b2 - ry);
+  (void)prev_index;
+  (void)next_index;
+  // Always content-band for Home focus moves. Tight tile unions were leaving stale
+  // icon fragments on the e-ink panel (duplicate glyphs / rearranged grid) because
+  // rounded plates + 1-bit glyph blits need a full content wipe under fast 0xFF.
+  // Still a partial LUT — not a slow full refresh.
+  mark_content_dirty();
 }
 
 bool App::is_home_screen() const { return nav_.current() == ScreenId::Home; }

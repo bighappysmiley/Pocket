@@ -79,39 +79,34 @@ int main() {
   CHECK(app.screen() == ScreenId::Lock);
   CHECK(app.config().lock_message.empty());  // default: no bottom message on lock face
 
-  // Unlock → PIN screen (full enter once)
+  // Unlock → PIN screen (full enter clears lock wallpaper — required).
+  const int before_pin_full = disp.full_or_fast;
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::Pin);
+  CHECK(disp.full_or_fast == before_pin_full + 1);  // full LUT wipe of lock motif
   const int baseline_full = disp.full_or_fast;
   const int baseline_region = disp.region;
 
-  // Spinning a digit must use a tight slot region — not a full-panel refresh.
+  // Digit spins use the PIN chrome band (not a tiny slot) — prevents ghost digits.
   app.handle(InputEvent::Down);
   CHECK(disp.region > baseline_region);
   CHECK(disp.full_or_fast == baseline_full);
-  CHECK(disp.last_ry >= 100);  // PIN slot, not status-only
-  CHECK(disp.last_rh <= 120);  // one digit cell, not a 360px band / content-canvas
+  CHECK(disp.last_ry >= 100);
+  CHECK(disp.last_rh > 120);  // chrome band, not a single 72px cell
 
-  // Coalesced net delta (simulate rapid spins) still dirty-presents once.
+  // Coalesced net delta still dirty-presents once, still chrome-band, never full.
   const int after_spin_region = disp.region;
   app.apply_pin_digit_delta(3);
   app.flush_dirty();
-  CHECK(disp.region > after_spin_region);
-  CHECK(disp.last_rh <= 120);  // still a tight slot (spin count not yet multiple of 4)
+  CHECK(disp.region == after_spin_region + 1);
+  CHECK(disp.full_or_fast == baseline_full);
+  CHECK(disp.last_rh > 120);
   CHECK(app.is_pin_entry_screen());
 
-  // Every 4th spin widens to the PIN chrome band (ghost clear) — not a full-panel refresh.
-  // Spins so far: Down(+1) + delta(3) = 2. One more tight (3), then the 4th is wide.
   app.apply_pin_digit_delta(1);
   app.flush_dirty();
-  CHECK(disp.last_rh <= 120);
-  const int before_wide = disp.region;
-  const int before_wide_full = disp.full_or_fast;
-  app.apply_pin_digit_delta(1);
-  app.flush_dirty();
-  CHECK(disp.region == before_wide + 1);
-  CHECK(disp.full_or_fast == before_wide_full);
-  CHECK(disp.last_rh > 120);  // chrome band covers progress + slots + hints
+  CHECK(disp.last_rh > 120);
+  CHECK(disp.full_or_fast == baseline_full);
 
   // While on PIN, status chrome ticks must NOT flash (avoids digit/focus glitch).
   clock.t += 500;
@@ -160,23 +155,25 @@ int main() {
   CHECK(disp.region > after_min_region);
   CHECK(disp.full_or_fast == home_full);
 
-  // Home focus move → region partial (tile union), not a full-panel refresh.
+  // Home focus move → content-band partial (full grid wipe), never a slow full LUT.
+  // Tight tile unions were inventing duplicate icons on device.
   const int home_focus_region = disp.region;
   const int home_focus_full = disp.full_or_fast;
   app.apply_home_focus_delta(1);
   app.flush_dirty();
-  CHECK(disp.region > home_focus_region);
+  CHECK(disp.region == home_focus_region + 1);
   CHECK(disp.full_or_fast == home_focus_full);
-  CHECK(disp.last_ry > 0);  // below status bar
-  CHECK(disp.last_rh < 400);  // tile union, not full content band
+  CHECK(disp.last_ry == kStatusBarH);  // content band starts under status
+  CHECK(disp.last_rh >= 400);          // full content, not a 1–2 tile strip
   CHECK(app.is_home_screen());
 
-  // Coalesced Home rotary burst still presents once.
+  // Coalesced Home rotary burst still presents once (content band).
   const int coalesce_region = disp.region;
   app.apply_home_focus_delta(3);
   app.flush_dirty();
   CHECK(disp.region == coalesce_region + 1);
   CHECK(disp.full_or_fast == home_focus_full);
+  CHECK(disp.last_ry == kStatusBarH);
 
   // Lock face starts on the first of the rotating calm motifs (no clock hands).
   CHECK(app.lock_motif_index() == 0);

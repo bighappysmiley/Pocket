@@ -103,7 +103,7 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, kWrapGap,
-        "Firmer reMarkable Home strokes, Pass focus and PIN chrome fixes, and clearer empty Music & Reading.",
+        "Solid PIN unlock, calmer page nav, and clearer offline Notes, Music, Reading, and Settings.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);
@@ -119,9 +119,11 @@ void App::render_settings() {
 
   if (s == ScreenId::SettingsCloud) {
     canvas_.draw_text(kSideMargin, kTitleY, "Pocket Cloud", Canvas::TextRole::ScreenTitle, Gray::G0);
-    int sync_y = canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, kWrapGap,
-                                           "Sync Notes to your phone with Pocket Cloud.",
-                                           Canvas::TextRole::Secondary, Gray::G1);
+    int sync_y = canvas_.draw_text_wrapped(
+        kSideMargin, kListTop, kContentW, kWrapGap,
+        wifi_.connected() ? "Sync Notes to your phone with Pocket Cloud."
+                          : "Offline — Notes stay on device. Cloud sync and Link need Wi‑Fi.",
+        Canvas::TextRole::Secondary, Gray::G1);
     const char* status = "Not subscribed";
     if (cfg_.cloud_status == "trialing")
       status = "Trial";
@@ -677,23 +679,23 @@ void App::handle_settings(InputEvent e) {
     if (e == InputEvent::Up || e == InputEvent::Down) {
       settings_move_focus(e == InputEvent::Down ? 1 : -1);
     } else if (e == InputEvent::Select) {
+      if (!wifi_.connected()) {
+        error_msg_ = "Connect to Wi‑Fi for Cloud and Companion Link.";
+        error_until_ms_ = now_ms_ + 3000;
+        mark_content_dirty();
+        return;
+      }
       if (focus_.index == 2) {
         // Link companion app — mint pair session + show QR
-        if (!wifi_.connected()) {
-          error_msg_ = "Connect to Wi-Fi first.";
+        if (!mint_pair_session()) {
+          error_msg_ = "Couldn't create pairing code.";
           error_until_ms_ = now_ms_ + 2500;
           mark_content_dirty();
-        } else {
-          if (!mint_pair_session()) {
-            error_msg_ = "Couldn't create pairing code.";
-            error_until_ms_ = now_ms_ + 2500;
-            mark_content_dirty();
-            return;
-          }
-          focus_.index = 0;
-          nav_.push(ScreenId::OnboardingCompanionQr);
-          after_nav();
+          return;
         }
+        focus_.index = 0;
+        nav_.push(ScreenId::OnboardingCompanionQr);
+        after_nav();
       } else {
         // Trial / subscribe — open companion billing via same pair path if unlinked
         mark_content_dirty();

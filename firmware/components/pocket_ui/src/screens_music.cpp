@@ -108,7 +108,7 @@ void App::music_sync_from_cloud() {
   if (!wifi_.connected()) {
     music_load_local();
     if (music_tracks_.empty())
-      music_status_ = "Wi‑Fi required to sync.";
+      music_status_ = "Sync needs Wi‑Fi. Local tracks still play offline.";
     else
       music_status_ = "Offline · " + std::to_string(music_tracks_.size()) + " local";
     return;
@@ -217,7 +217,7 @@ void App::render_music() {
     canvas_.draw_text_wrapped(
         kSideMargin, kEmptyHintY, kContentW, kWrapGap,
         wifi_.connected() ? "Select Sync below to pull tracks from Companion on your phone."
-                          : "Offline — connect to Wi‑Fi, then Sync tracks from Companion.",
+                          : "Offline — local WAV/MP3 on device still play. Sync needs Wi‑Fi.",
         Canvas::TextRole::Secondary, Gray::G1);
   }
   for (int i = 0; i < n && i < 8; ++i) {
@@ -287,7 +287,7 @@ void App::handle_music(InputEvent e) {
       music_index_ = focus_.index;
       const auto& t = music_tracks_[music_index_];
       if (t.local_path.empty()) {
-        music_status_ = "Sync first.";
+        music_status_ = wifi_.connected() ? "Sync first." : "Needs a local file — Sync over Wi‑Fi.";
         mark_content_dirty();
         return;
       }

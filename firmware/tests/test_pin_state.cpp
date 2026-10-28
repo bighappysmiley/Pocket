@@ -261,6 +261,44 @@ int main() {
     assert_pin_consistency(app4);
   }
 
+  // Digit-3 Select: slot N only holds slot N — no previous digit leaked into slot 0/1.
+  {
+    MemoryConfigStore store5;
+    TClock clock5;
+    TWifi wifi5;
+    TCloud cloud5;
+    TDisp disp5;
+    App app5 = make_app(store5, clock5, wifi5, cloud5, disp5);
+    app5.handle(InputEvent::Select);  // Pin
+    // Enter 1, 2, then spin to 3 and Select — classic misplaced-digit repro.
+    for (int dig = 1; dig <= 3; ++dig) {
+      CHECK(app5.pin_focus_index() == dig - 1);
+      while (app5.pin_working_digit() != static_cast<char>('0' + dig)) {
+        app5.apply_pin_digit_delta(1);
+      }
+      app5.flush_dirty();
+      app5.handle(InputEvent::Select);
+      clock5.t += 200;
+      app5.tick(clock5.t);
+      assert_pin_consistency(app5);
+      if (dig < 3) {
+        CHECK(app5.pin_entry().size() == static_cast<size_t>(dig));
+        for (int i = 0; i < dig; ++i) {
+          CHECK(app5.pin_slot_value(i) == static_cast<char>('0' + (i + 1)));
+        }
+        // Focused next slot is fresh '0' — never a stale 1/2/3.
+        CHECK(app5.pin_working_digit() == '0');
+        CHECK(app5.pin_slot_value(dig) == '0');
+      }
+    }
+    CHECK(app5.pin_entry() == "123");
+    CHECK(app5.pin_focus_index() == 3);
+    CHECK(app5.pin_slot_value(0) == '1');
+    CHECK(app5.pin_slot_value(1) == '2');
+    CHECK(app5.pin_slot_value(2) == '3');
+    CHECK(app5.pin_slot_value(3) == '0');
+  }
+
   if (failures) {
     std::printf("%d failures\n", failures);
     return 1;

@@ -197,10 +197,10 @@ void App::mark_pin_slots_dirty(int slot_a, int slot_b, bool with_chrome) {
 
 void App::mark_pin_dirty() {
   ++pin_spin_count_;
-  // Every 4th spin: wider chrome-band clear so residual digit ghosts don't yank.
-  const bool wide = (pin_spin_count_ % 4) == 0;
+  // Always chrome-band: tiny single-slot partials ghost the previous digit into the
+  // wrong slot under 0xFF, and can leave lock-motif ink between slots.
   mark_pin_slots_dirty(static_cast<int>(pin_entry_.size()), static_cast<int>(pin_entry_.size()),
-                       wide);
+                       /*with_chrome=*/true);
 }
 
 bool App::is_pin_entry_screen() const {
@@ -516,10 +516,12 @@ void App::launch_home_app(HomeApp launch) {
       break;
     case HomeApp::Music:
       music_index_ = 0;
+      music_load_local();  // always refresh local library (works offline)
       nav_.push(ScreenId::MusicList);
       break;
     case HomeApp::Reading:
       book_index_ = 0;
+      reading_load_local();  // always refresh local library (works offline)
       nav_.push(ScreenId::ReadingList);
       break;
     case HomeApp::Settings:
@@ -1319,6 +1321,9 @@ void App::draw_pin_entry(bool mask_completed, int band_top) {
 }
 
 void App::render_pin() {
+  // Paper the whole panel under the status bar so lock/sleep motif never shows
+  // through PIN chrome (partial enters used to leave motif ink in undirtied bands).
+  canvas_.fill_rect(0, kStatusBarH, kCanvasW, kCanvasH - kStatusBarH, Gray::G3);
   draw_status_bar();
   canvas_.draw_text_centered(kCanvasW / 2, kContentTop + 8, "Enter PIN", Canvas::TextRole::ScreenTitle,
                              Gray::G0);

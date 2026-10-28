@@ -112,7 +112,7 @@ void App::reading_sync_from_cloud() {
   if (!wifi_.connected()) {
     reading_load_local();
     if (books_.empty())
-      reading_status_ = "Wi‑Fi required to sync.";
+      reading_status_ = "Sync needs Wi‑Fi. Local books still open offline.";
     else
       reading_status_ = "Offline · " + std::to_string(books_.size()) + " local";
     return;
@@ -244,7 +244,7 @@ void App::reading_open_book(int index) {
   if (index < 0 || index >= static_cast<int>(books_.size())) return;
   const auto& b = books_[index];
   if (b.local_path.empty()) {
-    reading_status_ = "Sync first.";
+    reading_status_ = wifi_.connected() ? "Sync first." : "Needs a local file — Sync over Wi‑Fi.";
     mark_content_dirty();
     return;
   }
@@ -321,7 +321,7 @@ void App::render_reading() {
     canvas_.draw_text_wrapped(
         kSideMargin, kEmptyHintY, kContentW, kWrapGap,
         wifi_.connected() ? "Select Sync below to pull books from Companion on your phone."
-                          : "Offline — connect to Wi‑Fi, then Sync books from Companion.",
+                          : "Offline — local TXT on device still opens. Sync needs Wi‑Fi.",
         Canvas::TextRole::Secondary, Gray::G1);
   }
   for (int i = 0; i < n && i < 8; ++i) {

@@ -66,7 +66,30 @@ struct TStorage : PlatformStorage {
     ::mkdir((root + "/lists").c_str(), 0755);
     return true;
   }
+  std::string music_root() override { return root + "/music"; }
+  bool music_ensure_root() override {
+    data_ensure_root();
+    ::mkdir((root + "/music").c_str(), 0755);
+    return true;
+  }
+  std::string book_root() override { return root + "/books"; }
+  bool book_ensure_root() override {
+    data_ensure_root();
+    ::mkdir((root + "/books").c_str(), 0755);
+    return true;
+  }
   uint64_t free_bytes(const std::string&) override { return 4ull * 1024 * 1024; }
+};
+
+struct TAudio : PlatformAudio {
+  int play_file_calls = 0;
+  std::string last_path;
+  bool play_file(const std::string& path) override {
+    ++play_file_calls;
+    last_path = path;
+    return !path.empty();
+  }
+  void stop() override {}
 };
 
 static void unlock_home(App& app) {
@@ -89,7 +112,8 @@ int main() {
   TCloud cloud;
   TDisp disp;
   TStorage storage;
-  App app(store, clock, wifi, cloud, disp, &storage);
+  TAudio audio;
+  App app(store, clock, wifi, cloud, disp, &storage, &audio);
   app.boot();
   unlock_home(app);
   CHECK(app.screen() == ScreenId::Home);
@@ -112,7 +136,8 @@ int main() {
   }
 
   // Reboot app offline — note still lists.
-  App app2(store, clock, wifi, cloud, disp, &storage);
+  TAudio audio2;
+  App app2(store, clock, wifi, cloud, disp, &storage, &audio2);
   app2.boot();
   unlock_home(app2);
   app2.handle(InputEvent::Select);  // Notes
@@ -131,6 +156,52 @@ int main() {
   app2.handle(InputEvent::Select);
   CHECK(app2.screen() == ScreenId::ClockFace);
   app2.redraw(true);
+
+  // Settings root works offline (Display/PIN/About — no net required).
+  app2.handle(InputEvent::Back);
+  // Home order: Notes,Ledger,Clock,Pass,Weather,Music,Reading,Settings,Update
+  for (int i = 0; i < 7; ++i) app2.handle(InputEvent::Down);
+  app2.handle(InputEvent::Select);
+  CHECK(app2.screen() == ScreenId::SettingsRoot);
+  app2.redraw(true);
+  app2.handle(InputEvent::Back);
+  CHECK(app2.screen() == ScreenId::Home);
+
+  // Seed a local track + book, then open Music/Reading offline.
+  {
+    storage.music_ensure_root();
+    storage.book_ensure_root();
+    {
+      std::ofstream out(storage.music_root() + "/calm.wav", std::ios::binary);
+      const char hdr[12] = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V', 'E'};
+      out.write(hdr, 12);
+    }
+    {
+      std::ofstream out(storage.book_root() + "/essay.txt");
+      out << "A quiet page that opens offline.\n";
+    }
+  }
+  TAudio audio3;
+  App app3(store, clock, wifi, cloud, disp, &storage, &audio3);
+  app3.boot();
+  unlock_home(app3);
+  // Music is index 5
+  for (int i = 0; i < 5; ++i) app3.handle(InputEvent::Down);
+  app3.handle(InputEvent::Select);
+  CHECK(app3.screen() == ScreenId::MusicList);
+  app3.handle(InputEvent::Select);  // play first local track
+  CHECK(app3.screen() == ScreenId::MusicNowPlaying);
+  CHECK(audio3.play_file_calls == 1);
+  CHECK(audio3.last_path.find("calm.wav") != std::string::npos);
+  app3.handle(InputEvent::Back);
+  app3.handle(InputEvent::Back);  // Home
+
+  // Reading is index 6
+  for (int i = 0; i < 6; ++i) app3.handle(InputEvent::Down);
+  app3.handle(InputEvent::Select);
+  CHECK(app3.screen() == ScreenId::ReadingList);
+  app3.handle(InputEvent::Select);  // open first local book
+  CHECK(app3.screen() == ScreenId::ReadingBook);
 
   if (failures) {
     std::printf("%d failures\n", failures);

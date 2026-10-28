@@ -114,6 +114,7 @@ inline bool long_home_blocked(ScreenId s, bool onboarding_complete) {
 inline bool screen_requires_full_enter(ScreenId s) {
   switch (s) {
     case ScreenId::Lock:
+    case ScreenId::Pin:  // must fully clear lock/sleep motif — 0xFF partial ghosts wallpaper under slots
     case ScreenId::PassDetail:
     case ScreenId::SettingsUpdateProgress:
     case ScreenId::OnboardingWelcome:

@@ -85,6 +85,11 @@ target_include_directories(test_offline_notes PRIVATE ${POCKET_UI}/include ${POC
 target_compile_definitions(test_offline_notes PRIVATE POCKET_HOST=1)
 add_test(NAME test_offline_notes COMMAND test_offline_notes)
 
+add_executable(test_home_focus_stable ../tests/test_home_focus_stable.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_home_focus_stable PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_home_focus_stable PRIVATE POCKET_HOST=1)
+add_test(NAME test_home_focus_stable COMMAND test_home_focus_stable)
+
 add_executable(dump_home_png dump_home_png.cpp ${POCKET_UI_SRCS})
 target_include_directories(dump_home_png PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(dump_home_png PRIVATE POCKET_HOST=1)
