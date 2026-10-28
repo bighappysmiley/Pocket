@@ -136,9 +136,25 @@ int main() {
   CHECK(app.pin_focus_index() == 2);
   CHECK(app.pin_working_digit() == '0');
   const int focus_after = app.pin_focus_index();
-  app.handle(InputEvent::Select);  // bounce — must be ignored
+  app.handle(InputEvent::Select);  // bounce within 120 ms — must be ignored
   CHECK(app.pin_focus_index() == focus_after);
   CHECK(app.pin_entry() == "42");
+  CHECK(app.pin_working_digit() == '0');
+  assert_pin_consistency(app);
+
+  // After the bounce window, Select for default '0' must commit (no dead press).
+  clock.t = 500;
+  app.tick(clock.t);
+  app.handle(InputEvent::Select);
+  CHECK(app.pin_entry() == "420");
+  CHECK(app.pin_focus_index() == 3);
+  CHECK(app.pin_working_digit() == '0');
+  assert_pin_consistency(app);
+
+  // Back once → slot 2 again at '0'.
+  app.handle(InputEvent::Back);
+  CHECK(app.pin_entry() == "42");
+  CHECK(app.pin_focus_index() == 2);
   CHECK(app.pin_working_digit() == '0');
   assert_pin_consistency(app);
 
@@ -220,6 +236,29 @@ int main() {
     // Back escapes lockout → Lock
     app3.handle(InputEvent::Back);
     CHECK(app3.screen() == ScreenId::Lock);
+  }
+
+  // Incorrect PIN resets slots to empty/'0' with focus at 0 (no stale digit).
+  {
+    MemoryConfigStore store4;
+    TClock clock4;
+    TWifi wifi4;
+    TCloud cloud4;
+    TDisp disp4;
+    App app4 = make_app(store4, clock4, wifi4, cloud4, disp4);
+    app4.handle(InputEvent::Select);
+    // Enter 9999 (wrong vs 1234).
+    for (int i = 0; i < 4; ++i) {
+      while (app4.pin_working_digit() != '9') app4.apply_pin_digit_delta(1);
+      app4.handle(InputEvent::Select);
+      clock4.t += 200;
+      app4.tick(clock4.t);  // clear bounce window between spun commits
+    }
+    CHECK(app4.screen() == ScreenId::Pin);
+    CHECK(app4.pin_entry().empty());
+    CHECK(app4.pin_focus_index() == 0);
+    CHECK(app4.pin_working_digit() == '0');
+    assert_pin_consistency(app4);
   }
 
   if (failures) {

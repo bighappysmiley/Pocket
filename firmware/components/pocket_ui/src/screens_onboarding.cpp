@@ -706,7 +706,7 @@ void App::handle_onboarding(InputEvent e) {
       cfg_.pin_length = focus_.index == 0 ? 4 : 6;
       pin_entry_.clear();
       pin_spin_count_ = 0;
-      pin_block_select_bounce_ = false;
+      pin_ignore_select_until_ms_ = 0;
       pin_enter_empty_slot();
       nav_.replace(ScreenId::OnboardingPinSet);
       after_nav();
@@ -716,17 +716,17 @@ void App::handle_onboarding(InputEvent e) {
 
   if (s == ScreenId::OnboardingPinSet || s == ScreenId::OnboardingPinConfirm) {
     if (e == InputEvent::Up) {
-      pin_block_select_bounce_ = false;
+      pin_ignore_select_until_ms_ = 0;
       apply_pin_digit_delta(-1);
     } else if (e == InputEvent::Down) {
-      pin_block_select_bounce_ = false;
+      pin_ignore_select_until_ms_ = 0;
       apply_pin_digit_delta(1);
     } else if (e == InputEvent::Back) {
       if (pin_entry_.empty()) {
         if (s == ScreenId::OnboardingPinConfirm) {
           nav_.replace(ScreenId::OnboardingPinSet);
           pin_entry_.clear();
-          pin_block_select_bounce_ = false;
+          pin_ignore_select_until_ms_ = 0;
           pin_enter_empty_slot();
           after_nav();
         } else {
@@ -747,7 +747,7 @@ void App::handle_onboarding(InputEvent e) {
         if (s == ScreenId::OnboardingPinSet) {
           pin_pending_ = pin_entry_;
           pin_entry_.clear();
-          pin_block_select_bounce_ = false;
+          pin_ignore_select_until_ms_ = 0;
           pin_enter_empty_slot();
           nav_.replace(ScreenId::OnboardingPinConfirm);
           after_nav();
@@ -757,7 +757,7 @@ void App::handle_onboarding(InputEvent e) {
             store_.save(cfg_);
             pin_entry_.clear();
             pin_pending_.clear();
-            pin_block_select_bounce_ = false;
+            pin_ignore_select_until_ms_ = 0;
             pin_enter_empty_slot();
             focus_.index = onboarding_tz_index_;
             nav_.replace(ScreenId::OnboardingTimezone);
@@ -766,7 +766,7 @@ void App::handle_onboarding(InputEvent e) {
             error_msg_ = "Those didn't match. Try again.";
             error_until_ms_ = now_ms_ + 2500;
             pin_entry_.clear();
-            pin_block_select_bounce_ = false;
+            pin_ignore_select_until_ms_ = 0;
             pin_enter_empty_slot();
             nav_.replace(ScreenId::OnboardingPinSet);
             after_nav();

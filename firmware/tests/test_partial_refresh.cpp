@@ -97,7 +97,21 @@ int main() {
   app.apply_pin_digit_delta(3);
   app.flush_dirty();
   CHECK(disp.region > after_spin_region);
+  CHECK(disp.last_rh <= 120);  // still a tight slot (spin count not yet multiple of 4)
   CHECK(app.is_pin_entry_screen());
+
+  // Every 4th spin widens to the PIN chrome band (ghost clear) — not a full-panel refresh.
+  // Spins so far: Down(+1) + delta(3) = 2. One more tight (3), then the 4th is wide.
+  app.apply_pin_digit_delta(1);
+  app.flush_dirty();
+  CHECK(disp.last_rh <= 120);
+  const int before_wide = disp.region;
+  const int before_wide_full = disp.full_or_fast;
+  app.apply_pin_digit_delta(1);
+  app.flush_dirty();
+  CHECK(disp.region == before_wide + 1);
+  CHECK(disp.full_or_fast == before_wide_full);
+  CHECK(disp.last_rh > 120);  // chrome band covers progress + slots + hints
 
   // While on PIN, status chrome ticks must NOT flash (avoids digit/focus glitch).
   clock.t += 500;

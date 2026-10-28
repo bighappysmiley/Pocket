@@ -197,8 +197,10 @@ void App::mark_pin_slots_dirty(int slot_a, int slot_b, bool with_chrome) {
 
 void App::mark_pin_dirty() {
   ++pin_spin_count_;
+  // Every 4th spin: wider chrome-band clear so residual digit ghosts don't yank.
+  const bool wide = (pin_spin_count_ % 4) == 0;
   mark_pin_slots_dirty(static_cast<int>(pin_entry_.size()), static_cast<int>(pin_entry_.size()),
-                       false);
+                       wide);
 }
 
 bool App::is_pin_entry_screen() const {
@@ -211,7 +213,7 @@ void App::apply_pin_digit_delta(int delta) {
   if (now_ms_ < pin_lockout_until_ms_) return;
   if (delta == 0) return;
   // A real spin after a commit means the next Select is intentional — drop bounce guard.
-  pin_block_select_bounce_ = false;
+  pin_ignore_select_until_ms_ = 0;
   // Normalize into 0..9 via positive modulo.
   int v = (pin_digit_working_ - '0') + delta;
   v %= 10;
@@ -238,23 +240,27 @@ void App::pin_enter_empty_slot() {
 
 bool App::pin_commit_working_digit() {
   if (static_cast<int>(pin_entry_.size()) >= cfg_.pin_length) return false;
-  if (pin_block_select_bounce_) {
-    // Consume the post-spin bounce Select; do not advance focus again.
-    pin_block_select_bounce_ = false;
+  // Time-windowed bounce guard: ignore Select only while within the arm window.
+  if (pin_ignore_select_until_ms_ != 0 && now_ms_ < pin_ignore_select_until_ms_) {
     return false;
   }
+  pin_ignore_select_until_ms_ = 0;
   const bool spun = pin_spun_since_focus_;
   pin_entry_.push_back(pin_digit_working_);
   pin_enter_empty_slot();
-  // Only arm bounce-guard after a spun commit (0000 via repeated Select stays OK).
-  pin_block_select_bounce_ = spun;
+  // Arm briefly after a spun commit so mechanical bounce cannot skip a slot with '0'.
+  // Unspun commits (e.g. 0000 via repeated Select) stay unarmed.
+  if (spun) {
+    constexpr uint32_t kSelectBounceMs = 120;
+    pin_ignore_select_until_ms_ = now_ms_ + kSelectBounceMs;
+  }
   return true;
 }
 
 void App::pin_backspace() {
   if (pin_entry_.empty()) return;
   pin_entry_.pop_back();
-  pin_block_select_bounce_ = false;
+  pin_ignore_select_until_ms_ = 0;
   pin_enter_empty_slot();
 }
 
@@ -424,7 +430,7 @@ void App::after_nav(bool full_refresh) {
   // Fresh screen: clear PIN spin latch so a prior slot's digit can't leak in.
   pin_digit_working_ = '0';
   pin_spun_since_focus_ = false;
-  pin_block_select_bounce_ = false;
+  pin_ignore_select_until_ms_ = 0;
   if (nav_.current() == ScreenId::OnboardingWelcome && !welcome_sound_played_) {
     welcome_sound_played_ = true;
     play_sound(SoundId::Welcome);
@@ -1211,7 +1217,7 @@ void App::handle_lock(InputEvent e) {
   if (e == InputEvent::Select) {
     pin_entry_.clear();
     pin_spin_count_ = 0;
-    pin_block_select_bounce_ = false;
+    pin_ignore_select_until_ms_ = 0;
     pin_enter_empty_slot();
     nav_.push(ScreenId::Pin);
     after_nav();
@@ -1335,12 +1341,12 @@ void App::handle_pin(InputEvent e) {
   // Preview only — Select commits the digit (avoids slot-jump overwrite).
   // Net deltas from coalesced rotary events go through apply_pin_digit_delta().
   if (e == InputEvent::Up) {
-    pin_block_select_bounce_ = false;
+    pin_ignore_select_until_ms_ = 0;
     apply_pin_digit_delta(-1);
     return;
   }
   if (e == InputEvent::Down) {
-    pin_block_select_bounce_ = false;
+    pin_ignore_select_until_ms_ = 0;
     apply_pin_digit_delta(1);
     return;
   }
@@ -1353,7 +1359,7 @@ void App::handle_pin(InputEvent e) {
       if (verify_pin(cfg_, pin_entry_)) {
         pin_fail_count_ = 0;
         pin_spin_count_ = 0;
-        pin_block_select_bounce_ = false;
+        pin_ignore_select_until_ms_ = 0;
         parental_session_unlocked_ = true;
         if (parental_pin_for_app_) {
           parental_pin_for_app_ = false;
@@ -1373,7 +1379,7 @@ void App::handle_pin(InputEvent e) {
         ++pin_fail_count_;
         pin_entry_.clear();
         pin_spin_count_ = 0;
-        pin_block_select_bounce_ = false;
+        pin_ignore_select_until_ms_ = 0;
         pin_enter_empty_slot();
         if (pin_fail_count_ >= 5) {
           pin_lockout_until_ms_ = now_ms_ + 30000;

@@ -468,10 +468,11 @@ class App {
   /** True after a rotary spin on the current focus slot. */
   bool pin_spun_since_focus_ = false;
   /**
-   * After committing a spun digit, ignore the next Select once — mechanical bounce
-   * otherwise commits '0' into the following slot and skips focus.
+   * After a spun digit commit, ignore Select until this timestamp (ms).
+   * Time-windowed (not one-shot): mechanical bounce is blocked, but an intentional
+   * press for the next digit (including default '0') still works after ~120 ms.
    */
-  bool pin_block_select_bounce_ = false;
+  uint32_t pin_ignore_select_until_ms_ = 0;
   /** Counts digit spins since PIN enter — every few spins use a wider refresh to clear ghosts. */
   int pin_spin_count_ = 0;
   /** Counts Home focus moves — every few moves use content-band to clear tile ghosts. */

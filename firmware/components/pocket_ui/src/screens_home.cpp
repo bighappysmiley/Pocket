@@ -320,7 +320,7 @@ void App::handle_home(InputEvent e) {
       parental_pin_for_app_ = true;
       pin_entry_.clear();
       pin_spin_count_ = 0;
-      pin_block_select_bounce_ = false;
+      pin_ignore_select_until_ms_ = 0;
       pin_enter_empty_slot();
       nav_.push(ScreenId::Pin);
       after_nav();
