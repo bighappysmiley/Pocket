@@ -794,8 +794,8 @@ void App::render_notes() {
       canvas_.draw_text_wrapped(
           kSideMargin, kEmptyHintY, kContentW, kWrapGap,
           wifi_.connected()
-              ? "Select New note — stays on device. Hold the side button to dictate."
-              : "Select New note — works offline. Hold to capture; text needs Wi‑Fi.",
+              ? "Select New note. Hold the side button to dictate."
+              : "Works offline. Hold to capture — text needs Wi‑Fi.",
           Canvas::TextRole::Secondary, Gray::G1);
     } else {
       focus_.count = static_cast<int>(data_.notes.size()) + 1;
@@ -828,8 +828,8 @@ void App::render_notes() {
       if (n.body.empty()) {
         canvas_.draw_text_wrapped(
             kSideMargin, body_top, kContentW, kWrapGap,
-            wifi_.connected() ? "Empty note — hold the side button to dictate."
-                              : "Empty note — hold to capture a voice clip. Text needs Wi‑Fi.",
+            wifi_.connected() ? "Hold the side button to dictate."
+                              : "Hold to capture a voice clip. Text needs Wi‑Fi.",
             Canvas::TextRole::Secondary, Gray::G1);
       } else {
         canvas_.draw_text_wrapped(kSideMargin, body_top, kContentW, kWrapGap, n.body,
@@ -861,8 +861,8 @@ void App::render_notes() {
                                  Gray::G0);
       canvas_.draw_text_wrapped(
           kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-          wifi_.connected() ? "Select New list — stays on device and syncs with Cloud when linked."
-                            : "Select New list — works offline. Cloud sync needs Wi‑Fi.",
+          wifi_.connected() ? "Select New list. Stays on device; Cloud sync when linked."
+                            : "Works offline. Cloud sync needs Wi‑Fi.",
           Canvas::TextRole::Secondary, Gray::G1);
     }
     focus_.count = static_cast<int>(data_.lists.size()) + 1;
@@ -904,10 +904,10 @@ void App::render_notes() {
       }
       const int y = kBottomCtaY;
       if (focus_.index == static_cast<int>(L.items.size()))
-        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, "Hold BOOT to add item",
+        canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, "Hold side button to add",
                                 Canvas::TextRole::Body);
       else
-        canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, "Hold BOOT to add item",
+        canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, "Hold side button to add",
                           Canvas::TextRole::Secondary, Gray::G1);
     }
   }
@@ -1237,9 +1237,8 @@ void App::render_pass() {
                                Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-        wifi_.connected()
-            ? "Add passes in Companion on your phone — they sync while Pocket is online."
-            : "Offline — saved passes still open here. Add new ones in Companion when online.",
+        wifi_.connected() ? "Add passes in Companion — they sync while online."
+                          : "Offline — saved passes still open. Add new ones when online.",
         Canvas::TextRole::Secondary, Gray::G1);
   } else {
     focus_.count = static_cast<int>(data_.passes.size());
@@ -1295,7 +1294,7 @@ void App::render_weather() {
     canvas_.draw_text_wrapped(
         kSideMargin, below_title(kContentTop) + kBodyLinePitch, kContentW, kWrapGap,
         wifi_.connected() ? "Set your city in Companion, then Select Try again."
-                          : "Offline — set your city in Companion when Pocket is online.",
+                          : "Offline — set your city in Companion when online.",
         Canvas::TextRole::Secondary, Gray::G1);
     focus_.count = 1;
     canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Try again",

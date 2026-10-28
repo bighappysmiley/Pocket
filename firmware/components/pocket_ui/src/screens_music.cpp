@@ -217,7 +217,7 @@ void App::render_music() {
     canvas_.draw_text_wrapped(
         kSideMargin, kEmptyHintY, kContentW, kWrapGap,
         wifi_.connected() ? "Select Sync below to pull tracks from Companion on your phone."
-                          : "Offline — local WAV/MP3 on device still play. Sync needs Wi‑Fi.",
+                          : "Offline — local tracks still play. Sync needs Wi‑Fi.",
         Canvas::TextRole::Secondary, Gray::G1);
   }
   for (int i = 0; i < n && i < 8; ++i) {
