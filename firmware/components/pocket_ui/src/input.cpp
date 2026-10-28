@@ -4,7 +4,18 @@ namespace pocket {
 
 void InputMapper::push(InputEvent e) {
   int next = (q_tail_ + 1) % kQueue;
-  if (next == q_head_) return;
+  if (next == q_head_) {
+    // Queue full: never drop rotary detents (PIN wheel / focus). Fold into net.
+    if (e == InputEvent::Up) {
+      --rotary_overflow_;
+      return;
+    }
+    if (e == InputEvent::Down) {
+      ++rotary_overflow_;
+      return;
+    }
+    return;
+  }
   queue_[q_tail_] = e;
   q_tail_ = next;
 }
@@ -22,7 +33,8 @@ InputEvent InputMapper::peek() const {
 }
 
 int InputMapper::drain_up_down_net() {
-  int net = 0;
+  int net = rotary_overflow_;
+  rotary_overflow_ = 0;
   while (q_head_ != q_tail_) {
     const InputEvent e = queue_[q_head_];
     if (e == InputEvent::Up) {

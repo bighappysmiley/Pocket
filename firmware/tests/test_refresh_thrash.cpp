@@ -58,7 +58,7 @@ struct TDisp : PlatformDisplay {
   void present_region(const Canvas&, int, int, int, int) override { ++region; }
 };
 
-/** Mirrors the app_main input loop: coalesce Up/Down, one present per burst. */
+/** Mirrors the app_main input loop: coalesce Up/Down, one present per pump. */
 static void drain(InputMapper& mapper, App& app) {
   for (;;) {
     const InputEvent e = mapper.poll();
@@ -67,11 +67,12 @@ static void drain(InputMapper& mapper, App& app) {
       int delta = (e == InputEvent::Down) ? 1 : -1;
       delta += mapper.drain_up_down_net();
       app.apply_coalesced_rotary(delta);
-      app.flush_dirty();
       continue;
     }
+    app.flush_dirty();
     app.handle(e);
   }
+  app.flush_dirty();
 }
 
 int main() {

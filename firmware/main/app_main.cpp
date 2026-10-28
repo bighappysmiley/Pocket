@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v89-polish";
+static const char* kBuildId = "POCKET-LIVE-v90-speed";
 
 namespace {
 
@@ -117,6 +117,7 @@ struct EspDisplay : pocket::PlatformDisplay {
   void present_region(const pocket::Canvas& c, int x, int y, int w, int h) override {
     epd.present_region(c, x, y, w, h);
   }
+  bool busy() override { return epd.busy(); }
   void set_brightness(int percent) override { epd.set_brightness(percent); }
 };
 
@@ -383,18 +384,24 @@ extern "C" void app_main(void) {
       const pocket::InputEvent e = mapper.poll();
       if (e == pocket::InputEvent::None) break;
       if (!g_boot.ui_ready) continue;
-      // Drain already-queued Up/Down from this poll (bounce / extra detents), then
-      // present once — Home, PIN, and in-page lists all coalesce.
+      // Drain already-queued Up/Down (bounce / extra detents) into logical state
+      // immediately. Defer present until after the burst so a busy panel never
+      // drops the second PIN tick waiting on a 0xFF partial.
       if (e == pocket::InputEvent::Up || e == pocket::InputEvent::Down) {
         int delta = (e == pocket::InputEvent::Down) ? 1 : -1;
         delta += mapper.drain_up_down_net();
         app.apply_coalesced_rotary(delta);
-        app.flush_dirty();
         continue;
       }
+      // Flush any coalesced rotary before Select/Back so the digit on screen
+      // matches the committed value (no-op while the panel is still busy).
+      app.flush_dirty();
       app.handle(e);
     }
-    if (g_boot.ui_ready) app.tick(now);
+    if (g_boot.ui_ready) {
+      app.flush_dirty();
+      app.tick(now);
+    }
     // 5 ms — snappier input without busy-spinning the core (was 10 ms after v67).
     vTaskDelay(pdMS_TO_TICKS(5));
   }

@@ -52,16 +52,19 @@ class InputMapper {
    * Drain consecutive Up/Down events from the queue. Returns net steps
    * (Down = +1, Up = −1). Stops at the first non-rotary event.
    * Used so PIN digit spins present once with the final value.
+   * Includes any overflow ticks that could not fit in the queue.
    */
   int drain_up_down_net();
 
  private:
   void push(InputEvent e);
 
-  static constexpr int kQueue = 8;
+  static constexpr int kQueue = 32;
   InputEvent queue_[kQueue]{};
   int q_head_ = 0;
   int q_tail_ = 0;
+  /** Rotary ticks that arrived while the queue was full — never drop these. */
+  int rotary_overflow_ = 0;
 
   bool fn_down_ = false;
   uint32_t fn_down_ms_ = 0;

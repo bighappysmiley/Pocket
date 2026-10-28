@@ -44,6 +44,8 @@ void EPD_Display_Base(const UBYTE* Image);
 void EPD_Display_Fast(const UBYTE* Image);
 void EPD_Display_Fast_Base(const UBYTE* Image);
 void EPD_Display_Partial(const UBYTE* Image, UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD Yend);
+/** True while the panel is mid-refresh (BUSY pin high). */
+int EPD_IsBusy(void);
 void EPD_Sleep(void);
 
 #ifdef __cplusplus

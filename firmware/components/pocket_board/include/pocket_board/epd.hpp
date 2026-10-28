@@ -11,6 +11,11 @@ class EpdDisplay {
   void present(const pocket::Canvas& canvas, pocket::RefreshMode mode);
   /** Partial update for a logical (portrait) rectangle — used for Home clock ticks. */
   void present_region(const pocket::Canvas& canvas, int lx, int ly, int lw, int lh);
+  /**
+   * True while a kicked refresh is still running. Present kicks the LUT and returns;
+   * the UI loop must keep polling input and only start another present when idle.
+   */
+  bool busy();
   void sleep();
 
   /** 0–100 → gray threshold 1..3 (of the canvas's 4-level Gray). Higher percent = more midtone
@@ -18,6 +23,7 @@ class EpdDisplay {
   void set_brightness(int percent);
 
  private:
+  void mark_refresh_kicked();
   void rotate_canvas_to_mono(const pocket::Canvas& src, uint8_t* dst);
   /** Same rotation, but only for the panel-coordinate window [px0,px1)×[py0,py1) — writes a
    * tightly packed (py1-py0) rows × (px1-px0)/8 bytes buffer. Used by present_region() so a
@@ -28,6 +34,10 @@ class EpdDisplay {
                                     int py0, int py1);
 
   bool ready_ = false;
+  /** Set when a TurnOn was kicked; cleared once BUSY has gone high then low. */
+  bool refresh_inflight_ = false;
+  /** Latched true once BUSY was observed high for the current inflight refresh. */
+  bool saw_busy_high_ = false;
   uint8_t* panel_1bpp_ = nullptr;
   uint8_t gray_threshold_ = 2;
 };

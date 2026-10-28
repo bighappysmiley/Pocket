@@ -183,11 +183,12 @@ int main() {
         int delta = (ev == InputEvent::Down) ? 1 : -1;
         delta += mapper.drain_up_down_net();
         app.apply_coalesced_rotary(delta);
-        app.flush_dirty();
         continue;
       }
+      app.flush_dirty();
       app.handle(ev);
     }
+    app.flush_dirty();
     app.tick(clock.now_ms());
   }
   return 0;

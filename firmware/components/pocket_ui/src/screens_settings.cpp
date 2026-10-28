@@ -103,7 +103,7 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, kWrapGap,
-        "Release-ready polish — clearer empty states, side-button copy, and offline dictation from 1.6.5.",
+        "Snappier e-ink and PIN wheel — every rotary click counts, even mid-refresh.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);

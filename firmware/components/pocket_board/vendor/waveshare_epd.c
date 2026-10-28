@@ -238,10 +238,10 @@ static void EPD_TurnOnDisplay(void)
 
 static void EPD_TurnOnDisplay_Fast(void)
 {
+    // Kick 0xD7 and return — caller polls EPD_IsBusy() so input can keep running.
     EPD_SendCommand(0x22);
     EPD_SendData(0xD7);
 	EPD_SendCommand(0x20);
-    EPD_ReadBusy();
 }
 
 static void EPD_TurnOnDisplay_4GRAY(void)
@@ -254,10 +254,17 @@ static void EPD_TurnOnDisplay_4GRAY(void)
 
 static void EPD_TurnOnDisplay_Part(void)
 {
+    // Fast 0xFF partial (~0.3 s). Do not block here — the input loop must keep
+    // coalescing rotary ticks while the panel refreshes (PIN wheel misses steps
+    // if we sit in EPD_ReadBusy for every digit spin).
     EPD_SendCommand(0x22);
     EPD_SendData(0xFF);
     EPD_SendCommand(0x20);
-    EPD_ReadBusy();
+}
+
+int EPD_IsBusy(void)
+{
+    return ReadBusy ? 1 : 0;
 }
 
 /******************************************************************************

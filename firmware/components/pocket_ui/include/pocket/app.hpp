@@ -103,6 +103,11 @@ struct PlatformDisplay {
   virtual void present_region(const Canvas& canvas, int /*x*/, int /*y*/, int /*w*/, int /*h*/) {
     present(canvas, RefreshMode::Partial);
   }
+  /**
+   * True while a panel refresh is in flight. When busy, App keeps dirty state and continues
+   * applying rotary deltas — never drop PIN/nav ticks waiting on a partial.
+   */
+  virtual bool busy() { return false; }
   /** 0–100: how aggressively midtone gray rounds to black vs white on a monochrome panel.
    * Higher reads lighter/brighter, lower reads darker/higher-contrast. No-op on displays that
    * don't expose this (e.g. host sim). */
@@ -296,7 +301,10 @@ class App {
    * Defers present so one physical burst → one refresh (caller should flush_dirty).
    */
   void apply_coalesced_rotary(int delta);
-  /** Present the canvas if a dirty mark is pending (used after coalesced PIN/Home spins). */
+  /**
+   * Present the canvas if a dirty mark is pending (used after coalesced PIN/Home spins).
+   * No-ops while display_.busy() — dirty stays set so a later flush paints the latest state.
+   */
   void flush_dirty();
 
   /** Committed PIN digits so far (length == focus index). */

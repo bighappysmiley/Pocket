@@ -285,6 +285,9 @@ void App::pin_backspace() {
 
 void App::flush_dirty() {
   if (!dirty_) return;
+  // Never block the input path on a mid-flight e-ink refresh — keep dirty and
+  // apply further rotary ticks to logical state; present once the panel is idle.
+  if (display_.busy()) return;
   present_canvas(false);
   dirty_ = false;
 }
@@ -799,7 +802,7 @@ void App::tick(uint32_t now_ms) {
     last_pending_stt_ms_ = now_ms;
     flush_pending_dictation();
   }
-  if (dirty_) {
+  if (dirty_ && !display_.busy()) {
     present_canvas(false);
     dirty_ = false;
   }
@@ -941,7 +944,7 @@ void App::handle(InputEvent e) {
       handle_settings(e);
       break;
   }
-  if (dirty_ && !defer_handle_present_) {
+  if (dirty_ && !defer_handle_present_ && !display_.busy()) {
     // Preserve dirty_kind_ (Region / StatusBar) — do not force FullCanvas.
     present_canvas(false);
     dirty_ = false;

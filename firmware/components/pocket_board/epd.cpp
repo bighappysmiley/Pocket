@@ -87,22 +87,53 @@ void EpdDisplay::rotate_canvas_to_mono_region(const pocket::Canvas& src, uint8_t
   }
 }
 
+void EpdDisplay::mark_refresh_kicked() {
+  refresh_inflight_ = true;
+  saw_busy_high_ = false;
+}
+
+bool EpdDisplay::busy() {
+  if (!refresh_inflight_) return false;
+  if (EPD_IsBusy()) {
+    saw_busy_high_ = true;
+    return true;
+  }
+  // BUSY not high yet right after kick — still treat as in-flight so we never
+  // stack a second LUT before the panel has even asserted. Once we've seen high
+  // and it returns low, the refresh is done.
+  if (!saw_busy_high_) return true;
+  refresh_inflight_ = false;
+  saw_busy_high_ = false;
+  return false;
+}
+
 void EpdDisplay::present(const pocket::Canvas& canvas, pocket::RefreshMode mode) {
   if (!ready_ && !init()) return;
+  // Never stack a new LUT while the previous one is still running.
+  if (busy()) {
+    ESP_LOGD(TAG, "present skipped — panel busy");
+    return;
+  }
   rotate_canvas_to_mono(canvas, panel_1bpp_);
 
   // Ghosting / screen-enter "full" uses the panel's fastest full LUT (0xD7, ~1.5 s),
   // not the slow OTP 0xF7 (~3.5 s). Factory wipe in init() still uses 0xF7 once.
   // Hot path: LOGD — serial INFO on every refresh added measurable lag.
+  // Kick and return — do not block the input loop on the ~1.5 s busy wait.
   ESP_LOGD(TAG, "Waveshare fast full LUT (0xD7) mode=%s",
            mode == pocket::RefreshMode::Full ? "full" : "partial-canvas");
   EPD_Init_Fast();
   EPD_Display_Fast_Base(panel_1bpp_);
-  ESP_LOGD(TAG, "refresh done");
+  mark_refresh_kicked();
+  ESP_LOGD(TAG, "refresh kicked (async)");
 }
 
 void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, int lw, int lh) {
   if (!ready_ && !init()) return;
+  if (busy()) {
+    ESP_LOGD(TAG, "region present skipped — panel busy");
+    return;
+  }
   if (lw <= 0 || lh <= 0) {
     present(canvas, pocket::RefreshMode::Partial);
     return;
@@ -167,7 +198,8 @@ void EpdDisplay::present_region(const pocket::Canvas& canvas, int lx, int ly, in
   EPD_Display_Partial(region, static_cast<UWORD>(px0), static_cast<UWORD>(py0),
                       static_cast<UWORD>(px1), static_cast<UWORD>(py1));
   if (!full_panel) free(region);
-  ESP_LOGD(TAG, "region refresh done");
+  mark_refresh_kicked();
+  ESP_LOGD(TAG, "region refresh kicked (async 0xFF)");
 }
 
 void EpdDisplay::set_brightness(int percent) {
