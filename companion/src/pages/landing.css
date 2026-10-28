@@ -186,20 +186,31 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 1.35rem;
+  gap: 1.15rem;
   width: min(100%, var(--lp-max));
   margin: 0 auto;
-  padding: 3.5rem 1.25rem 2rem;
+  padding: 3.25rem 1.25rem 2rem;
+}
+
+.landing-hero__brand {
+  margin: 0;
+  font-family: var(--lp-font-display);
+  font-weight: 700;
+  font-size: clamp(3.75rem, 16vw, 8.5rem);
+  line-height: 0.88;
+  letter-spacing: -0.045em;
+  color: var(--lp-ink);
 }
 
 .landing-hero__title {
   margin: 0;
   font-family: var(--lp-font-display);
-  font-weight: 550;
-  font-size: clamp(2.75rem, 11vw, 6.75rem);
-  line-height: 0.98;
-  letter-spacing: -0.03em;
-  max-width: 16ch;
+  font-weight: 500;
+  font-size: clamp(1.35rem, 3.8vw, 2.15rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  max-width: 18ch;
+  color: var(--lp-ink);
 }
 
 .landing-hero__word {
@@ -208,21 +219,11 @@
   animation-delay: calc(var(--i, 0) * 70ms);
 }
 
-.landing-hero__word--accent {
-  color: var(--lp-accent);
-  font-style: italic;
-  font-weight: 500;
-}
-
-.landing-hero__break {
-  display: none;
-}
-
 .landing-hero__lede {
   margin: 0;
-  max-width: 36rem;
+  max-width: 34rem;
   color: var(--lp-muted);
-  font-size: clamp(1rem, 2.2vw, 1.15rem);
+  font-size: clamp(1rem, 2.2vw, 1.12rem);
   line-height: 1.55;
   animation: landing-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.35s both;
 }
@@ -240,15 +241,6 @@
   width: 100%;
 }
 
-.landing-hero__social {
-  display: flex;
-  gap: 1.25rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  opacity: 0.85;
-  animation: landing-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.55s both;
-}
-
 .landing-hero__phone-hint {
   margin: 0;
   max-width: 28rem;
@@ -256,6 +248,47 @@
   font-size: 0.92rem;
   line-height: 1.45;
   animation: landing-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both;
+}
+
+.landing-steps {
+  margin: 0 auto 1.5rem;
+  padding: 0;
+  list-style: none;
+  max-width: 26rem;
+  display: grid;
+  gap: 0.65rem;
+  text-align: left;
+  counter-reset: pocket-step;
+}
+
+.landing-steps li {
+  position: relative;
+  padding: 0.75rem 0.9rem 0.75rem 2.75rem;
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, white 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lp-ink) 8%, transparent);
+  color: var(--lp-ink);
+  font-weight: 500;
+  line-height: 1.4;
+  counter-increment: pocket-step;
+}
+
+.landing-steps li::before {
+  content: counter(pocket-step);
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: var(--lp-dark);
+  color: var(--lp-paper);
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .landing-shop__card {
@@ -298,11 +331,64 @@
   align-content: start;
 }
 
+.landing-shop__status {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lp-accent);
+}
+
 .landing-shop__note {
   margin: 0;
   color: var(--lp-muted);
   font-size: 0.9rem;
   line-height: 1.45;
+}
+
+.landing-owners {
+  text-align: center;
+}
+
+.landing-owners .landing-section__lede,
+.landing-owners .landing-section__title {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.landing-owners__grid {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.landing-owners__item {
+  padding: 1.15rem 1.2rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, white 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lp-ink) 8%, transparent);
+}
+
+.landing-owners__item h3 {
+  margin: 0 0 0.45rem;
+  font-family: var(--lp-font-display);
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.landing-owners__item p {
+  margin: 0;
+  color: var(--lp-muted);
+  line-height: 1.5;
+}
+
+.landing-owners__item a {
+  color: var(--lp-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .landing-download__grid {
@@ -623,10 +709,6 @@
 }
 
 @media (min-width: 640px) {
-  .landing-hero__break {
-    display: block;
-  }
-
   .landing-hero__ctas {
     flex-direction: row;
     width: auto;
@@ -653,6 +735,10 @@
 
   .landing-download__copy {
     justify-items: start;
+  }
+
+  .landing-owners__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -753,7 +839,6 @@
   .landing-hero__word,
   .landing-hero__lede,
   .landing-hero__ctas,
-  .landing-hero__social,
   .landing-hero__phone-hint,
   .landing-device,
   .landing-feature-visual,

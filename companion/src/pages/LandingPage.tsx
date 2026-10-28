@@ -194,9 +194,14 @@ function DownloadPanel() {
       <div className="landing-download">
         <h2 className="landing-section__title">Download Companion</h2>
         <p className="landing-section__lede">
-          Install Companion on this phone — add to Home Screen, then sign in to link Pocket and use
-          Pocket Cloud.
+          Companion is the phone app for Pocket — add it to your Home Screen, create an account, then
+          link your device. Not a desktop website.
         </p>
+        <ol className="landing-steps">
+          <li>Share → Add to Home Screen</li>
+          <li>Create your Pocket Cloud account</li>
+          <li>Link Pocket when the device shows its QR</li>
+        </ol>
         <div className="landing-hero__ctas">
           <Link className="landing-btn landing-btn--solid landing-btn--lg" to="/login?mode=signup">
             Download Companion
@@ -273,6 +278,7 @@ export function LandingPage() {
           <a href="#shop">Shop</a>
           <a href="#features">Features</a>
           <a href="#download">Companion</a>
+          <a href="#owners">Owners</a>
           <a href="#platform">Platform</a>
           <Link to="/developer">Developers</Link>
         </div>
@@ -305,6 +311,9 @@ export function LandingPage() {
           <a href="#download" onClick={() => setMenuOpen(false)}>
             Companion
           </a>
+          <a href="#owners" onClick={() => setMenuOpen(false)}>
+            Owners
+          </a>
           <a href="#platform" onClick={() => setMenuOpen(false)}>
             Platform
           </a>
@@ -336,27 +345,19 @@ export function LandingPage() {
 
       <main id="top">
         <header className="landing-hero">
-          <h1 className="landing-hero__title">
+          <p className="landing-hero__brand">
             <span className="landing-hero__word" style={{ ['--i' as string]: 0 }}>
-              welcome
-            </span>{' '}
-            <span className="landing-hero__word" style={{ ['--i' as string]: 1 }}>
-              to
+              Pocket
             </span>
-            <br className="landing-hero__break" />
-            <span className="landing-hero__word" style={{ ['--i' as string]: 2 }}>
-              a
-            </span>{' '}
-            <span className="landing-hero__word landing-hero__word--accent" style={{ ['--i' as string]: 3 }}>
-              quieter
-            </span>{' '}
-            <span className="landing-hero__word" style={{ ['--i' as string]: 4 }}>
-              pocket
+          </p>
+          <h1 className="landing-hero__title">
+            <span className="landing-hero__word" style={{ ['--i' as string]: 1 }}>
+              Calm e-ink for everyday life
             </span>
           </h1>
           <p className="landing-hero__lede">
-            Pocket devices for notes, lists, music, and reading — paired with Companion on your phone
-            when you want the cloud.
+            Notes, lists, music, and reading on the device. Companion lives on your phone when you
+            want sync, backup, or linking — buy Pocket, use it as shipped.
           </p>
           <div className="landing-hero__ctas">
             <DownloadCompanionCta className="landing-btn landing-btn--solid landing-btn--lg" />
@@ -369,13 +370,6 @@ export function LandingPage() {
               Phone only — scan QR / open this page on your phone
             </p>
           ) : null}
-          <div className="landing-hero__social">
-            <a href="#shop">Shop</a>
-            <a href={REPO_URL} target="_blank" rel="noreferrer" aria-label="Pocket on GitHub">
-              Source
-            </a>
-            <Link to="/developer">Developers</Link>
-          </div>
           <DeviceHero />
         </header>
 
@@ -391,16 +385,18 @@ export function LandingPage() {
               <h3>Pocket Classic</h3>
               <p>
                 Calm e-ink for Notes, Lists, Music, and Reading. Works offline; optional Pocket Cloud
-                sync via Companion.
+                sync via Companion on your phone.
               </p>
             </div>
             <div className="landing-shop__actions">
-              <a className="landing-btn landing-btn--solid" href="#shop">
-                Shop Classic
+              <p className="landing-shop__status">Checkout coming soon</p>
+              <a className="landing-btn landing-btn--solid" href="#download">
+                Download Companion
                 <span aria-hidden="true">→</span>
               </a>
               <p className="landing-shop__note">
-                Storefront link coming — this section is the real shop CTA until checkout goes live.
+                Storefront opens here when Classic ships. Until then, owners use Companion on phone
+                and official firmware below.
               </p>
             </div>
           </div>
@@ -462,12 +458,53 @@ export function LandingPage() {
           <p className="landing-section__lede">
             Optional sync for Notes, Lists, Music, Reading, backup, and connectors —{' '}
             <strong>$3.99/mo</strong> with a 7-day trial. The device works offline without it.
+            Manage everything in Companion on your phone.
           </p>
           <div className="landing-hero__ctas">
             <DownloadCompanionCta className="landing-btn landing-btn--solid landing-btn--lg" />
             <a className="landing-btn landing-btn--soft landing-btn--lg" href="#shop">
               Shop Classic
             </a>
+          </div>
+        </section>
+
+        <section id="owners" className="landing-section landing-owners">
+          <h2 className="landing-section__title">Owners</h2>
+          <p className="landing-section__lede">
+            Keep Pocket current the approved way — on-device OTA when online, or USB recovery from the
+            official release. Not a free-for-all flash playground.
+          </p>
+          <div className="landing-owners__grid">
+            <div className="landing-owners__item">
+              <h3>On-device OTA</h3>
+              <p>Settings → software update pulls the signed build when Pocket is online.</p>
+            </div>
+            <div className="landing-owners__item">
+              <h3>USB recovery</h3>
+              <p>
+                Download the official image and flash script from{' '}
+                <a href={FIRMWARE_RELEASE} target="_blank" rel="noreferrer">
+                  firmware-latest
+                </a>
+                .
+              </p>
+            </div>
+            <div className="landing-owners__item">
+              <h3>Companion</h3>
+              <p>Link, sync, and Cloud billing stay on your phone — never as a desktop website app.</p>
+            </div>
+          </div>
+          <div className="landing-hero__ctas" style={{ marginTop: '1.75rem' }}>
+            <a
+              className="landing-btn landing-btn--solid landing-btn--lg"
+              href={FIRMWARE_RELEASE}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Official firmware / recovery
+              <span aria-hidden="true">→</span>
+            </a>
+            <DownloadCompanionCta className="landing-btn landing-btn--soft landing-btn--lg" />
           </div>
         </section>
 
@@ -517,6 +554,9 @@ export function LandingPage() {
                 </li>
                 <li>
                   <a href="#shop">Shop Classic</a>
+                </li>
+                <li>
+                  <a href="#owners">Firmware / recovery</a>
                 </li>
                 <li>
                   <Link to="/developer">Developer console</Link>
