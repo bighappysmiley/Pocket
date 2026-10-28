@@ -7,6 +7,8 @@
 #include <fstream>
 #include <string>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <vector>
 
 namespace pocket {
 namespace {
@@ -127,6 +129,7 @@ void App::load_local_notes() {
     grab_json_string(obj_s, "body", n.body);
     grab_json_int64(obj_s, "created_at", n.created_at);
     grab_json_int64(obj_s, "updated_at", n.updated_at);
+    grab_json_string(obj_s, "pending", n.pending_pcm);
     if (!n.id.empty()) data_.notes.push_back(n);
     i = end + 1;
   }
@@ -153,7 +156,10 @@ bool App::save_local_notes() {
     if (i) out << ",";
     out << "{\"id\":\"" << json_escape(n.id) << "\",\"title\":\"" << json_escape(n.title)
         << "\",\"body\":\"" << json_escape(n.body) << "\",\"created_at\":" << n.created_at
-        << ",\"updated_at\":" << n.updated_at << "}";
+        << ",\"updated_at\":" << n.updated_at;
+    if (!n.pending_pcm.empty())
+      out << ",\"pending\":\"" << json_escape(n.pending_pcm) << "\"";
+    out << "}";
   }
   out << "]";
   return static_cast<bool>(out);
@@ -203,10 +209,11 @@ void App::load_local_lists() {
           const std::string item = obj_s.substr(io, ie - io + 1);
           ListItem it;
           grab_json_string(item, "text", it.text);
+          grab_json_string(item, "pending", it.pending_pcm);
           if (item.find("\"checked\":true") != std::string::npos ||
               item.find("\"checked\": true") != std::string::npos)
             it.checked = true;
-          if (!it.text.empty()) L.items.push_back(it);
+          if (!it.text.empty() || !it.pending_pcm.empty()) L.items.push_back(it);
           p = ie + 1;
         }
       }
@@ -240,7 +247,10 @@ bool App::save_local_lists() {
     for (size_t j = 0; j < L.items.size(); ++j) {
       if (j) out << ",";
       out << "{\"text\":\"" << json_escape(L.items[j].text)
-          << "\",\"checked\":" << (L.items[j].checked ? "true" : "false") << "}";
+          << "\",\"checked\":" << (L.items[j].checked ? "true" : "false");
+      if (!L.items[j].pending_pcm.empty())
+        out << ",\"pending\":\"" << json_escape(L.items[j].pending_pcm) << "\"";
+      out << "}";
     }
     out << "]}";
   }
@@ -374,6 +384,227 @@ void App::save_weather_cache() {
         << ",\"condition\":\"" << json_escape(d.condition) << "\"}";
   }
   out << "]}";
+}
+
+bool App::save_pending_pcm(const std::vector<uint8_t>& pcm, std::string* out_name) {
+  if (!out_name || !storage_ || !storage_->data_ensure_root() || pcm.empty()) return false;
+  const std::string notes_dir = storage_->data_root() + "/notes";
+  const std::string dir = notes_dir + "/pcm";
+  ::mkdir(notes_dir.c_str(), 0755);
+  ::mkdir(dir.c_str(), 0755);
+  if (storage_->free_bytes(storage_->data_root()) < pcm.size() + 32768ull) {
+    error_msg_ = "Not enough space to save voice clip.";
+    error_until_ms_ = now_ms_ + 3500;
+    return false;
+  }
+  const std::string name = std::to_string(now_ms_) + "-" + std::to_string(pcm.size()) + ".pcm";
+  const std::string path = dir + "/" + name;
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out) {
+    error_msg_ = "Couldn't save voice clip.";
+    error_until_ms_ = now_ms_ + 3000;
+    return false;
+  }
+  out.write(reinterpret_cast<const char*>(pcm.data()), static_cast<std::streamsize>(pcm.size()));
+  if (!out) {
+    error_msg_ = "Couldn't save voice clip.";
+    error_until_ms_ = now_ms_ + 3000;
+    ::unlink(path.c_str());
+    return false;
+  }
+  *out_name = name;
+  return true;
+}
+
+void App::delete_pending_pcm(const std::string& name) {
+  if (!storage_ || name.empty() || name.find('/') != std::string::npos || name.find("..") != std::string::npos)
+    return;
+  const std::string path = storage_->data_root() + "/notes/pcm/" + name;
+  ::unlink(path.c_str());
+}
+
+bool App::notes_have_pending_dictation() const {
+  for (const auto& n : data_.notes) {
+    if (!n.pending_pcm.empty()) return true;
+  }
+  for (const auto& L : data_.lists) {
+    for (const auto& it : L.items) {
+      if (!it.pending_pcm.empty()) return true;
+    }
+  }
+  return false;
+}
+
+void App::apply_dictation_transcript(const std::string& t) {
+  const ScreenId s = nav_.current();
+  if (s == ScreenId::ListsDetail && note_index_ < static_cast<int>(data_.lists.size())) {
+    ListItem it;
+    it.text = t;
+    data_.lists[note_index_].items.push_back(it);
+    save_local_lists();
+  } else if (s == ScreenId::NotesDetail && note_index_ < static_cast<int>(data_.notes.size())) {
+    data_.notes[note_index_].body += (data_.notes[note_index_].body.empty() ? "" : "\n") + t;
+    data_.notes[note_index_].updated_at = now_ms_;
+    if (data_.notes[note_index_].title == "Note" || data_.notes[note_index_].title.empty() ||
+        data_.notes[note_index_].title == "Voice note") {
+      data_.notes[note_index_].title = t.substr(0, 40);
+    }
+    save_local_notes();
+  } else {
+    Note n;
+    n.id = std::to_string(now_ms_) + "-" + std::to_string(data_.notes.size() + 1);
+    n.title = t.substr(0, 40);
+    n.body = t;
+    n.created_at = n.updated_at = now_ms_;
+    data_.notes.push_back(n);
+    note_index_ = static_cast<int>(data_.notes.size()) - 1;
+    save_local_notes();
+    nav_.replace(ScreenId::NotesDetail);
+    after_nav();
+  }
+}
+
+bool App::queue_offline_dictation(const std::vector<uint8_t>& pcm) {
+  const ScreenId s = nav_.current();
+  if (s == ScreenId::ListsDetail && note_index_ < static_cast<int>(data_.lists.size())) {
+    auto& L = data_.lists[note_index_];
+    for (const auto& it : L.items) {
+      if (!it.pending_pcm.empty()) {
+        error_msg_ = "A voice clip is already waiting for Wi‑Fi.";
+        error_until_ms_ = now_ms_ + 3500;
+        return false;
+      }
+    }
+    std::string name;
+    if (!save_pending_pcm(pcm, &name)) return false;
+    ListItem it;
+    it.text = kVoicePendingText;
+    it.pending_pcm = name;
+    L.items.push_back(it);
+    save_local_lists();
+    error_msg_ = "Saved — will become text when online.";
+    error_until_ms_ = now_ms_ + 3500;
+    return true;
+  }
+
+  // Notes detail, or create a new note from list/elsewhere.
+  if (s == ScreenId::NotesDetail && note_index_ >= 0 && note_index_ < static_cast<int>(data_.notes.size())) {
+    auto& n = data_.notes[note_index_];
+    if (!n.pending_pcm.empty()) {
+      error_msg_ = "A voice clip is already waiting for Wi‑Fi.";
+      error_until_ms_ = now_ms_ + 3500;
+      return false;
+    }
+    std::string name;
+    if (!save_pending_pcm(pcm, &name)) return false;
+    n.pending_pcm = name;
+    n.body += (n.body.empty() ? "" : "\n");
+    n.body += kVoicePendingText;
+    n.updated_at = now_ms_;
+    if (n.title == "Note" || n.title.empty()) n.title = "Voice note";
+    save_local_notes();
+    error_msg_ = "Saved — will become text when online.";
+    error_until_ms_ = now_ms_ + 3500;
+    return true;
+  }
+
+  std::string name;
+  if (!save_pending_pcm(pcm, &name)) return false;
+  Note n;
+  n.id = std::to_string(now_ms_) + "-" + std::to_string(data_.notes.size() + 1);
+  n.title = "Voice note";
+  n.body = kVoicePendingText;
+  n.pending_pcm = name;
+  n.created_at = n.updated_at = now_ms_;
+  data_.notes.push_back(n);
+  note_index_ = static_cast<int>(data_.notes.size()) - 1;
+  save_local_notes();
+  nav_.replace(ScreenId::NotesDetail);
+  after_nav();
+  error_msg_ = "Saved — will become text when online.";
+  error_until_ms_ = now_ms_ + 3500;
+  return true;
+}
+
+void App::flush_pending_dictation() {
+  if (!wifi_.connected() || !storage_) return;
+  bool notes_changed = false;
+  bool lists_changed = false;
+
+  auto load_pcm = [&](const std::string& name, std::vector<uint8_t>& out) -> bool {
+    if (name.empty() || name.find('/') != std::string::npos || name.find("..") != std::string::npos)
+      return false;
+    const std::string path = storage_->data_root() + "/notes/pcm/" + name;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    return !out.empty();
+  };
+
+  auto replace_pending_text = [](std::string& body, const std::string& transcript) {
+    const std::string marker = kVoicePendingText;
+    const size_t p = body.find(marker);
+    if (p != std::string::npos) {
+      body.replace(p, marker.size(), transcript);
+      // Drop a dangling newline left if transcript empty (shouldn't happen).
+      return;
+    }
+    body += (body.empty() ? "" : "\n") + transcript;
+  };
+
+  for (auto& n : data_.notes) {
+    if (n.pending_pcm.empty()) continue;
+    std::vector<uint8_t> pcm;
+    if (!load_pcm(n.pending_pcm, pcm)) {
+      // Orphaned pointer — clear so the note isn't stuck forever.
+      delete_pending_pcm(n.pending_pcm);
+      n.pending_pcm.clear();
+      replace_pending_text(n.body, "(Voice clip missing)");
+      n.updated_at = now_ms_;
+      notes_changed = true;
+      continue;
+    }
+    std::string t = cloud_.stt_transcribe(pcm);
+    if (t.size() == 1 && t[0] == '\x01') continue;  // transport — retry later
+    if (t.empty()) continue;                        // keep clip; user can re-record after reconnect
+    const std::string done = n.pending_pcm;
+    replace_pending_text(n.body, t);
+    if (n.title == "Voice note" || n.title.empty() || n.title == "Note") n.title = t.substr(0, 40);
+    n.pending_pcm.clear();
+    n.updated_at = now_ms_;
+    delete_pending_pcm(done);
+    notes_changed = true;
+  }
+
+  for (auto& L : data_.lists) {
+    for (auto& it : L.items) {
+      if (it.pending_pcm.empty()) continue;
+      std::vector<uint8_t> pcm;
+      if (!load_pcm(it.pending_pcm, pcm)) {
+        delete_pending_pcm(it.pending_pcm);
+        it.pending_pcm.clear();
+        it.text = "(Voice clip missing)";
+        lists_changed = true;
+        continue;
+      }
+      std::string t = cloud_.stt_transcribe(pcm);
+      if (t.size() == 1 && t[0] == '\x01') continue;
+      if (t.empty()) continue;
+      const std::string done = it.pending_pcm;
+      it.text = t;
+      it.pending_pcm.clear();
+      delete_pending_pcm(done);
+      lists_changed = true;
+    }
+  }
+
+  if (notes_changed) save_local_notes();
+  if (lists_changed) save_local_lists();
+  if (notes_changed || lists_changed) {
+    error_msg_ = "Voice clip transcribed.";
+    error_until_ms_ = now_ms_ + 2500;
+    mark_content_dirty();
+  }
 }
 
 bool App::weather_geocode_city() {
@@ -563,8 +794,8 @@ void App::render_notes() {
       canvas_.draw_text_wrapped(
           kSideMargin, kEmptyHintY, kContentW, kWrapGap,
           wifi_.connected()
-              ? "Select New note — stays on device. Hold Select in a note to dictate."
-              : "Select New note — works offline. Dictation needs Wi‑Fi.",
+              ? "Select New note — stays on device. Hold the side button to dictate."
+              : "Select New note — works offline. Hold to capture; text needs Wi‑Fi.",
           Canvas::TextRole::Secondary, Gray::G1);
     } else {
       focus_.count = static_cast<int>(data_.notes.size()) + 1;
@@ -598,11 +829,16 @@ void App::render_notes() {
         canvas_.draw_text_wrapped(
             kSideMargin, body_top, kContentW, kWrapGap,
             wifi_.connected() ? "Empty note — hold the side button to dictate."
-                              : "Empty note — saved on device. Dictation needs Wi‑Fi.",
+                              : "Empty note — hold to capture a voice clip. Text needs Wi‑Fi.",
             Canvas::TextRole::Secondary, Gray::G1);
       } else {
         canvas_.draw_text_wrapped(kSideMargin, body_top, kContentW, kWrapGap, n.body,
                                   Canvas::TextRole::Body, Gray::G0);
+        if (!n.pending_pcm.empty() && !wifi_.connected()) {
+          canvas_.draw_text_wrapped(kSideMargin, kFooterY - 40, kContentW, kWrapGap,
+                                    "Voice clip saved — text when online.",
+                                    Canvas::TextRole::Secondary, Gray::G1);
+        }
       }
     }
     focus_.count = 2;
@@ -735,22 +971,25 @@ void App::handle_notes(InputEvent e) {
     ptt_active_ = false;
     mic_capturing_ = false;
     const MicCaptureResult cap = audio_ ? audio_->stop_capture() : MicCaptureResult{};
-    if (!wifi_.connected() && cfg_.stt_path == 0) {
-      error_msg_ = "Dictation needs Wi‑Fi. Notes still save offline.";
-      error_until_ms_ = now_ms_ + 3500;
-      mark_content_dirty();
-      return;
-    }
     if (!cap.ok || cap.pcm.empty()) {
       error_msg_ = "Couldn't hear anything. Hold closer and try again.";
       error_until_ms_ = now_ms_ + 3000;
       mark_content_dirty();
       return;
     }
+    // Cloud STT only (on-device STT not shipping). Offline → queue PCM + honest placeholder.
+    if (!wifi_.connected()) {
+      (void)queue_offline_dictation(cap.pcm);
+      mark_content_dirty();
+      return;
+    }
     std::string t = cloud_.stt_transcribe(cap.pcm);
     if (t.size() == 1 && t[0] == '\x01') {
-      error_msg_ = "Couldn't reach speech service. Try again.";
-      error_until_ms_ = now_ms_ + 3000;
+      // Online but STT unreachable — still keep the clip so it isn't lost.
+      if (queue_offline_dictation(cap.pcm)) {
+        error_msg_ = "Speech service unreachable — clip saved for retry.";
+        error_until_ms_ = now_ms_ + 3500;
+      }
       mark_content_dirty();
       return;
     }
@@ -761,31 +1000,7 @@ void App::handle_notes(InputEvent e) {
       return;
     }
     error_msg_.clear();
-    if (s == ScreenId::ListsDetail && note_index_ < static_cast<int>(data_.lists.size())) {
-      ListItem it;
-      it.text = t;
-      data_.lists[note_index_].items.push_back(it);
-      save_local_lists();
-    } else if (s == ScreenId::NotesDetail && note_index_ < static_cast<int>(data_.notes.size())) {
-      data_.notes[note_index_].body += (data_.notes[note_index_].body.empty() ? "" : "\n") + t;
-      data_.notes[note_index_].updated_at = now_ms_;
-      if (data_.notes[note_index_].title == "Note" || data_.notes[note_index_].title.empty()) {
-        data_.notes[note_index_].title = t.substr(0, 40);
-      }
-      save_local_notes();
-    } else {
-      Note n;
-      n.id = std::to_string(now_ms_) + "-" + std::to_string(data_.notes.size() + 1);
-      n.title = t.substr(0, 40);
-      n.body = t;
-      n.created_at = n.updated_at = now_ms_;
-      data_.notes.push_back(n);
-      note_index_ = static_cast<int>(data_.notes.size()) - 1;
-      save_local_notes();
-      nav_.replace(ScreenId::NotesDetail);
-      after_nav();
-      return;
-    }
+    apply_dictation_transcript(t);
     mark_content_dirty();
     return;
   }
@@ -829,8 +1044,8 @@ void App::handle_notes(InputEvent e) {
       if (focus_.index == prev) return;
       mark_list_focus_dirty(bottom_action_y(1), prev, focus_.index);
     } else if (e == InputEvent::Select && focus_.index == 0) {
-      if (!wifi_.connected() && cfg_.stt_path == 0) {
-        error_msg_ = "Dictation needs Wi‑Fi. This note stays on device.";
+      if (!wifi_.connected()) {
+        error_msg_ = "Hold the side button to capture. Text needs Wi‑Fi.";
       } else {
         error_msg_ = "Hold the side button to dictate.";
       }
@@ -838,6 +1053,9 @@ void App::handle_notes(InputEvent e) {
       mark_content_dirty();
     } else if (e == InputEvent::Select && focus_.index == 1) {
       if (note_index_ < static_cast<int>(data_.notes.size())) {
+        if (!data_.notes[note_index_].pending_pcm.empty()) {
+          delete_pending_pcm(data_.notes[note_index_].pending_pcm);
+        }
         data_.notes.erase(data_.notes.begin() + note_index_);
         save_local_notes();
         nav_.pop();

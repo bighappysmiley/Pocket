@@ -692,6 +692,8 @@ void App::maybe_cloud_attest() {
 void App::notify_wifi_connected() {
   last_attest_ms_ = 0;
   maybe_cloud_attest();
+  last_pending_stt_ms_ = 0;
+  flush_pending_dictation();
   mark_status_dirty();
 }
 
@@ -791,6 +793,12 @@ void App::tick(uint32_t now_ms) {
   maybe_poll_sd_hotplug();
   maybe_wifi_auto_reconnect();
   maybe_cloud_attest();
+  // Retry queued offline voice clips (cloud STT) — notify_wifi covers the fast path.
+  if (wifi_.connected() && notes_have_pending_dictation() &&
+      (last_pending_stt_ms_ == 0 || now_ms - last_pending_stt_ms_ >= 20000u)) {
+    last_pending_stt_ms_ = now_ms;
+    flush_pending_dictation();
+  }
   if (dirty_) {
     present_canvas(false);
     dirty_ = false;

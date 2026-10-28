@@ -95,6 +95,11 @@ target_include_directories(test_features_empty PRIVATE ${POCKET_UI}/include ${PO
 target_compile_definitions(test_features_empty PRIVATE POCKET_HOST=1)
 add_test(NAME test_features_empty COMMAND test_features_empty)
 
+add_executable(test_offline_dictation ../tests/test_offline_dictation.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_offline_dictation PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_offline_dictation PRIVATE POCKET_HOST=1)
+add_test(NAME test_offline_dictation COMMAND test_offline_dictation)
+
 add_executable(dump_home_png dump_home_png.cpp ${POCKET_UI_SRCS})
 target_include_directories(dump_home_png PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(dump_home_png PRIVATE POCKET_HOST=1)

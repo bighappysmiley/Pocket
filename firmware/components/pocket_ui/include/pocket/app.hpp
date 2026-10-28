@@ -201,6 +201,8 @@ struct Note {
   std::string body;
   int64_t created_at = 0;
   int64_t updated_at = 0;
+  /** Relative filename under notes/pcm/ — cloud STT when back online. Empty = none. */
+  std::string pending_pcm;
 };
 
 struct ListItem {
@@ -208,6 +210,8 @@ struct ListItem {
   std::string text;
   bool checked = false;
   int64_t updated_at = 0;
+  /** Relative filename under notes/pcm/ — cloud STT when back online. Empty = none. */
+  std::string pending_pcm;
 };
 
 struct TodoList {
@@ -390,6 +394,16 @@ class App {
   bool save_local_notes();
   void load_local_lists();
   bool save_local_lists();
+  /** Save raw PCM for offline dictation; returns relative name under notes/pcm/. */
+  bool save_pending_pcm(const std::vector<uint8_t>& pcm, std::string* out_name);
+  void delete_pending_pcm(const std::string& name);
+  /** Apply a finished transcript to the current Notes/Lists target (online path). */
+  void apply_dictation_transcript(const std::string& t);
+  /** Queue mic PCM while offline; honest placeholder until cloud STT runs. */
+  bool queue_offline_dictation(const std::vector<uint8_t>& pcm);
+  /** When online: transcribe any pending voice clips and replace placeholders. */
+  void flush_pending_dictation();
+  bool notes_have_pending_dictation() const;
   void load_local_passes();
   void save_local_passes();
   void load_weather_cache();
@@ -559,6 +573,8 @@ class App {
   int tips_page_ = 0;
   /** Settings → Wi‑Fi: 0 = known list, 1 = Add (hotspot / another), 2 = Remove picker. */
   uint8_t wifi_ui_page_ = 0;
+  /** Last attempt to flush offline voice clips via cloud STT. */
+  uint32_t last_pending_stt_ms_ = 0;
 };
 
 }  // namespace pocket
