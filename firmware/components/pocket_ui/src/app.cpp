@@ -1340,7 +1340,16 @@ void App::render_pin() {
     canvas_.draw_text_centered(kCanvasW / 2, 420, error_msg_.c_str(), Canvas::TextRole::Body, Gray::G0);
   }
   if (now_ms_ < pin_lockout_until_ms_) {
-    canvas_.draw_text_centered(kCanvasW / 2, 448, "Try again in 30 seconds", Canvas::TextRole::Body, Gray::G0);
+    uint32_t rem = (pin_lockout_until_ms_ - now_ms_ + 999u) / 1000u;
+    if (rem < 1) rem = 1;
+    char lockbuf[40];
+    if (rem == 1) {
+      std::snprintf(lockbuf, sizeof(lockbuf), "Try again in 1 second");
+    } else {
+      std::snprintf(lockbuf, sizeof(lockbuf), "Try again in %u seconds",
+                    static_cast<unsigned>(rem));
+    }
+    canvas_.draw_text_centered(kCanvasW / 2, 448, lockbuf, Canvas::TextRole::Body, Gray::G0);
   }
 }
 
@@ -1417,6 +1426,7 @@ void App::handle_pin(InputEvent e) {
         pin_enter_empty_slot();
         if (pin_fail_count_ >= 5) {
           pin_lockout_until_ms_ = now_ms_ + 30000;
+          pin_lockout_shown_s_ = 0xffffffffu;  // force first countdown tick to paint
           pin_fail_count_ = 0;
         }
         mark_pin_slots_dirty(0, cfg_.pin_length - 1, true);
@@ -1539,17 +1549,31 @@ void App::maybe_tick_home_clock() {
 void App::maybe_tick_pin_chrome() {
   if (!is_pin_entry_screen()) {
     pin_chrome_armed_ = false;
+    pin_lockout_shown_s_ = 0xffffffffu;
     return;
   }
   const bool err_live = now_ms_ < error_until_ms_ && !error_msg_.empty();
   const bool lock_live = now_ms_ < pin_lockout_until_ms_;
   if (err_live || lock_live) {
     pin_chrome_armed_ = true;
+    // Live lockout countdown — refresh chrome once per remaining-second change so
+    // "Try again in N seconds" never reads as a frozen 30.
+    if (lock_live) {
+      const uint32_t rem = (pin_lockout_until_ms_ - now_ms_ + 999u) / 1000u;
+      if (rem != pin_lockout_shown_s_) {
+        pin_lockout_shown_s_ = rem;
+        mark_pin_slots_dirty(0, std::max(0, cfg_.pin_length - 1), true);
+        if (dirty_ && try_present(false)) {
+          dirty_ = false;
+        }
+      }
+    }
     return;
   }
   // Error / lockout just expired — wipe the chrome band so stale ink doesn't linger.
   if (!pin_chrome_armed_) return;
   pin_chrome_armed_ = false;
+  pin_lockout_shown_s_ = 0xffffffffu;
   mark_pin_slots_dirty(0, std::max(0, cfg_.pin_length - 1), true);
   if (dirty_ && try_present(false)) {
     dirty_ = false;

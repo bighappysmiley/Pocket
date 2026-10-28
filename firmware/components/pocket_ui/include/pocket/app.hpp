@@ -317,6 +317,13 @@ class App {
   char pin_working_digit() const { return pin_digit_working_; }
   /** Focused slot index (== pin_entry().size()); never skips ahead of committed digits. */
   int pin_focus_index() const { return static_cast<int>(pin_entry_.size()); }
+  /** Remaining lockout seconds (ceil); 0 when not locked out. Host/tests. */
+  uint32_t pin_lockout_remaining_s() const {
+    if (now_ms_ >= pin_lockout_until_ms_) return 0;
+    return (pin_lockout_until_ms_ - now_ms_ + 999u) / 1000u;
+  }
+  /** True while Incorrect-PIN / lockout chrome is armed. Host/tests. */
+  bool pin_chrome_live() const { return pin_chrome_armed_; }
   /**
    * Logical value shown for slot `i`: committed digit, working digit if focused,
    * or `'0'` when the slot is still unset (empty, not focused).
@@ -519,6 +526,8 @@ class App {
   bool defer_handle_present_ = false;
   int pin_fail_count_ = 0;
   uint32_t pin_lockout_until_ms_ = 0;
+  /** Last painted lockout remaining-seconds (UINT32_MAX = none); drives 1 Hz chrome ticks. */
+  uint32_t pin_lockout_shown_s_ = 0xffffffffu;
   uint32_t error_until_ms_ = 0;
   /** Armed while PIN error/lockout chrome is painted — cleared on expiry tick. */
   bool pin_chrome_armed_ = false;
