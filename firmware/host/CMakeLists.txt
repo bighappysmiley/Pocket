@@ -96,6 +96,11 @@ target_include_directories(test_home_nav_busy PRIVATE ${POCKET_UI}/include ${POC
 target_compile_definitions(test_home_nav_busy PRIVATE POCKET_HOST=1)
 add_test(NAME test_home_nav_busy COMMAND test_home_nav_busy)
 
+add_executable(test_status_approx ../tests/test_status_approx.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_status_approx PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_status_approx PRIVATE POCKET_HOST=1)
+add_test(NAME test_status_approx COMMAND test_status_approx)
+
 add_executable(test_offline_notes ../tests/test_offline_notes.cpp ${POCKET_UI_SRCS})
 target_include_directories(test_offline_notes PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_offline_notes PRIVATE POCKET_HOST=1)

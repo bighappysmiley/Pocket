@@ -580,6 +580,8 @@ class App {
   int last_status_battery_ = -1;
   bool last_status_wifi_ = false;
   bool last_status_time_ok_ = false;
+  /** Tracks Approximate↔Trusted so status chrome refreshes on quality change. */
+  bool last_status_needs_sync_ = false;
   /** Which calm e-ink motif to draw on the lock/sleep face; advances on each lock. */
   int lock_motif_index_ = 0;
   SdContentKind sd_kind_ = SdContentKind::Absent;

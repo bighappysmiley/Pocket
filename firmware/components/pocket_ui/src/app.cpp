@@ -8,7 +8,7 @@
 namespace pocket {
 
 extern void draw_status_bar_impl(Canvas& c, const DeviceConfig& cfg, int hour, int minute, bool wifi_ok,
-                                 int battery_pct, bool time_ok);
+                                 int battery_pct, bool time_ok, bool time_needs_sync = false);
 
 static const char* kWeekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -867,7 +867,8 @@ void App::draw_status_bar() {
   int h = 0, m = 0, wd = 0, mo = 0, d = 0;
   clock_.local_hm(h, m, wd, mo, d);
   const bool wifi_ok = wifi_.connected() || wifi_.provisioning();
-  draw_status_bar_impl(canvas_, cfg_, h, m, wifi_ok, clock_.battery_percent(), clock_.time_valid());
+  draw_status_bar_impl(canvas_, cfg_, h, m, wifi_ok, clock_.battery_percent(), clock_.time_valid(),
+                       clock_.time_needs_network_sync());
 }
 
 void App::handle(InputEvent e) {
@@ -1493,23 +1494,27 @@ void App::maybe_tick_status_chrome() {
   const int batt = clock_.battery_percent();
   const bool wifi_ok = wifi_.connected() || wifi_.provisioning();
   const bool time_ok = clock_.time_valid();
+  const bool needs_sync = clock_.time_needs_network_sync();
 
   if (last_status_minute_ < 0) {
     last_status_minute_ = minute_key;
     last_status_battery_ = batt;
     last_status_wifi_ = wifi_ok;
     last_status_time_ok_ = time_ok;
+    last_status_needs_sync_ = needs_sync;
     return;
   }
 
   const bool changed = (minute_key != last_status_minute_) || (batt != last_status_battery_) ||
-                       (wifi_ok != last_status_wifi_) || (time_ok != last_status_time_ok_);
+                       (wifi_ok != last_status_wifi_) || (time_ok != last_status_time_ok_) ||
+                       (needs_sync != last_status_needs_sync_);
   if (!changed) return;
 
   last_status_minute_ = minute_key;
   last_status_battery_ = batt;
   last_status_wifi_ = wifi_ok;
   last_status_time_ok_ = time_ok;
+  last_status_needs_sync_ = needs_sync;
   mark_status_dirty();
   if (dirty_ && try_present(false)) {
     dirty_ = false;

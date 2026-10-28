@@ -59,7 +59,7 @@ void draw_battery_icon(Canvas& c, int x, int y, int pct) {
 }  // namespace
 
 void draw_status_bar_impl(Canvas& c, const DeviceConfig& cfg, int hour, int minute, bool wifi_ok,
-                          int battery_pct, bool time_ok) {
+                          int battery_pct, bool time_ok, bool time_needs_sync) {
   c.fill_rect(0, 0, kCanvasW, kStatusBarH, Gray::G3);
   // Hairline rule — single G1 pixel; inset 12px so icons + time keep air.
   c.hline(12, kStatusBarH - 1, kCanvasW - 24, Gray::G1);
@@ -77,7 +77,10 @@ void draw_status_bar_impl(Canvas& c, const DeviceConfig& cfg, int hour, int minu
 
   const int text_h = c.text_height(Canvas::TextRole::StatusBar);
   const int text_y = (kStatusBarH - text_h) / 2;
-  c.draw_text(kSideMargin, text_y, timebuf, Canvas::TextRole::StatusBar, Gray::G0);
+  // Approximate (post power-loss) reads softer than trusted — Clock face already warns;
+  // status stays compact without a second label.
+  const Gray time_g = (!time_ok || time_needs_sync) ? Gray::G1 : Gray::G0;
+  c.draw_text(kSideMargin, text_y, timebuf, Canvas::TextRole::StatusBar, time_g);
 
   constexpr int kBattW = 34;
   constexpr int kBattH = 18;
