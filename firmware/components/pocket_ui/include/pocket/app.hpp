@@ -333,7 +333,7 @@ class App {
   /** STA just associated — refresh clock sync + Cloud heartbeat promptly. */
   void notify_wifi_connected();
 
-  /** Force render for host/tests. */
+  /** Force render for host/tests. Keeps dirty if the panel is mid-refresh. */
   void redraw(bool full);
 
  private:
@@ -346,6 +346,11 @@ class App {
   void after_nav(bool full_refresh);
   /** Navigate then refresh using Spec §6 (full only for major enters / QR / PIN). */
   void after_nav();
+  /**
+   * Present when the panel is idle. Returns false if busy (caller must keep dirty_).
+   * Critical after v90 async e-ink: never clear dirty when present was skipped.
+   */
+  bool try_present(bool full);
   void mark_content_dirty();
   void mark_status_dirty();
   /** Tight e-ink region update (PIN digits, focus rows, etc.). */

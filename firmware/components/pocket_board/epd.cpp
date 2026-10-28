@@ -4,6 +4,7 @@
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -90,18 +91,41 @@ void EpdDisplay::rotate_canvas_to_mono_region(const pocket::Canvas& src, uint8_t
 void EpdDisplay::mark_refresh_kicked() {
   refresh_inflight_ = true;
   saw_busy_high_ = false;
+  kick_ms_ = static_cast<uint32_t>(esp_timer_get_time() / 1000LL);
 }
 
 bool EpdDisplay::busy() {
   if (!refresh_inflight_) return false;
+  const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000LL);
+  const uint32_t elapsed = now - kick_ms_;
+
   if (EPD_IsBusy()) {
     saw_busy_high_ = true;
+    // v90 async path removed EPD_ReadBusy's 8s soft-timeout. Without a ceiling,
+    // a stuck-high BUSY pin (or never-falling edge) freezes every present forever
+    // and the lock screen looks like dead buttons. Force idle so input + paint recover.
+    constexpr uint32_t kStuckBusyMs = 3000;
+    if (elapsed > kStuckBusyMs) {
+      ESP_LOGW(TAG, "BUSY stuck high for %u ms — forcing idle", static_cast<unsigned>(elapsed));
+      refresh_inflight_ = false;
+      saw_busy_high_ = false;
+      return false;
+    }
     return true;
   }
-  // BUSY not high yet right after kick — still treat as in-flight so we never
-  // stack a second LUT before the panel has even asserted. Once we've seen high
-  // and it returns low, the refresh is done.
-  if (!saw_busy_high_) return true;
+
+  // BUSY low: either refresh finished after we saw high, or the rise never arrived
+  // (finished before first poll, or pin stuck low). Require a short grace after kick
+  // so we don't stack a second LUT into the rise window — but NEVER stay inflight
+  // forever when high was never observed (that was the v90/v91 lock-screen brick).
+  if (!saw_busy_high_) {
+    constexpr uint32_t kRiseGraceMs = 80;
+    if (elapsed < kRiseGraceMs) return true;
+    refresh_inflight_ = false;
+    saw_busy_high_ = false;
+    return false;
+  }
+
   refresh_inflight_ = false;
   saw_busy_high_ = false;
   return false;

@@ -51,7 +51,8 @@ struct TCloud : PlatformCloud {
   std::string stt_transcribe(const std::vector<uint8_t>&) override { return {}; }
 };
 
-/** Display that stays busy for N pump iterations after each present. */
+/** Display that stays busy for N pump iterations after each present.
+ * Skips when busy — matches device EpdDisplay (present must not clear dirty). */
 struct BusyDisp : PlatformDisplay {
   int region = 0;
   int full_or_fast = 0;
@@ -61,10 +62,12 @@ struct BusyDisp : PlatformDisplay {
     if (busy_left > 0) --busy_left;
   }
   void present(const Canvas&, RefreshMode) override {
+    if (busy_left > 0) return;
     ++full_or_fast;
     busy_left = 4;
   }
   void present_region(const Canvas&, int, int, int, int) override {
+    if (busy_left > 0) return;
     ++region;
     busy_left = 4;
   }

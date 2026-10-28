@@ -76,8 +76,7 @@ void App::begin_firmware_update() {
 
   ota_status_ = "Downloading update…";
   mark_content_dirty();
-  if (dirty_) {
-    present_canvas(false);
+  if (dirty_ && try_present(false)) {
     dirty_ = false;
   }
 

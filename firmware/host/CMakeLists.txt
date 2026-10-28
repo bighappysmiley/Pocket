@@ -86,6 +86,11 @@ target_include_directories(test_pin_rotary_busy PRIVATE ${POCKET_UI}/include ${P
 target_compile_definitions(test_pin_rotary_busy PRIVATE POCKET_HOST=1)
 add_test(NAME test_pin_rotary_busy COMMAND test_pin_rotary_busy)
 
+add_executable(test_lock_input_busy ../tests/test_lock_input_busy.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_lock_input_busy PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_lock_input_busy PRIVATE POCKET_HOST=1)
+add_test(NAME test_lock_input_busy COMMAND test_lock_input_busy)
+
 add_executable(test_offline_notes ../tests/test_offline_notes.cpp ${POCKET_UI_SRCS})
 target_include_directories(test_offline_notes PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_offline_notes PRIVATE POCKET_HOST=1)

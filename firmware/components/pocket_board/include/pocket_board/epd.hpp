@@ -38,6 +38,8 @@ class EpdDisplay {
   bool refresh_inflight_ = false;
   /** Latched true once BUSY was observed high for the current inflight refresh. */
   bool saw_busy_high_ = false;
+  /** esp_timer ms when mark_refresh_kicked() ran — drives grace + stuck-BUSY timeout. */
+  uint32_t kick_ms_ = 0;
   uint8_t* panel_1bpp_ = nullptr;
   uint8_t gray_threshold_ = 2;
 };

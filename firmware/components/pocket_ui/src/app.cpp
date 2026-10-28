@@ -283,12 +283,19 @@ void App::pin_backspace() {
   pin_enter_empty_slot();
 }
 
+bool App::try_present(bool full) {
+  // Never clear dirty / call into the panel while a LUT is mid-flight — present()
+  // would no-op on device and a blind dirty_=false bricks Lock→PIN paint (v91).
+  if (display_.busy()) return false;
+  present_canvas(full);
+  return true;
+}
+
 void App::flush_dirty() {
   if (!dirty_) return;
   // Never block the input path on a mid-flight e-ink refresh — keep dirty and
   // apply further rotary ticks to logical state; present once the panel is idle.
-  if (display_.busy()) return;
-  present_canvas(false);
+  if (!try_present(false)) return;
   dirty_ = false;
 }
 
@@ -800,8 +807,7 @@ void App::tick(uint32_t now_ms) {
     last_pending_stt_ms_ = now_ms;
     flush_pending_dictation();
   }
-  if (dirty_ && !display_.busy()) {
-    present_canvas(false);
+  if (dirty_ && try_present(false)) {
     dirty_ = false;
   }
   maybe_tick_pin_chrome();
@@ -850,7 +856,10 @@ void App::present_canvas(bool full) {
 
 void App::redraw(bool full) {
   if (full) dirty_kind_ = DirtyKind::FullCanvas;
-  present_canvas(full);
+  dirty_ = true;
+  // Lock→PIN (and every after_nav) used to clear dirty even when present was
+  // skipped for busy — screen stayed on Lock with dead-looking buttons.
+  if (!try_present(full)) return;
   dirty_ = false;
 }
 
@@ -942,9 +951,8 @@ void App::handle(InputEvent e) {
       handle_settings(e);
       break;
   }
-  if (dirty_ && !defer_handle_present_ && !display_.busy()) {
+  if (dirty_ && !defer_handle_present_ && try_present(false)) {
     // Preserve dirty_kind_ (Region / StatusBar) — do not force FullCanvas.
-    present_canvas(false);
     dirty_ = false;
   }
 }
@@ -1493,8 +1501,7 @@ void App::maybe_tick_status_chrome() {
   last_status_wifi_ = wifi_ok;
   last_status_time_ok_ = time_ok;
   mark_status_dirty();
-  if (dirty_) {
-    present_canvas(false);
+  if (dirty_ && try_present(false)) {
     dirty_ = false;
   }
 }
@@ -1519,8 +1526,7 @@ void App::maybe_tick_clock_face() {
   last_home_clock_minute_ = minute_key;
   // Huge clock band (see render_clock y≈280).
   mark_region_dirty(0, 220, kCanvasW, 160);
-  if (dirty_) {
-    present_canvas(false);
+  if (dirty_ && try_present(false)) {
     dirty_ = false;
   }
 }
@@ -1545,8 +1551,7 @@ void App::maybe_tick_pin_chrome() {
   if (!pin_chrome_armed_) return;
   pin_chrome_armed_ = false;
   mark_pin_slots_dirty(0, std::max(0, cfg_.pin_length - 1), true);
-  if (dirty_) {
-    present_canvas(false);
+  if (dirty_ && try_present(false)) {
     dirty_ = false;
   }
 }
@@ -1567,8 +1572,7 @@ void App::maybe_tick_transient_error() {
   error_until_ms_ = 0;
   // Footer / toast band — clear residual "offline" / dictation toasts.
   mark_region_dirty(0, kFooterY - 12, kCanvasW, kCanvasH - (kFooterY - 12));
-  if (dirty_) {
-    present_canvas(false);
+  if (dirty_ && try_present(false)) {
     dirty_ = false;
   }
 }
