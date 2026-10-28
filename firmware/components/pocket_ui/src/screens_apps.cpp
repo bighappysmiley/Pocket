@@ -468,12 +468,23 @@ bool App::queue_offline_dictation(const std::vector<uint8_t>& pcm) {
   const ScreenId s = nav_.current();
   if (s == ScreenId::ListsDetail && note_index_ < static_cast<int>(data_.lists.size())) {
     auto& L = data_.lists[note_index_];
-    for (const auto& it : L.items) {
-      if (!it.pending_pcm.empty()) {
-        error_msg_ = "A voice clip is already waiting for Wi‑Fi.";
-        error_until_ms_ = now_ms_ + 3500;
-        return false;
-      }
+    // Re-record replaces any existing pending clip on this list (recover from failed STT).
+    for (auto& it : L.items) {
+      if (it.pending_pcm.empty()) continue;
+      const std::string old = it.pending_pcm;
+      std::string name;
+      if (!save_pending_pcm(pcm, &name)) return false;
+      // Delete old only when the new file is distinct — same now_ms_/size would
+      // overwrite then unlink the replacement.
+      if (old != name) delete_pending_pcm(old);
+      it.pending_pcm = name;
+      it.text = kVoicePendingText;
+      save_local_lists();
+      error_msg_ = wifi_.connected() ? "Replaced clip — will retry transcription."
+                                     : "Replaced clip — text when online.";
+      error_until_ms_ = now_ms_ + 3500;
+      mark_content_dirty();
+      return true;
     }
     std::string name;
     if (!save_pending_pcm(pcm, &name)) return false;
@@ -491,9 +502,24 @@ bool App::queue_offline_dictation(const std::vector<uint8_t>& pcm) {
   if (s == ScreenId::NotesDetail && note_index_ >= 0 && note_index_ < static_cast<int>(data_.notes.size())) {
     auto& n = data_.notes[note_index_];
     if (!n.pending_pcm.empty()) {
-      error_msg_ = "A voice clip is already waiting for Wi‑Fi.";
+      // Re-record replaces the waiting clip so online STT failures aren't a dead end.
+      const std::string old = n.pending_pcm;
+      std::string name;
+      if (!save_pending_pcm(pcm, &name)) return false;
+      if (old != name) delete_pending_pcm(old);
+      n.pending_pcm = name;
+      // Keep a single placeholder line — don't stack markers.
+      if (n.body.find(kVoicePendingText) == std::string::npos) {
+        n.body += (n.body.empty() ? "" : "\n");
+        n.body += kVoicePendingText;
+      }
+      n.updated_at = now_ms_;
+      save_local_notes();
+      error_msg_ = wifi_.connected() ? "Replaced clip — will retry transcription."
+                                     : "Replaced clip — text when online.";
       error_until_ms_ = now_ms_ + 3500;
-      return false;
+      mark_content_dirty();
+      return true;
     }
     std::string name;
     if (!save_pending_pcm(pcm, &name)) return false;
@@ -566,7 +592,13 @@ void App::flush_pending_dictation() {
     }
     std::string t = cloud_.stt_transcribe(pcm);
     if (t.size() == 1 && t[0] == '\x01') continue;  // transport — retry later
-    if (t.empty()) continue;                        // keep clip; user can re-record after reconnect
+    if (t.empty()) {
+      // Keep clip; surface failure so online + pending isn't silent.
+      error_msg_ = "Couldn't transcribe — hold to re-record.";
+      error_until_ms_ = now_ms_ + 3500;
+      mark_content_dirty();
+      continue;
+    }
     const std::string done = n.pending_pcm;
     replace_pending_text(n.body, t);
     if (n.title == "Voice note" || n.title.empty() || n.title == "Note") n.title = t.substr(0, 40);
@@ -589,7 +621,12 @@ void App::flush_pending_dictation() {
       }
       std::string t = cloud_.stt_transcribe(pcm);
       if (t.size() == 1 && t[0] == '\x01') continue;
-      if (t.empty()) continue;
+      if (t.empty()) {
+        error_msg_ = "Couldn't transcribe — hold to re-record.";
+        error_until_ms_ = now_ms_ + 3500;
+        mark_content_dirty();
+        continue;
+      }
       const std::string done = it.pending_pcm;
       it.text = t;
       it.pending_pcm.clear();
@@ -834,10 +871,12 @@ void App::render_notes() {
       } else {
         canvas_.draw_text_wrapped(kSideMargin, body_top, kContentW, kWrapGap, n.body,
                                   Canvas::TextRole::Body, Gray::G0);
-        if (!n.pending_pcm.empty() && !wifi_.connected()) {
-          canvas_.draw_text_wrapped(kSideMargin, kFooterY - 40, kContentW, kWrapGap,
-                                    "Voice clip saved — text when online.",
-                                    Canvas::TextRole::Secondary, Gray::G1);
+        if (!n.pending_pcm.empty()) {
+          canvas_.draw_text_wrapped(
+              kSideMargin, kFooterY - 40, kContentW, kWrapGap,
+              wifi_.connected() ? "Still waiting for transcript — hold to re-record."
+                                : "Voice clip saved — text when online.",
+              Canvas::TextRole::Secondary, Gray::G1);
         }
       }
     }

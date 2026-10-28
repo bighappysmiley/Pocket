@@ -2,6 +2,7 @@
 #include "pocket/app.hpp"
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <sys/stat.h>
@@ -179,6 +180,73 @@ int main() {
   app.handle(InputEvent::PttStart);
   app.handle(InputEvent::PttStop);
   CHECK(cloud.stt_calls == 2);
+
+  // --- Empty STT while online: keep pending, toast, allow replace ---
+  {
+    std::system("rm -rf /tmp/pocket-offline-dictation-test");
+    MemoryConfigStore store2;
+    auto& cfg2 = store2.mut();
+    cfg2.onboarding_complete = true;
+    cfg2.pin_length = 4;
+    set_pin(cfg2, "0000");
+    cfg2.home_visible = 0x01FF;
+    cfg2.device_id = "offline-dictation-empty";
+    TClock clock2;
+    TWifi wifi2;
+    TCloud cloud2;
+    cloud2.last_text = "kept for later";
+    TDisp disp2;
+    TStorage storage2;
+    storage2.root = "/tmp/pocket-offline-dictation-test2";
+    TAudio audio2;
+    App app2(store2, clock2, wifi2, cloud2, disp2, &storage2, &audio2);
+    app2.boot();
+    unlock_home(app2);
+    app2.handle(InputEvent::Select);  // Notes
+    app2.handle(InputEvent::Select);  // New note
+    // Offline capture
+    app2.handle(InputEvent::PttStart);
+    app2.handle(InputEvent::PttStop);
+    CHECK(cloud2.stt_calls == 0);
+    // Come online but STT returns empty — must keep pending (not silent forever).
+    wifi2.on = true;
+    cloud2.last_text.clear();
+    app2.notify_wifi_connected();
+    CHECK(cloud2.stt_calls == 1);
+    {
+      std::ifstream in(storage2.root + "/notes/index.json");
+      std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      CHECK(body.find(kVoicePendingText) != std::string::npos);
+      CHECK(body.find("\"pending\"") != std::string::npos);
+    }
+    // Re-record while still pending: go offline briefly so queue path replaces the clip.
+    wifi2.on = false;
+    clock2.t += 500;
+    app2.tick(clock2.t);  // advance now_ms_ so replace PCM gets a new name
+    app2.handle(InputEvent::PttStart);
+    app2.handle(InputEvent::PttStop);
+    {
+      std::ifstream in(storage2.root + "/notes/index.json");
+      std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      size_t count = 0;
+      const size_t marker_len = std::strlen(kVoicePendingText);
+      for (size_t p = 0; (p = body.find(kVoicePendingText, p)) != std::string::npos; p += marker_len)
+        ++count;
+      CHECK(count == 1);  // single placeholder — not stacked
+      CHECK(body.find("\"pending\"") != std::string::npos);
+    }
+    wifi2.on = true;
+    cloud2.last_text = "second take";
+    const int calls_before = cloud2.stt_calls;
+    app2.notify_wifi_connected();
+    CHECK(cloud2.stt_calls == calls_before + 1);
+    {
+      std::ifstream in(storage2.root + "/notes/index.json");
+      std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      CHECK(body.find("second take") != std::string::npos);
+      CHECK(body.find(kVoicePendingText) == std::string::npos);
+    }
+  }
 
   if (failures) {
     std::printf("%d failures\n", failures);
