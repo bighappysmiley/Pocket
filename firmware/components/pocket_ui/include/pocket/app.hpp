@@ -334,6 +334,8 @@ class App {
   const DeviceConfig& config() const { return cfg_; }
   /** Which of kLockMotifCount calm designs the lock/sleep face is currently showing. */
   int lock_motif_index() const { return lock_motif_index_; }
+  /** Home grid focus index (host/tests). */
+  int home_focus_index() const { return focus_.index; }
   const Canvas& canvas() const { return canvas_; }
   bool needs_redraw() const { return dirty_; }
 
