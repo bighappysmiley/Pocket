@@ -6,6 +6,7 @@ idf_component_register(
     "src/nav.cpp"
     "src/chrome.cpp"
     "src/config_store.cpp"
+    "src/wall_clock.cpp"
     "src/pin.cpp"
     "src/app.cpp"
     "src/screens_lock.cpp"

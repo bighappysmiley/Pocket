@@ -12,6 +12,7 @@ set(POCKET_UI_SRCS
   ${POCKET_UI}/src/nav.cpp
   ${POCKET_UI}/src/chrome.cpp
   ${POCKET_UI}/src/config_store.cpp
+  ${POCKET_UI}/src/wall_clock.cpp
   ${POCKET_UI}/src/pin.cpp
   ${POCKET_UI}/src/app.cpp
   ${POCKET_UI}/src/screens_lock.cpp
@@ -104,6 +105,11 @@ add_executable(test_offline_dictation ../tests/test_offline_dictation.cpp ${POCK
 target_include_directories(test_offline_dictation PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(test_offline_dictation PRIVATE POCKET_HOST=1)
 add_test(NAME test_offline_dictation COMMAND test_offline_dictation)
+
+add_executable(test_offline_clock ../tests/test_offline_clock.cpp ${POCKET_UI}/src/wall_clock.cpp)
+target_include_directories(test_offline_clock PRIVATE ${POCKET_UI}/include)
+target_compile_definitions(test_offline_clock PRIVATE POCKET_HOST=1)
+add_test(NAME test_offline_clock COMMAND test_offline_clock)
 
 add_executable(dump_home_png dump_home_png.cpp ${POCKET_UI_SRCS})
 target_include_directories(dump_home_png PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)

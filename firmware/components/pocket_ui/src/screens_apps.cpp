@@ -1148,21 +1148,39 @@ void App::render_clock() {
     int h = 0, m = 0, wd = 0, mo = 0, d = 0;
     clock_.local_hm(h, m, wd, mo, d);
     char tbuf[16];
-    if (cfg_.time_format == 24)
+    if (!clock_.time_valid()) {
+      std::snprintf(tbuf, sizeof(tbuf), "--:--");
+    } else if (cfg_.time_format == 24) {
       std::snprintf(tbuf, sizeof(tbuf), "%02d:%02d", h, m);
-    else {
+    } else {
       int h12 = h % 12;
       if (h12 == 0) h12 = 12;
       std::snprintf(tbuf, sizeof(tbuf), "%d:%02d", h12, m);
     }
     canvas_.draw_text_centered(kCanvasW / 2, kContentTop + kTabBand + 80, tbuf,
                                Canvas::TextRole::HugeClock, Gray::G0);
-    // Clock face is fully local once the RTC has been set (SNTP). No Cloud needed.
+    // Local once synced (SNTP / RTC / NVS restore). Clear copy when unsynced or approximate.
     if (!clock_.time_valid()) {
       canvas_.draw_text_wrapped(
           kSideMargin, kFooterY - 4, kContentW, kWrapGap,
           wifi_.connected() ? "Syncing time…" : "Connect to Wi‑Fi once to set the time.",
           Canvas::TextRole::Secondary, Gray::G1);
+    } else if (clock_.time_needs_network_sync()) {
+      canvas_.draw_text_wrapped(
+          kSideMargin, kFooterY - 4, kContentW, kWrapGap,
+          wifi_.connected() ? "Syncing time…"
+                            : "Time may be off after power-off — connect Wi‑Fi to sync.",
+          Canvas::TextRole::Secondary, Gray::G1);
+      if (wd >= 0 && wd < 7) {
+        static const char* kWd[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
+                                    "Thursday", "Friday", "Saturday"};
+        char datebuf[48];
+        std::snprintf(datebuf, sizeof(datebuf), "%s · %d/%d", kWd[wd], mo + 1, d);
+        canvas_.draw_text_centered(
+            kCanvasW / 2,
+            kContentTop + kTabBand + 80 + canvas_.text_height(Canvas::TextRole::HugeClock) + 16,
+            datebuf, Canvas::TextRole::Secondary, Gray::G1);
+      }
     } else if (wd >= 0 && wd < 7) {
       static const char* kWd[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
                                   "Thursday", "Friday", "Saturday"};

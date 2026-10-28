@@ -542,12 +542,10 @@ void App::launch_home_app(HomeApp launch) {
 void App::apply_cloud_offline_grace() {
   if (!cfg_.cloud_entitled) return;
   if (cfg_.cloud_last_ok_unix == 0) return;
-  uint32_t now_unix = 0;
-  if (clock_.time_valid()) {
-    now_unix = static_cast<uint32_t>(std::time(nullptr));
-  } else {
-    now_unix = static_cast<uint32_t>(now_ms_ / 1000u);
-  }
+  // Only expire on a trusted wall clock — Approximate restore after power-loss can
+  // lag by the offline interval and would falsely burn the 72h grace.
+  if (!clock_.time_trusted()) return;
+  const uint32_t now_unix = static_cast<uint32_t>(std::time(nullptr));
   if (now_unix < cfg_.cloud_last_ok_unix) return;  // clock skew / boot stamp
   if (now_unix - cfg_.cloud_last_ok_unix > kCloudOfflineGraceSec) {
     // Past grace — keep last status string but clear entitlement for outgoing Cloud use.
@@ -602,8 +600,8 @@ void App::maybe_cloud_attest() {
   if (entitled >= 0) cfg_.cloud_entitled = entitled == 1;
   const std::string st = json_str(body, "status");
   if (!st.empty()) cfg_.cloud_status = st;
-  // Successful attest → refresh offline grace clock (unix when RTC valid).
-  if (clock_.time_valid()) {
+  // Successful attest → refresh offline grace clock (unix when wall clock trusted).
+  if (clock_.time_trusted()) {
     cfg_.cloud_last_ok_unix = static_cast<uint32_t>(std::time(nullptr));
   } else {
     cfg_.cloud_last_ok_unix = static_cast<uint32_t>(now_ms_ / 1000u);

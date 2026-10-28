@@ -19,8 +19,12 @@ struct PlatformClock {
   virtual ~PlatformClock() = default;
   virtual uint32_t now_ms() = 0;
   virtual void local_hm(int& hour, int& minute, int& weekday, int& month, int& day) = 0;
-  /** True once wall clock is valid (e.g. after SNTP). */
+  /** True when a wall time can be shown (trusted or approximate offline restore). */
   virtual bool time_valid() const { return true; }
+  /** True when time is network/RTC-trusted — not an Approximate post-power-loss restore. */
+  virtual bool time_trusted() const { return time_valid(); }
+  /** Hint UX to ask for Wi‑Fi sync (unsynced or approximate). */
+  virtual bool time_needs_network_sync() const { return false; }
   /** Battery 0–100 from PMIC; USB-only boards may report 100. */
   virtual int battery_percent() { return 100; }
 };

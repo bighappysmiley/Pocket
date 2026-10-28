@@ -22,16 +22,37 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "nvs.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_mac.h"
 #include "esp_system.h"
 #include "esp_sntp.h"
+#include "esp_timer.h"
+#include "esp_attr.h"
+#include "driver/i2c_master.h"
+#include <ctime>
+#include "pocket/wall_clock.hpp"
+#include "pocket_board/i2c_bus.hpp"
+
+#include <sys/time.h>
+#include <cstdlib>
+#include <vector>
+
+/** Survives deep sleep + soft reset; cleared on full power-loss. */
+struct RtcWallAnchor {
+  uint32_t magic;
+  int64_t unix_sec;
+  uint64_t mono_us;  // esp_timer_get_time at capture — only valid same boot
+  uint64_t deep_us;  // esp_clk_rtc-style counter via gettimeofday boot offset
+};
+RTC_NOINIT_ATTR static RtcWallAnchor s_rtc_wall;
+constexpr uint32_t kRtcWallMagic = 0x504B5257u;  // 'PKRW'
 
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v90-speed";
+static const char* kBuildId = "POCKET-LIVE-v91-clock";
 
 namespace {
 
@@ -68,11 +89,211 @@ void apply_timezone(const std::string& tz_id) {
   tzset();
 }
 
+bool system_time_year_ok(time_t now) {
+  struct tm t {};
+  gmtime_r(&now, &t);
+  return (t.tm_year + 1900) >= 2024;
+}
+
+void set_system_unix(int64_t unix_sec) {
+  struct timeval tv {};
+  tv.tv_sec = static_cast<time_t>(unix_sec);
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+}
+
+/** Optional external RTC (PCF8563 / BM8563 @ 0x51) — Waveshare 3.97 has none. */
+bool hw_rtc_read_unix(int64_t* out_unix) {
+  if (!out_unix) return false;
+  i2c_master_bus_handle_t bus = pocket::board::i2c_bus();
+  if (!bus) return false;
+  i2c_device_config_t dev_cfg = {};
+  dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  dev_cfg.device_address = 0x51;
+  dev_cfg.scl_speed_hz = 100000;
+  i2c_master_dev_handle_t dev = nullptr;
+  if (i2c_master_bus_add_device(bus, &dev_cfg, &dev) != ESP_OK) return false;
+  uint8_t reg = 0x02;
+  uint8_t raw[7] = {};
+  const esp_err_t err =
+      i2c_master_transmit_receive(dev, &reg, 1, raw, sizeof(raw), 50);
+  i2c_master_bus_rm_device(dev);
+  if (err != ESP_OK) return false;
+  auto bcd = [](uint8_t v) { return static_cast<int>(((v >> 4) & 0x0f) * 10 + (v & 0x0f)); };
+  struct tm t {};
+  t.tm_sec = bcd(raw[0] & 0x7f);
+  t.tm_min = bcd(raw[1] & 0x7f);
+  t.tm_hour = bcd(raw[2] & 0x3f);
+  t.tm_mday = bcd(raw[3] & 0x3f);
+  t.tm_wday = bcd(raw[4] & 0x07);
+  t.tm_mon = bcd(raw[5] & 0x1f) - 1;
+  t.tm_year = bcd(raw[6]) + 100;  // 2000+
+  t.tm_isdst = -1;
+  const time_t u = mktime(&t);
+  if (u < 0 || !system_time_year_ok(u)) return false;
+  *out_unix = static_cast<int64_t>(u);
+  return true;
+}
+
+constexpr const char* kWallNvsNs = "pocket";
+constexpr const char* kWallNvsKey = "wallclk";
+
+bool nvs_load_wall(std::vector<uint8_t>& out) {
+  nvs_handle_t h = 0;
+  if (nvs_open(kWallNvsNs, NVS_READONLY, &h) != ESP_OK) return false;
+  size_t len = 0;
+  esp_err_t err = nvs_get_blob(h, kWallNvsKey, nullptr, &len);
+  if (err != ESP_OK || len == 0 || len > 64) {
+    nvs_close(h);
+    return false;
+  }
+  out.resize(len);
+  err = nvs_get_blob(h, kWallNvsKey, out.data(), &len);
+  nvs_close(h);
+  if (err != ESP_OK) {
+    out.clear();
+    return false;
+  }
+  out.resize(len);
+  return true;
+}
+
+bool nvs_save_wall(const std::vector<uint8_t>& blob) {
+  if (blob.empty() || blob.size() > 64) return false;
+  nvs_handle_t h = 0;
+  if (nvs_open(kWallNvsNs, NVS_READWRITE, &h) != ESP_OK) return false;
+  esp_err_t err = nvs_set_blob(h, kWallNvsKey, blob.data(), blob.size());
+  if (err == ESP_OK) err = nvs_commit(h);
+  nvs_close(h);
+  return err == ESP_OK;
+}
+
 struct EspClock : pocket::PlatformClock {
+  pocket::OfflineWallClock wall;
+  uint32_t last_persist_ms_ = 0;
+  esp_reset_reason_t reset_reason_ = ESP_RST_UNKNOWN;
+
+  uint64_t mono_ms64() const {
+    return static_cast<uint64_t>(esp_timer_get_time() / 1000LL);
+  }
+  /** Boot-local timebase stored in NVS snapshots (esp_timer µs). */
+  uint64_t rtc_us64() const {
+    return static_cast<uint64_t>(esp_timer_get_time());
+  }
+
+  void stamp_rtc_fast() {
+    if (!wall.valid()) {
+      s_rtc_wall.magic = 0;
+      return;
+    }
+    s_rtc_wall.magic = kRtcWallMagic;
+    s_rtc_wall.unix_sec = wall.now_unix(mono_ms64());
+    s_rtc_wall.mono_us = static_cast<uint64_t>(esp_timer_get_time());
+    s_rtc_wall.deep_us = s_rtc_wall.mono_us;  // placeholder; continuity via magic + reset reason
+  }
+
+  void apply_wall_to_system() {
+    if (!wall.valid()) return;
+    set_system_unix(wall.now_unix(mono_ms64()));
+  }
+
+  void persist_now() {
+    wall.capture(mono_ms64(), rtc_us64());
+    stamp_rtc_fast();
+    std::vector<uint8_t> blob;
+    if (!wall.pack(blob)) return;
+    if (nvs_save_wall(blob)) {
+      ESP_LOGI(TAG, "wall clock persisted quality=%d unix=%lld",
+               static_cast<int>(wall.quality()),
+               static_cast<long long>(wall.anchor_unix()));
+    }
+  }
+
+  void boot_restore() {
+    reset_reason_ = esp_reset_reason();
+    // Prefer hardware RTC when present (PCF8563/BM8563); Waveshare 3.97 has none.
+    int64_t hw = 0;
+    if (hw_rtc_read_unix(&hw)) {
+      wall.sync_trusted(hw, mono_ms64(), rtc_us64());
+      apply_wall_to_system();
+      persist_now();
+      ESP_LOGI(TAG, "wall clock from hardware RTC unix=%lld", static_cast<long long>(hw));
+      return;
+    }
+    // System time still valid after deep sleep (IDF keeps RTC calendar).
+    const time_t sys = time(nullptr);
+    if (system_time_year_ok(sys)) {
+      wall.sync_trusted(static_cast<int64_t>(sys), mono_ms64(), rtc_us64());
+      persist_now();
+      ESP_LOGI(TAG, "wall clock from system RTC unix=%lld", static_cast<long long>(sys));
+      return;
+    }
+    // RTC_NOINIT survived a soft reset (not deep sleep / power-on) — trusted resume.
+    // Deep sleep relies on system calendar time above; power-on falls through to NVS.
+    const bool soft_reset =
+        reset_reason_ == ESP_RST_SW || reset_reason_ == ESP_RST_PANIC ||
+        reset_reason_ == ESP_RST_INT_WDT || reset_reason_ == ESP_RST_TASK_WDT ||
+        reset_reason_ == ESP_RST_WDT;
+    if (soft_reset && s_rtc_wall.magic == kRtcWallMagic &&
+        system_time_year_ok(static_cast<time_t>(s_rtc_wall.unix_sec))) {
+      wall.sync_trusted(s_rtc_wall.unix_sec, mono_ms64(), rtc_us64());
+      apply_wall_to_system();
+      persist_now();
+      ESP_LOGI(TAG, "wall clock from RTC_NOINIT unix=%lld",
+               static_cast<long long>(s_rtc_wall.unix_sec));
+      return;
+    }
+    if (reset_reason_ == ESP_RST_POWERON || reset_reason_ == ESP_RST_BROWNOUT) {
+      s_rtc_wall.magic = 0;
+    }
+    std::vector<uint8_t> blob;
+    if (!nvs_load_wall(blob)) {
+      ESP_LOGI(TAG, "wall clock unsynced (no NVS snapshot)");
+      return;
+    }
+    // Full power-loss: RTC timebases reset — Approximate from last NVS wall.
+    if (!wall.restore(blob.data(), blob.size(), mono_ms64(), rtc_us64(),
+                      /*rtc_continuous=*/false)) {
+      ESP_LOGW(TAG, "wall clock NVS snapshot rejected");
+      return;
+    }
+    apply_wall_to_system();
+    stamp_rtc_fast();
+    ESP_LOGI(TAG, "wall clock restored Approximate unix=%lld",
+             static_cast<long long>(wall.now_unix(mono_ms64())));
+  }
+
+  /** Pull SNTP / system time into the offline wall clock when it looks valid. */
+  void maybe_ingest_system_time() {
+    const time_t sys = time(nullptr);
+    if (!system_time_year_ok(sys)) return;
+    const int64_t sys_i = static_cast<int64_t>(sys);
+    if (!wall.trusted()) {
+      wall.sync_trusted(sys_i, mono_ms64(), rtc_us64());
+      persist_now();
+      return;
+    }
+    const int64_t w = wall.now_unix(mono_ms64());
+    const int64_t delta = sys_i > w ? sys_i - w : w - sys_i;
+    if (delta > 2) {
+      wall.sync_trusted(sys_i, mono_ms64(), rtc_us64());
+      persist_now();
+    }
+  }
+
+  void tick_persist(uint32_t now_ms) {
+    maybe_ingest_system_time();
+    if (!wall.valid()) return;
+    if (last_persist_ms_ != 0 && (now_ms - last_persist_ms_) < 60'000u) return;
+    last_persist_ms_ = now_ms;
+    persist_now();
+  }
+
   uint32_t now_ms() override {
-    return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    return static_cast<uint32_t>(esp_timer_get_time() / 1000LL);
   }
   void local_hm(int& hour, int& minute, int& weekday, int& month, int& day) override {
+    maybe_ingest_system_time();
     const time_t now = time(nullptr);
     struct tm t {};
     localtime_r(&now, &t);
@@ -82,14 +303,17 @@ struct EspClock : pocket::PlatformClock {
     month = t.tm_mon;
     day = t.tm_mday;
   }
-  bool time_valid() const override {
-    const time_t now = time(nullptr);
-    struct tm t {};
-    gmtime_r(&now, &t);
-    return (t.tm_year + 1900) >= 2024;
-  }
+  bool time_valid() const override { return wall.valid(); }
+  bool time_trusted() const override { return wall.trusted(); }
+  bool time_needs_network_sync() const override { return wall.needs_network_sync(); }
   int battery_percent() override { return pocket::board::axp_battery_percent(); }
 };
+
+EspClock* g_esp_clock = nullptr;
+
+void sntp_sync_notification(struct timeval* /*tv*/) {
+  if (g_esp_clock) g_esp_clock->maybe_ingest_system_time();
+}
 
 void sntp_start_once() {
   static bool started = false;
@@ -99,6 +323,7 @@ void sntp_start_once() {
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_setservername(1, "time.cloudflare.com");
     esp_sntp_setservername(2, "time.google.com");
+    esp_sntp_set_time_sync_notification_cb(sntp_sync_notification);
     esp_sntp_init();
     ESP_LOGI(TAG, "SNTP started");
   } else {
@@ -343,6 +568,8 @@ extern "C" void app_main(void) {
   // Durable config: NVS always; SD mirror at /sdcard/pocket/config.bin when usable.
   static EspPersistentConfigStore store;
   static EspClock clock;
+  g_esp_clock = &clock;
+  clock.boot_restore();
   static EspWifi wifi;
   static EspCloud cloud;
   static EspOta ota;
@@ -402,6 +629,7 @@ extern "C" void app_main(void) {
       app.flush_dirty();
       app.tick(now);
     }
+    clock.tick_persist(now);
     // 5 ms — snappier input without busy-spinning the core (was 10 ms after v67).
     vTaskDelay(pdMS_TO_TICKS(5));
   }
