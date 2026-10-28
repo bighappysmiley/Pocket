@@ -1152,85 +1152,76 @@ void App::draw_lock_motif() {
       break;
     }
     case 3: {
-      // "Constellation" — clear ladle figure + supporting field (dense, intentional).
+      // "Constellation" — quieter field, thinner ladle bands (v87 RC).
       struct Pt { int x, y; };
-      // Background field — small diamonds, not random noise.
       const Pt field[] = {
-          {cx - 160, kTop + 90},  {cx + 170, kTop + 80},  {cx - 40, kTop + 40},
-          {cx + 40, kTop + 420},  {cx - 150, kTop + 360}, {cx + 160, kTop + 300},
-          {cx + 20, kTop + 160},  {cx - 90, kTop + 200},
+          {cx - 150, kTop + 96},  {cx + 160, kTop + 88},  {cx - 28, kTop + 48},
+          {cx + 36, kTop + 400},  {cx - 140, kTop + 350}, {cx + 148, kTop + 290},
       };
-      for (const auto& p : field) fill_diamond(p.x, p.y, 5, Gray::G1);
-      // Main figure: calm ladle / dipper.
+      for (const auto& p : field) fill_diamond(p.x, p.y, 4, Gray::G2);
       const Pt pts[] = {
-          {cx - 130, kTop + 140}, {cx - 40, kTop + 110}, {cx + 50, kTop + 130},
-          {cx + 120, kTop + 180}, {cx + 90, kTop + 260}, {cx + 10, kTop + 290},
-          {cx - 70, kTop + 270},
+          {cx - 120, kTop + 150}, {cx - 36, kTop + 118}, {cx + 46, kTop + 136},
+          {cx + 112, kTop + 186}, {cx + 84, kTop + 258}, {cx + 8, kTop + 286},
+          {cx - 64, kTop + 266},
       };
       constexpr int kEdges[][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 6}, {6, 3}};
       for (const auto& e : kEdges) {
-        thick_band(pts[e[0]].x, pts[e[0]].y, pts[e[1]].x, pts[e[1]].y, 5, Gray::G1);
+        thick_band(pts[e[0]].x, pts[e[0]].y, pts[e[1]].x, pts[e[1]].y, 4, Gray::G1);
       }
       for (size_t i = 0; i < sizeof(pts) / sizeof(pts[0]); ++i) {
-        const int r = (i == 3) ? 14 : 10;
+        const int r = (i == 3) ? 12 : 8;
         fill_diamond(pts[i].x, pts[i].y, r, Gray::G0);
       }
       break;
     }
     case 4: {
-      // "Harbor dusk" — dense skyline silhouette, moon, mirrored water.
+      // "Harbor dusk" — fewer buildings, calmer windows, quieter water (v87 RC).
       const int base_y = kBot - 70;
-      fill_ring(cx - 140, kTop + 70, 36, 30, Gray::G2);
-      fill_disc(cx - 140, kTop + 70, 26, Gray::G0);
-      // Water body.
+      fill_ring(cx - 140, kTop + 70, 32, 26, Gray::G2);
+      fill_disc(cx - 140, kTop + 70, 22, Gray::G0);
       canvas_.fill_rect(0, base_y, kCanvasW, kBot - base_y + 20, Gray::G1);
-      canvas_.fill_rect(24, base_y, kCanvasW - 48, 10, Gray::G0);
+      canvas_.fill_rect(32, base_y, kCanvasW - 64, 8, Gray::G0);
       struct Bldg { int x, w, h; Gray g; };
       const Bldg blds[] = {
-          {40, 44, 180, Gray::G1},  {90, 28, 120, Gray::G2},  {124, 50, 240, Gray::G1},
-          {180, 34, 160, Gray::G2}, {220, 58, 280, Gray::G0}, {286, 30, 140, Gray::G1},
-          {322, 46, 210, Gray::G1}, {374, 28, 130, Gray::G2}, {408, 52, 190, Gray::G1},
-          {466, 26, 110, Gray::G2},
+          {48, 40, 170, Gray::G1},  {100, 26, 110, Gray::G2}, {134, 46, 220, Gray::G1},
+          {190, 32, 150, Gray::G2}, {230, 54, 260, Gray::G0}, {294, 28, 130, Gray::G1},
+          {330, 42, 190, Gray::G1}, {380, 26, 120, Gray::G2}, {414, 48, 170, Gray::G1},
       };
       for (const auto& b : blds) {
         const int y0 = base_y - b.h;
         canvas_.fill_rect(b.x, y0, b.w, b.h, b.g);
-        // Lit windows as small G2 insets (paper, not punched holes).
-        for (int wy = y0 + 20; wy < base_y - 20; wy += 36) {
-          for (int wx = b.x + 8; wx + 8 < b.x + b.w - 4; wx += 16) {
-            canvas_.fill_rect(wx, wy, 6, 8, Gray::G2);
+        for (int wy = y0 + 24; wy < base_y - 24; wy += 40) {
+          for (int wx = b.x + 10; wx + 6 < b.x + b.w - 6; wx += 18) {
+            canvas_.fill_rect(wx, wy, 5, 7, Gray::G2);
           }
         }
       }
-      // Spire accent on the tallest block.
-      canvas_.fill_rect(220 + 24, base_y - 310, 10, 30, Gray::G0);
-      // Reflections — short bars under a few buildings.
-      for (int i = 0; i < 5; ++i) {
-        const int bx = 90 + i * 70;
-        canvas_.fill_round_rect(bx, base_y + 22 + (i % 2) * 10, 36 - i * 2, 5, 2, Gray::G0);
+      canvas_.fill_rect(230 + 22, base_y - 288, 8, 28, Gray::G0);
+      for (int i = 0; i < 4; ++i) {
+        const int bx = 100 + i * 78;
+        canvas_.fill_round_rect(bx, base_y + 24 + (i % 2) * 8, 32 - i * 2, 4, 2, Gray::G0);
       }
       break;
     }
     default: {
-      // "Aperture" — nested frames with even frame weight; iris settling on a point.
-      constexpr int kSteps = 4;
-      const int max_size = kBot - kTop - 40;
-      const int cy = kTop + 20 + max_size / 2;
+      // "Aperture" — three nested frames, even weight, quieter iris (v87 RC).
+      constexpr int kSteps = 3;
+      const int max_size = kBot - kTop - 48;
+      const int cy = kTop + 24 + max_size / 2;
       for (int i = 0; i < kSteps; ++i) {
-        const int size = max_size - i * 90;
-        if (size <= 56) break;
+        const int size = max_size - i * 110;
+        if (size <= 64) break;
         const int x = cx - size / 2;
         const int y = cy - size / 2;
         const Gray g = (i % 2 == 0) ? Gray::G1 : Gray::G2;
-        const int rad = 24 - i * 2;
+        const int rad = 22 - i * 2;
         canvas_.fill_round_rect(x, y, size, size, rad, g);
-        const int inset = 16;
+        const int inset = 18;
         canvas_.fill_round_rect(x + inset, y + inset, size - 2 * inset, size - 2 * inset,
                                 std::max(8, rad - 6), Gray::G3);
       }
-      // Soft outer ring + solid pupil.
-      fill_ring(cx, cy, 48, 36, Gray::G1);
-      fill_disc(cx, cy, 20, Gray::G0);
+      fill_ring(cx, cy, 44, 34, Gray::G1);
+      fill_disc(cx, cy, 18, Gray::G0);
       break;
     }
   }

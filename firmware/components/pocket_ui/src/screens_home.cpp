@@ -208,7 +208,8 @@ void App::render_home() {
   // Product brand — no version number on Home. Wordmark stays the bitmap font.
   canvas_.draw_text(kSideMargin, kContentTop, kProductName, Canvas::TextRole::WordMark, Gray::G0);
   const int brand_rule_y = kContentTop + canvas_.text_height(Canvas::TextRole::WordMark) + 8;
-  canvas_.hline(kSideMargin, brand_rule_y, 112, Gray::G1);
+  // Short G1 rule under the mark — matches status-bar hairline weight (v87 RC).
+  canvas_.hline(kSideMargin, brand_rule_y, 96, Gray::G1);
 
   HomeApp focusable[kHomeGridSlots];
   const int n_focus = count_home_focusable(cfg_, focusable, kHomeGridSlots);
