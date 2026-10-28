@@ -208,6 +208,25 @@ bool App::is_pin_entry_screen() const {
   return s == ScreenId::Pin || s == ScreenId::OnboardingPinSet || s == ScreenId::OnboardingPinConfirm;
 }
 
+void App::apply_coalesced_rotary(int delta) {
+  if (delta == 0) return;
+  if (is_pin_entry_screen()) {
+    apply_pin_digit_delta(delta);
+    return;
+  }
+  if (is_home_screen()) {
+    apply_home_focus_delta(delta);
+    return;
+  }
+  // In-page lists/settings/clock: replay steps without intermediate presents so a
+  // bounce/detent burst updates once (one press → one correct region).
+  defer_handle_present_ = true;
+  const InputEvent step = delta > 0 ? InputEvent::Down : InputEvent::Up;
+  const int n = delta > 0 ? delta : -delta;
+  for (int i = 0; i < n; ++i) handle(step);
+  defer_handle_present_ = false;
+}
+
 void App::apply_pin_digit_delta(int delta) {
   if (!is_pin_entry_screen()) return;
   if (now_ms_ < pin_lockout_until_ms_) return;
@@ -427,6 +446,7 @@ bool App::mint_pair_session() {
 
 void App::after_nav(bool full_refresh) {
   focus_.index = 0;
+  list_focus_spin_count_ = 0;
   // Fresh screen: clear PIN spin latch so a prior slot's digit can't leak in.
   pin_digit_working_ = '0';
   pin_spun_since_focus_ = false;
@@ -456,6 +476,7 @@ void App::go_home() {
   }
   nav_.reset(ScreenId::Home);
   home_focus_spin_count_ = 0;
+  list_focus_spin_count_ = 0;
   after_nav();
 }
 
@@ -910,7 +931,7 @@ void App::handle(InputEvent e) {
       handle_settings(e);
       break;
   }
-  if (dirty_) {
+  if (dirty_ && !defer_handle_present_) {
     // Preserve dirty_kind_ (Region / StatusBar) — do not force FullCanvas.
     present_canvas(false);
     dirty_ = false;

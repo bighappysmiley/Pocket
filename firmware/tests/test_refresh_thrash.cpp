@@ -58,11 +58,18 @@ struct TDisp : PlatformDisplay {
   void present_region(const Canvas&, int, int, int, int) override { ++region; }
 };
 
-/** Mirrors the app_main input loop: poll every queued mapper event into the app. */
+/** Mirrors the app_main input loop: coalesce Up/Down, one present per burst. */
 static void drain(InputMapper& mapper, App& app) {
   for (;;) {
     const InputEvent e = mapper.poll();
     if (e == InputEvent::None) break;
+    if (e == InputEvent::Up || e == InputEvent::Down) {
+      int delta = (e == InputEvent::Down) ? 1 : -1;
+      delta += mapper.drain_up_down_net();
+      app.apply_coalesced_rotary(delta);
+      app.flush_dirty();
+      continue;
+    }
     app.handle(e);
   }
 }
@@ -121,6 +128,53 @@ int main() {
   const int full_after_trip = disp.full_or_fast;
   drain(mapper, app);
   CHECK(disp.full_or_fast == full_after_trip);  // no extra full — counter reset, back to partial
+
+  // --- Notes list: coalesced rotary burst → exactly one region present ---
+  // Fresh app so Home focus is Notes (index 0); prior Up thrash moved focus away.
+  {
+    MemoryConfigStore store2;
+    store2.mut().onboarding_complete = true;
+    store2.mut().pin_length = 4;
+    set_pin(store2.mut(), "0000");
+    store2.mut().device_id = "00000000-0000-4000-8000-000000000098";
+    TClock clock2;
+    TWifi wifi2;
+    TCloud cloud2;
+    TDisp disp2;
+    App notes_app(store2, clock2, wifi2, cloud2, disp2);
+    notes_app.boot();
+    notes_app.handle(InputEvent::Select);  // Lock → Pin
+    for (int i = 0; i < 4; ++i) notes_app.handle(InputEvent::Select);
+    CHECK(notes_app.screen() == ScreenId::Home);
+    notes_app.handle(InputEvent::Select);  // Notes
+    CHECK(notes_app.screen() == ScreenId::NotesList);
+    // Seed a few notes so list↔list focus uses region dirty (not FAB content band).
+    for (int i = 0; i < 3; ++i) {
+      notes_app.handle(InputEvent::Select);  // New note → detail
+      CHECK(notes_app.screen() == ScreenId::NotesDetail);
+      notes_app.handle(InputEvent::Back);
+      CHECK(notes_app.screen() == ScreenId::NotesList);
+    }
+    const int notes_region_before = disp2.region;
+    const int notes_full_before = disp2.full_or_fast;
+    InputMapper mapper2;
+    uint32_t t2 = 50000;
+    mapper2.on_button_down(true, t2);
+    mapper2.on_button_down(true, t2 + 200);
+    mapper2.on_button_down(true, t2 + 400);
+    drain(mapper2, notes_app);
+    CHECK(disp2.region == notes_region_before + 1);
+    CHECK(disp2.full_or_fast == notes_full_before);
+    CHECK(notes_app.screen() == ScreenId::NotesList);
+
+    // Further rotary still partial-only (no full-panel LUT yank).
+    const int wrap_region = disp2.region;
+    const int wrap_full = disp2.full_or_fast;
+    notes_app.apply_coalesced_rotary(1);
+    notes_app.flush_dirty();
+    CHECK(disp2.region == wrap_region + 1);
+    CHECK(disp2.full_or_fast == wrap_full);
+  }
 
   if (failures) {
     std::printf("%d failures\n", failures);

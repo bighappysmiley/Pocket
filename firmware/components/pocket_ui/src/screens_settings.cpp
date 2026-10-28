@@ -45,6 +45,23 @@ int App::settings_focus_list_top() const {
 }
 
 void App::mark_list_focus_dirty(int list_top, int prev, int next) {
+  ++list_focus_spin_count_;
+  const int n = focus_.count;
+  // End-wrap spans the whole list — content band avoids a tall ghosting rect.
+  if (n > 1 && ((prev == 0 && next == n - 1) || (prev == n - 1 && next == 0))) {
+    mark_content_dirty();
+    return;
+  }
+  // Periodic content-band clears residual focus ghosts without slowing LUTs.
+  if (list_focus_spin_count_ % 4 == 0) {
+    mark_content_dirty();
+    return;
+  }
+  // Coalesced jump across many rows → content band (same as Home diagonal wrap).
+  if (std::abs(prev - next) > 2) {
+    mark_content_dirty();
+    return;
+  }
   const int i0 = std::min(prev, next);
   const int i1 = std::max(prev, next);
   const int y = std::max(0, row_y(list_top, i0) - 4);

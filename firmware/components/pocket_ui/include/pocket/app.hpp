@@ -287,6 +287,11 @@ class App {
   void apply_pin_digit_delta(int delta);
   /** Apply a net rotary delta to Home focus and dirty once (region of changed tiles). */
   void apply_home_focus_delta(int delta);
+  /**
+   * Apply a net Up/Down rotary burst once: PIN digit, Home tiles, or in-page focus.
+   * Defers present so one physical burst → one refresh (caller should flush_dirty).
+   */
+  void apply_coalesced_rotary(int delta);
   /** Present the canvas if a dirty mark is pending (used after coalesced PIN/Home spins). */
   void flush_dirty();
 
@@ -477,6 +482,10 @@ class App {
   int pin_spin_count_ = 0;
   /** Counts Home focus moves — every few moves use content-band to clear tile ghosts. */
   int home_focus_spin_count_ = 0;
+  /** Counts in-page list focus moves — same ghost cadence as Home. */
+  int list_focus_spin_count_ = 0;
+  /** When true, handle() marks dirty but does not present (coalesced rotary). */
+  bool defer_handle_present_ = false;
   int pin_fail_count_ = 0;
   uint32_t pin_lockout_until_ms_ = 0;
   uint32_t error_until_ms_ = 0;

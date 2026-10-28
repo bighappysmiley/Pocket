@@ -31,7 +31,7 @@
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v82-pin";
+static const char* kBuildId = "POCKET-LIVE-v83-nav";
 
 namespace {
 
@@ -384,16 +384,11 @@ extern "C" void app_main(void) {
       if (e == pocket::InputEvent::None) break;
       if (!g_boot.ui_ready) continue;
       // Drain already-queued Up/Down from this poll (bounce / extra detents), then
-      // present immediately — do not wait for more clicks to "coalesce".
-      if ((app.is_pin_entry_screen() || app.is_home_screen()) &&
-          (e == pocket::InputEvent::Up || e == pocket::InputEvent::Down)) {
+      // present once — Home, PIN, and in-page lists all coalesce.
+      if (e == pocket::InputEvent::Up || e == pocket::InputEvent::Down) {
         int delta = (e == pocket::InputEvent::Down) ? 1 : -1;
         delta += mapper.drain_up_down_net();
-        if (app.is_pin_entry_screen()) {
-          app.apply_pin_digit_delta(delta);
-        } else {
-          app.apply_home_focus_delta(delta);
-        }
+        app.apply_coalesced_rotary(delta);
         app.flush_dirty();
         continue;
       }
