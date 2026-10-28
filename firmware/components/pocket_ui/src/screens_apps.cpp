@@ -560,9 +560,12 @@ void App::render_notes() {
     if (data_.notes.empty()) {
       canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No notes yet", Canvas::TextRole::Body,
                                  Gray::G0);
-      canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                                "Select New note — notes stay on device offline. Dictation needs Wi‑Fi.",
-                                Canvas::TextRole::Secondary, Gray::G1);
+      canvas_.draw_text_wrapped(
+          kSideMargin, kEmptyHintY, kContentW, kWrapGap,
+          wifi_.connected()
+              ? "Select New note — stays on device. Hold Select in a note to dictate."
+              : "Select New note — works offline. Dictation needs Wi‑Fi.",
+          Canvas::TextRole::Secondary, Gray::G1);
     } else {
       focus_.count = static_cast<int>(data_.notes.size()) + 1;
       const int list_top = kContentTop + kTabBand;
@@ -620,9 +623,11 @@ void App::render_notes() {
     if (data_.lists.empty()) {
       canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No lists yet", Canvas::TextRole::Body,
                                  Gray::G0);
-      canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                                "Select New list — works offline.", Canvas::TextRole::Secondary,
-                                Gray::G1);
+      canvas_.draw_text_wrapped(
+          kSideMargin, kEmptyHintY, kContentW, kWrapGap,
+          wifi_.connected() ? "Select New list — stays on device and syncs with Cloud when linked."
+                            : "Select New list — works offline. Cloud sync needs Wi‑Fi.",
+          Canvas::TextRole::Secondary, Gray::G1);
     }
     focus_.count = static_cast<int>(data_.lists.size()) + 1;
     const int list_top = kContentTop + kTabBand;
@@ -896,9 +901,10 @@ void App::render_ledger() {
   canvas_.draw_text(kSideMargin, kContentTop, "Ledger", Canvas::TextRole::ScreenTitle, Gray::G0);
   canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop), kContentW, kWrapGap,
                             "Ledger is on the way", Canvas::TextRole::Body, Gray::G0);
-  canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop) + kBodyLinePitch, kContentW, kWrapGap,
-                            "IOU tracking arrives in a free update.", Canvas::TextRole::Secondary,
-                            Gray::G1);
+  canvas_.draw_text_wrapped(
+      kSideMargin, below_title(kContentTop) + kBodyLinePitch, kContentW, kWrapGap,
+      "IOU tracking arrives in a free update. Notes, Lists, and Clock already work offline.",
+      Canvas::TextRole::Secondary, Gray::G1);
   canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Back", Canvas::TextRole::Body);
 }
 
@@ -1011,9 +1017,12 @@ void App::render_pass() {
   if (data_.passes.empty()) {
     canvas_.draw_text_centered(kCanvasW / 2, kEmptyCenterY, "No passes yet", Canvas::TextRole::Body,
                                Gray::G0);
-    canvas_.draw_text_wrapped(kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-                              "Add passes in Companion on your phone. They sync when Pocket is online.",
-                              Canvas::TextRole::Secondary, Gray::G1);
+    canvas_.draw_text_wrapped(
+        kSideMargin, kEmptyHintY, kContentW, kWrapGap,
+        wifi_.connected()
+            ? "Add passes in Companion on your phone — they sync while Pocket is online."
+            : "Offline — saved passes still open here. Add new ones in Companion when online.",
+        Canvas::TextRole::Secondary, Gray::G1);
   } else {
     focus_.count = static_cast<int>(data_.passes.size());
     const int list_top = below_title(kContentTop);
@@ -1065,9 +1074,11 @@ void App::render_weather() {
     canvas_.draw_text(kSideMargin, kContentTop, "Weather", Canvas::TextRole::ScreenTitle, Gray::G0);
     canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop), kContentW, kWrapGap,
                               "No city set", Canvas::TextRole::Body, Gray::G0);
-    canvas_.draw_text_wrapped(kSideMargin, below_title(kContentTop) + kBodyLinePitch, kContentW, kWrapGap,
-                              "Set your city in Companion, then try again.", Canvas::TextRole::Secondary,
-                              Gray::G1);
+    canvas_.draw_text_wrapped(
+        kSideMargin, below_title(kContentTop) + kBodyLinePitch, kContentW, kWrapGap,
+        wifi_.connected() ? "Set your city in Companion, then Select Try again."
+                          : "Offline — set your city in Companion when Pocket is online.",
+        Canvas::TextRole::Secondary, Gray::G1);
     focus_.count = 1;
     canvas_.draw_focus_tile(kSideMargin, kBottomCtaY, kFocusRowW, kFocusRowH, "Try again",
                             Canvas::TextRole::Body);

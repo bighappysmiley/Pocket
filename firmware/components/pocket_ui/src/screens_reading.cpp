@@ -335,11 +335,12 @@ void App::render_reading() {
   }
   {
     const int y = n == 0 ? kBottomCtaY - kRowPitch : list_top + std::min(n, 8) * kRowPitch;
+    const char* sync_label = wifi_.connected() ? "Sync from Companion" : "Sync (needs Wi‑Fi)";
     if (focus_.index == n)
-      canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, "Sync from Companion",
-                              Canvas::TextRole::Body);
+      canvas_.draw_focus_tile(kSideMargin, y, kFocusRowW, kFocusRowH, sync_label, Canvas::TextRole::Body);
     else
-      canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, "Sync from Companion", Canvas::TextRole::Body, Gray::G0);
+      canvas_.draw_text(kSideMargin + kRowLabelInset, y + kRowTextPad, sync_label, Canvas::TextRole::Body,
+                        Gray::G0);
     const int y2 = y + kRowPitch;
     if (focus_.index == n + 1)
       canvas_.draw_focus_tile(kSideMargin, y2, kFocusRowW, kFocusRowH, "Back", Canvas::TextRole::Body);
