@@ -1,7 +1,7 @@
 {
-  "name": "Pocket Cloud",
-  "short_name": "Pocket",
-  "description": "Sync Notes from your Pocket device.",
+  "name": "Pocket Companion",
+  "short_name": "Companion",
+  "description": "Phone Companion for Pocket — link your device, sync with Pocket Cloud, and manage notes, lists, music, and reading.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

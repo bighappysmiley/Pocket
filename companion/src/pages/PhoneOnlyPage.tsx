@@ -28,21 +28,31 @@ export function PhoneOnlyPage() {
   const from = params.get('from') || ''
   const url = companionPublicUrl()
   const phone = isPhoneCompanionClient()
+  const resume = Boolean(from && from.startsWith('/'))
+  const next = resume ? from : '/login?mode=signup'
 
   if (phone) {
-    const next = from && from.startsWith('/') ? from : '/login?mode=signup'
     return (
       <div className="page stack" style={{ maxWidth: '24rem', paddingTop: '3rem' }}>
         <WordMark to="/" />
         <h1>Download Companion</h1>
         <p className="muted">
-          Add Companion to your Home Screen, then sign in to link Pocket and sync with Pocket Cloud.
+          Companion is the phone app for Pocket — not a desktop website. Add it to your Home Screen,
+          then sign in to link your device and use Pocket Cloud.
         </p>
+        <ol className="panel stack-sm" style={{ listStyle: 'decimal', paddingLeft: '1.35rem', margin: 0 }}>
+          <li>Share → Add to Home Screen</li>
+          <li>Open Companion from your Home Screen</li>
+          <li>{resume ? 'Continue where you left off' : 'Create an account or sign in'}</li>
+        </ol>
         <Link className="btn btn-primary btn-block" to={next}>
-          Continue
+          {resume ? 'Continue' : 'Download Companion'}
         </Link>
         <Link className="btn btn-ghost btn-block" to="/login">
           Sign in
+        </Link>
+        <Link className="btn btn-ghost btn-block" to="/">
+          Back to Pocket
         </Link>
       </div>
     )
@@ -51,7 +61,7 @@ export function PhoneOnlyPage() {
   return (
     <div className="page stack" style={{ maxWidth: '26rem', paddingTop: '3rem' }}>
       <WordMark to="/" />
-      <h1>Companion is phone-only</h1>
+      <h1>Download Companion</h1>
       <p className="muted">
         Pocket Companion is a phone app — not a desktop website. Scan the QR code or open this page on
         your phone to download Companion.

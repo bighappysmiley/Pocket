@@ -75,13 +75,15 @@ export function LoginPage() {
         <h1>{mode === 'signup' ? 'Create your account' : 'Sign in to Pocket'}</h1>
         <p className="muted">
           {mode === 'signup'
-            ? 'Create a Pocket Cloud account with your email and a password (8+ characters).'
+            ? 'Create a Pocket Cloud account with your email and a password (8+ characters). Companion runs on your phone.'
             : 'Use the email and password for your Pocket Cloud account.'}
         </p>
         {!phone ? (
           <p className="muted">
-            Companion is phone-only. On a computer you can sign in for Cloud Admin; download Companion
-            on your phone for pairing and everyday use.
+            Companion is phone-only — not a desktop website. On a computer you can sign in for Cloud
+            Admin;{' '}
+            <Link to="/get-companion">download Companion</Link> on your phone for pairing and everyday
+            use.
           </p>
         ) : null}
       </div>
@@ -174,7 +176,10 @@ export function LoginPage() {
         </button>
       </form>
 
-      <p className="footer-note">Pocket Cloud syncs Notes from your Pocket device.</p>
+      <p className="footer-note">
+        Pocket Cloud syncs Notes, Lists, Music, and Reading from your Pocket — managed in Companion on
+        your phone.
+      </p>
       {returnTo.startsWith('/pair') || returnTo.startsWith('/link') ? (
         <p className="muted" style={{ textAlign: 'center', fontSize: '0.875rem' }}>
           After sign-in you&apos;ll continue linking your Pocket.{' '}

@@ -71,9 +71,9 @@ export function HomePage() {
       <div className="stack-sm">
         <h1 className="sr-only">Home</h1>
         {isEntitled ? (
-          <p className="muted">Synced with your Pocket</p>
+          <p className="muted">Companion · synced with your Pocket</p>
         ) : (
-          <p className="muted">Welcome</p>
+          <p className="muted">Companion · link Pocket, then subscribe for Cloud sync</p>
         )}
       </div>
 
