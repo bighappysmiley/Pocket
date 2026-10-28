@@ -848,8 +848,10 @@ void App::present_canvas(bool full) {
     display_.present_region(canvas_, 0, 0, kCanvasW, kCanvasH);
     refresh_.on_applied(RefreshMode::Partial);
   } else {
+    // ContentBand (Home/list focus): below status bar. Count as half a partial so
+    // ~16 focus spins don't surprise-trigger a slow 0xD7 mid-browse (v97).
     display_.present_region(canvas_, 0, kStatusBarH, kCanvasW, kCanvasH - kStatusBarH);
-    refresh_.on_applied(RefreshMode::Partial);
+    refresh_.on_applied_tiny(RefreshMode::Partial);
   }
   dirty_kind_ = DirtyKind::FullCanvas;
 }

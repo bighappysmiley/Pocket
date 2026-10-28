@@ -52,7 +52,7 @@ constexpr uint32_t kRtcWallMagic = 0x504B5257u;  // 'PKRW'
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v96-dictation-retry";
+static const char* kBuildId = "POCKET-LIVE-v97-ghost-budget";
 
 namespace {
 

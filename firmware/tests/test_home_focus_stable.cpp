@@ -87,8 +87,9 @@ int main() {
   CHECK(disp.last_ry == kStatusBarH);
   CHECK(disp.last_rh == kCanvasH - kStatusBarH);
 
-  // Nine more single steps — still one present each, never a full flash cascade.
-  for (int i = 0; i < 9; ++i) {
+  // Twenty more single steps — content-band half-credit toward ghosting must not
+  // force a Full (0xD7) mid-browse before ~32 focus moves (v97).
+  for (int i = 0; i < 20; ++i) {
     const int r = disp.region;
     const int f = disp.full_or_fast;
     app.apply_home_focus_delta(1);
