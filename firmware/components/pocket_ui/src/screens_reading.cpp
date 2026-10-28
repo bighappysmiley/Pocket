@@ -320,7 +320,7 @@ void App::render_reading() {
                                Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kEmptyHintY, kContentW, kWrapGap,
-        wifi_.connected() ? "Select Sync below to pull books from Companion on your phone."
+        wifi_.connected() ? "Select Sync below to pull books from Companion."
                           : "Offline — local books still open. Sync needs Wi‑Fi.",
         Canvas::TextRole::Secondary, Gray::G1);
   }
