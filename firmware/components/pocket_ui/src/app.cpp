@@ -349,9 +349,13 @@ bool App::connect_and_remember(const std::string& ssid, const std::string& passw
 
 void App::begin_add_wifi_network() {
   // SoftAP while optionally staying on current STA (APSTA) so user can add another network.
+  // SoftAP start + e-ink full enter can block for seconds — refresh activity so idle lock
+  // does not fire the moment the SoftAP credentials screen appears.
   std::string ap;
   std::string pass;
   if (!wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
+    now_ms_ = clock_.now_ms();
+    last_input_ms_ = now_ms_;
     error_msg_ = "Couldn't start phone setup.";
     error_until_ms_ = now_ms_ + 3000;
     mark_content_dirty();
@@ -362,8 +366,13 @@ void App::begin_add_wifi_network() {
   wifi_sta_connecting_ = false;
   last_wifi_prov_poll_ms_ = 0;
   focus_.index = 0;
+  now_ms_ = clock_.now_ms();
+  last_input_ms_ = now_ms_;
   nav_.replace(ScreenId::OnboardingWifiPassword);
   after_nav();
+  // Full SoftAP paint is blocking — touch activity again after present returns.
+  now_ms_ = clock_.now_ms();
+  last_input_ms_ = now_ms_;
 }
 
 void App::maybe_wifi_auto_reconnect() {
@@ -705,9 +714,27 @@ void App::notify_wifi_connected() {
   mark_status_dirty();
 }
 
+bool App::wifi_add_flow_active() const {
+  if (wifi_sta_connecting_) return true;
+  if (wifi_.provisioning()) return true;
+  switch (nav_.current()) {
+    case ScreenId::OnboardingWifiPassword:
+    case ScreenId::OnboardingWifiList:
+    case ScreenId::OnboardingWifiConnecting:
+      return true;
+    case ScreenId::SettingsWifi:
+      // Add-network chooser (Personal Hotspot / Another Wi‑Fi) — stay unlocked.
+      return wifi_ui_page_ == 1;
+    default:
+      return false;
+  }
+}
+
 void App::tick(uint32_t now_ms) {
   now_ms_ = now_ms;
-  if (cfg_.onboarding_complete && nav_.current() != ScreenId::Lock && nav_.current() != ScreenId::Pin) {
+  // Never idle-lock mid SoftAP / Add network — phone needs time to join Pocket Wi‑Fi.
+  if (cfg_.onboarding_complete && nav_.current() != ScreenId::Lock && nav_.current() != ScreenId::Pin &&
+      !wifi_add_flow_active()) {
     if (now_ms - last_input_ms_ >= static_cast<uint32_t>(cfg_.idle_lock_s) * 1000u) {
       go_lock();
       return;
@@ -875,6 +902,9 @@ void App::draw_status_bar() {
 
 void App::handle(InputEvent e) {
   if (e == InputEvent::None) return;
+  // Always sample the clock — now_ms_ may be stale if the previous tick was long ago
+  // or a prior handle() blocked in SoftAP / e-ink.
+  now_ms_ = clock_.now_ms();
   last_input_ms_ = now_ms_;
 
   if (e == InputEvent::Home) {
@@ -886,6 +916,7 @@ void App::handle(InputEvent e) {
   if (e == InputEvent::Power) {
     // Setup incomplete: stay on onboarding — do not jump to Lock.
     if (!cfg_.onboarding_complete) return;
+    // SoftAP / Add network: Power still locks intentionally; idle timer does not.
     go_lock();
     return;
   }

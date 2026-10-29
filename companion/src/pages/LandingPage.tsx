@@ -493,6 +493,14 @@ export function LandingPage() {
               <h3>Companion</h3>
               <p>Link, sync, and Cloud billing stay on your phone — never as a desktop website app.</p>
             </div>
+            <div className="landing-owners__item">
+              <h3>Mac control</h3>
+              <p>
+                On a computer,{' '}
+                <Link to="/control">control Pocket</Link> to add Wi‑Fi and tweak settings when linked —
+                separate from Companion.
+              </p>
+            </div>
           </div>
           <div className="landing-hero__ctas" style={{ marginTop: '1.75rem' }}>
             <a
@@ -504,6 +512,9 @@ export function LandingPage() {
               Official firmware / recovery
               <span aria-hidden="true">→</span>
             </a>
+            <Link className="landing-btn landing-btn--soft landing-btn--lg" to="/control">
+              Control on Mac
+            </Link>
             <DownloadCompanionCta className="landing-btn landing-btn--soft landing-btn--lg" />
           </div>
         </section>
@@ -571,6 +582,9 @@ export function LandingPage() {
             <div>
               <h3>Owners</h3>
               <ul>
+                <li>
+                  <Link to="/control">Mac control</Link>
+                </li>
                 <li>
                   <Link to="/admin/">Cloud Admin</Link>
                 </li>

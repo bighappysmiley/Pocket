@@ -80,8 +80,8 @@ export function LoginPage() {
         </p>
         {!phone ? (
           <p className="muted">
-            Companion is phone-only — not a desktop website. On a computer you can sign in for Cloud
-            Admin;{' '}
+            Companion is phone-only — not a desktop website. On a Mac you can{' '}
+            <Link to="/control">control Pocket</Link> (Wi‑Fi &amp; settings) or open Cloud Admin;{' '}
             <Link to="/get-companion">download Companion</Link> on your phone for pairing and everyday
             use.
           </p>

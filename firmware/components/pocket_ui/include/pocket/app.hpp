@@ -352,6 +352,8 @@ class App {
   void draw_status_bar();
   void go_home();
   void go_lock();
+  /** SoftAP / Add-network screens — idle lock must not interrupt phone join. */
+  bool wifi_add_flow_active() const;
   void after_nav(bool full_refresh);
   /** Navigate then refresh using Spec §6 (full only for major enters / QR / PIN). */
   void after_nav();

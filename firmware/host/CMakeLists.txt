@@ -126,6 +126,11 @@ target_include_directories(test_offline_clock PRIVATE ${POCKET_UI}/include)
 target_compile_definitions(test_offline_clock PRIVATE POCKET_HOST=1)
 add_test(NAME test_offline_clock COMMAND test_offline_clock)
 
+add_executable(test_wifi_add_no_lock ../tests/test_wifi_add_no_lock.cpp ${POCKET_UI_SRCS})
+target_include_directories(test_wifi_add_no_lock PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
+target_compile_definitions(test_wifi_add_no_lock PRIVATE POCKET_HOST=1)
+add_test(NAME test_wifi_add_no_lock COMMAND test_wifi_add_no_lock)
+
 add_executable(dump_home_png dump_home_png.cpp ${POCKET_UI_SRCS})
 target_include_directories(dump_home_png PRIVATE ${POCKET_UI}/include ${POCKET_UI}/vendor/qrcodegen)
 target_compile_definitions(dump_home_png PRIVATE POCKET_HOST=1)

@@ -1,0 +1,158 @@
+.control-shell {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-height: 100vh;
+}
+
+.control-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.control-top__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.control-hero {
+  padding: 0.25rem 0 0.5rem;
+}
+
+.control-lede {
+  max-width: 36rem;
+  font-size: 1.05rem;
+}
+
+.control-panel {
+  gap: 0.85rem;
+}
+
+.control-device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.control-device-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.control-device-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 8px 24px rgba(26, 31, 28, 0.06);
+  transform: translateY(-1px);
+  color: inherit;
+}
+
+.control-device-card__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.control-device-card__name {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.control-device-card__cta {
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.control-offline {
+  background: rgba(140, 90, 40, 0.06);
+  border-color: rgba(140, 90, 40, 0.22);
+}
+
+.control-mode-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: rgba(26, 31, 28, 0.05);
+  align-self: flex-start;
+}
+
+.control-mode-toggle button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.control-mode-toggle button.is-active {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(26, 31, 28, 0.08);
+}
+
+.control-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.control-alert {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: rgba(160, 50, 40, 0.08);
+  color: #7a2e26;
+}
+
+.control-notice {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: rgba(31, 92, 69, 0.08);
+  color: var(--ink);
+}
+
+.control-footnote {
+  margin-top: auto;
+  padding-top: 1rem;
+}
+
+@media (max-width: 640px) {
+  .control-shell {
+    padding: 1rem 1rem 2.5rem;
+  }
+
+  .control-device-card__main {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

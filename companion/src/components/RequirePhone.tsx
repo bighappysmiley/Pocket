@@ -3,7 +3,7 @@ import { isPhoneCompanionClient } from '../lib/utils'
 
 /**
  * Blocks desktop browsers from Companion app routes.
- * Marketing `/`, `/developer`, and owner `/admin` stay outside this guard.
+ * Marketing `/`, `/developer`, owner `/admin`, and Mac `/control` stay outside this guard.
  */
 export function RequirePhone() {
   const location = useLocation()

@@ -121,6 +121,7 @@ export function isCompanionAppPath(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, '') || '/'
   if (p === '/' || p === '') return false
   if (p === '/admin' || p.startsWith('/admin/')) return false
+  if (p === '/control' || p.startsWith('/control/')) return false
   if (p === '/developer' || p.startsWith('/developer/')) return false
   if (p === '/get-companion') return false
   return true

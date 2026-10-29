@@ -34,6 +34,8 @@ const spaDirs = [
   'lists',
   'get-companion',
   'developer',
+  'control',
+  'control/link',
 ]
 
 for (const dir of spaDirs) {

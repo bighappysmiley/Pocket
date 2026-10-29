@@ -25,6 +25,9 @@ import { MusicPage } from './pages/MusicPage'
 import { BooksPage } from './pages/BooksPage'
 import { UpgradePage } from './pages/UpgradePage'
 import { AdminPage } from './pages/AdminPage'
+import { ControlPage } from './pages/ControlPage'
+import { ControlDevicePage } from './pages/ControlDevicePage'
+import { ControlLinkPage } from './pages/ControlLinkPage'
 
 const routerBasename = (() => {
   const base = import.meta.env.BASE_URL || '/'
@@ -44,6 +47,9 @@ export default function App() {
             <Route path="/get-companion" element={<PhoneOnlyPage />} />
             <Route path="/developer" element={<DeveloperPage />} />
             <Route path="/developer/" element={<DeveloperPage />} />
+            {/* Signed-out Mac control landing (auth gate inside page) */}
+            <Route path="/control" element={<ControlPage />} />
+            <Route path="/control/" element={<ControlPage />} />
           </Route>
 
           {/* Phone Companion pairing / SoftAP flows */}
@@ -59,6 +65,12 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/admin/" element={<AdminPage />} />
+            </Route>
+
+            {/* Mac / desktop web control — not Companion; same Cloud account */}
+            <Route element={<AppLayout bare />}>
+              <Route path="/control/link" element={<ControlLinkPage />} />
+              <Route path="/control/devices/:id" element={<ControlDevicePage />} />
             </Route>
 
             {/* Companion app — phone only */}
