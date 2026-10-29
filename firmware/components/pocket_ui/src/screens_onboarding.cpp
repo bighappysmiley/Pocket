@@ -446,6 +446,7 @@ void App::handle_onboarding(InputEvent e) {
         break;
       case ScreenId::OnboardingWifiPassword:
         wifi_sta_connecting_ = false;
+        wifi_add_session_ = false;
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           // Add-network SoftAP — return to Settings Wi‑Fi, not the setup list.
@@ -636,8 +637,10 @@ void App::handle_onboarding(InputEvent e) {
       const int skip_i = already_online ? 1 : -1;
       if (focus_.index == skip_i) {
         play_sound(SoundId::Click);
+        wifi_add_session_ = false;
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
+          wifi_ui_page_ = 0;
           nav_.replace(ScreenId::SettingsWifi);
           after_nav();
         } else if (mint_pair_session()) {
@@ -652,6 +655,7 @@ void App::handle_onboarding(InputEvent e) {
       } else if (focus_.index == cancel_i) {
         play_sound(SoundId::Click);
         wifi_sta_connecting_ = false;
+        wifi_add_session_ = false;
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           wifi_ui_page_ = 0;

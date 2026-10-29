@@ -605,6 +605,11 @@ class App {
   int tips_page_ = 0;
   /** Settings → Wi‑Fi: 0 = known list, 1 = Add (hotspot / another), 2 = Remove picker. */
   uint8_t wifi_ui_page_ = 0;
+  /**
+   * Sticky SoftAP / Add-network session. Survives brief screen transitions and blocks
+   * Lock (idle, Power glitch, force_lock) until Cancel / success clears it.
+   */
+  bool wifi_add_session_ = false;
   /** Last attempt to flush offline voice clips via cloud STT. */
   uint32_t last_pending_stt_ms_ = 0;
 };

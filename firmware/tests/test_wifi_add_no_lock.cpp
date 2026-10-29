@@ -130,11 +130,28 @@ int main() {
   CHECK(app.screen() != ScreenId::Lock);
   CHECK(wifi.provisioned);
 
+  // Spurious Power (SoftAP RF glitch) must NOT lock mid-session.
+  app.handle(InputEvent::Power);
+  CHECK(app.screen() == ScreenId::OnboardingWifiPassword);
+  CHECK(app.screen() != ScreenId::Lock);
+
+  // Long-Home must not leave SoftAP stranded.
+  app.handle(InputEvent::Home);
+  CHECK(app.screen() == ScreenId::OnboardingWifiPassword);
+
   // Cancel → Settings Wi‑Fi.
   app.handle(InputEvent::Down);
   app.handle(InputEvent::Select);
   CHECK(app.screen() == ScreenId::SettingsWifi);
   CHECK(!wifi.provisioned);
+
+  // After Cancel, Power locks again.
+  app.handle(InputEvent::Power);
+  CHECK(app.screen() == ScreenId::Lock);
+  // Unlock back to Home for idle-lock check below.
+  app.handle(InputEvent::Select);
+  for (int i = 0; i < 4; ++i) app.handle(InputEvent::Select);
+  CHECK(app.screen() == ScreenId::Home);
 
   // Outside add flow, idle still locks.
   app.handle(InputEvent::Home);

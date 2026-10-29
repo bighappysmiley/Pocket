@@ -305,6 +305,7 @@ void App::begin_softap_link() {
     if (mint_pair_session()) {
       play_sound(SoundId::Success);
       focus_.index = 0;
+      wifi_add_session_ = false;
       nav_.replace(ScreenId::OnboardingCompanionQr);
       after_nav();
       return;
@@ -325,6 +326,9 @@ void App::begin_softap_link() {
   wifi_sta_connecting_ = false;
   last_wifi_prov_poll_ms_ = 0;
   focus_.index = 0;
+  wifi_add_session_ = true;
+  now_ms_ = clock_.now_ms();
+  last_input_ms_ = now_ms_;
   // Stay on SoftAP screen if already there — avoid full remount bounce.
   if (nav_.current() == ScreenId::OnboardingWifiPassword) {
     mark_content_dirty();
@@ -332,6 +336,8 @@ void App::begin_softap_link() {
   }
   nav_.replace(ScreenId::OnboardingWifiPassword);
   after_nav();
+  now_ms_ = clock_.now_ms();
+  last_input_ms_ = now_ms_;
 }
 
 bool App::connect_and_remember(const std::string& ssid, const std::string& password) {
@@ -349,11 +355,13 @@ bool App::connect_and_remember(const std::string& ssid, const std::string& passw
 
 void App::begin_add_wifi_network() {
   // SoftAP while optionally staying on current STA (APSTA) so user can add another network.
-  // SoftAP start + e-ink full enter can block for seconds — refresh activity so idle lock
-  // does not fire the moment the SoftAP credentials screen appears.
+  // SoftAP RF + async e-ink enter can glitch PWR into Power→Lock — arm session first so
+  // go_lock() refuses until Cancel / success.
+  wifi_add_session_ = true;
   std::string ap;
   std::string pass;
   if (!wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
+    wifi_add_session_ = false;
     now_ms_ = clock_.now_ms();
     last_input_ms_ = now_ms_;
     error_msg_ = "Couldn't start phone setup.";
@@ -370,7 +378,7 @@ void App::begin_add_wifi_network() {
   last_input_ms_ = now_ms_;
   nav_.replace(ScreenId::OnboardingWifiPassword);
   after_nav();
-  // Full SoftAP paint is blocking — touch activity again after present returns.
+  // Async SoftAP paint — refresh activity after kick returns.
   now_ms_ = clock_.now_ms();
   last_input_ms_ = now_ms_;
 }
@@ -500,6 +508,13 @@ void App::go_home() {
 }
 
 void App::go_lock() {
+  // SoftAP / Add-network must stay on-screen — idle, Power (RF glitch), and Cloud
+  // force_lock all funnel here. Refuse until the session ends (Cancel / success).
+  if (wifi_add_flow_active()) {
+    now_ms_ = clock_.now_ms();
+    last_input_ms_ = now_ms_;
+    return;
+  }
   nav_.reset(ScreenId::Lock);
   pin_entry_.clear();
   parental_session_unlocked_ = false;
@@ -715,6 +730,7 @@ void App::notify_wifi_connected() {
 }
 
 bool App::wifi_add_flow_active() const {
+  if (wifi_add_session_) return true;
   if (wifi_sta_connecting_) return true;
   if (wifi_.provisioning()) return true;
   switch (nav_.current()) {
@@ -755,8 +771,10 @@ void App::tick(uint32_t now_ms) {
         const bool ok = connect_and_remember(ssid, pass);
         wifi_sta_connecting_ = false;
         if (ok) {
+          wifi_add_session_ = false;
           if (cfg_.onboarding_complete) {
             focus_.index = 0;
+            wifi_ui_page_ = 0;
             nav_.replace(ScreenId::SettingsWifi);
             after_nav();
           } else if (mint_pair_session()) {
@@ -766,6 +784,7 @@ void App::tick(uint32_t now_ms) {
             after_nav();  // QR: full
           } else {
             play_sound(SoundId::Attention);
+            wifi_add_session_ = true;  // SoftAP still needed for retry path
             ensure_softap_credentials_shown();
             mark_content_dirty();
           }
@@ -909,6 +928,8 @@ void App::handle(InputEvent e) {
   last_input_ms_ = now_ms_;
 
   if (e == InputEvent::Home) {
+    // SoftAP add/link — stay on credentials until Cancel (long-press Home would strand SoftAP).
+    if (wifi_add_flow_active()) return;
     if (!long_home_blocked(nav_.current(), cfg_.onboarding_complete)) {
       go_home();
     }
@@ -917,7 +938,8 @@ void App::handle(InputEvent e) {
   if (e == InputEvent::Power) {
     // Setup incomplete: stay on onboarding — do not jump to Lock.
     if (!cfg_.onboarding_complete) return;
-    // SoftAP / Add network: Power still locks intentionally; idle timer does not.
+    // SoftAP RF often glitches PWR → ignore Power mid Add-network / SoftAP session.
+    if (wifi_add_flow_active()) return;
     go_lock();
     return;
   }

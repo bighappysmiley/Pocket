@@ -103,7 +103,7 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, kWrapGap,
-        "Add Wi‑Fi stays unlocked while SoftAP runs; Home browsing stays snappy before a full refresh.",
+        "Add network SoftAP refuses Lock until Cancel; Home browsing stays snappy before a full refresh.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);
@@ -266,20 +266,14 @@ void App::render_settings() {
     canvas_.draw_text(kSideMargin, kTitleY, "Wi-Fi", Canvas::TextRole::ScreenTitle, Gray::G0);
 
     if (wifi_ui_page_ == 1) {
-      // Add network — finish in Companion (hotspot or another Wi‑Fi).
+      // Add network — SoftAP credentials next (phone finishes the password).
       canvas_.draw_text_wrapped(kSideMargin, kListTop, kContentW, kWrapGap,
-                                "Add a network in Pocket Companion. Choose Personal Hotspot or another Wi‑Fi.",
+                                "Add a network from your phone. Choose Personal Hotspot or another Wi‑Fi.",
                                 Canvas::TextRole::Body, Gray::G0);
-      const bool online = wifi_.connected();
-      if (online) {
-        canvas_.draw_text_wrapped(kSideMargin, kListTop + 120, kContentW, kWrapGap,
-                                  "Phone: Devices → this Pocket → Add Wi‑Fi. Pocket stays online — no setup hop.",
-                                  Canvas::TextRole::Secondary, Gray::G1);
-      } else {
-        canvas_.draw_text_wrapped(kSideMargin, kListTop + 120, kContentW, kWrapGap,
-                                  "Pocket will open a short setup network so Companion can send the password.",
-                                  Canvas::TextRole::Secondary, Gray::G1);
-      }
+      canvas_.draw_text_wrapped(
+          kSideMargin, kListTop + 120, kContentW, kWrapGap,
+          "Pocket opens a short setup network and stays unlocked until you finish or Cancel.",
+          Canvas::TextRole::Secondary, Gray::G1);
       const char* acts[] = {"Personal Hotspot", "Another Wi‑Fi", "Back"};
       focus_.count = 3;
       draw_focus_rows(canvas_, focus_, acts, 3, kListTop + 240);
@@ -471,21 +465,13 @@ void App::handle_settings(InputEvent e) {
           mark_content_dirty();
           return;
         }
-        // Hotspot (0) or Another Wi‑Fi (1): finish in Companion.
+        // Hotspot (0) or Another Wi‑Fi (1).
+        // Always SoftAP (APSTA when already online) so the phone can finish without
+        // the device idle/Power-locking mid-handoff. Companion Cloud queue remains
+        // available from the phone/Mac control when Pocket is already online.
         play_sound(SoundId::Click);
-        if (wifi_.connected()) {
-          error_msg_ = focus_.index == 0
-                           ? "In Companion: Devices → Add Wi‑Fi → Use phone data."
-                           : "In Companion: Devices → Add Wi‑Fi → Home Wi‑Fi.";
-          error_until_ms_ = now_ms_ + 5000;
-          wifi_ui_page_ = 0;
-          focus_.index = 0;
-          mark_content_dirty();
-        } else {
-          // Offline: SoftAP so Companion Link can hand off credentials.
-          wifi_ui_page_ = 0;
-          begin_add_wifi_network();
-        }
+        wifi_ui_page_ = 0;
+        begin_add_wifi_network();
       }
       return;
     }
