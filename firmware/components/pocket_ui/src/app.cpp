@@ -353,32 +353,78 @@ bool App::connect_and_remember(const std::string& ssid, const std::string& passw
   return ok;
 }
 
-void App::begin_add_wifi_network() {
-  // SoftAP while optionally staying on current STA (APSTA) so user can add another network.
-  // SoftAP RF + async e-ink enter can glitch PWR into Power→Lock — arm session first so
-  // go_lock() refuses until Cancel / success.
-  wifi_add_session_ = true;
+void App::arm_wifi_rf_guard() {
+  now_ms_ = clock_.now_ms();
+  last_input_ms_ = now_ms_;
+  // SoftAP APSTA TX couples into active-low PWR/BOOT — suppress Lock gestures ~3s.
+  wifi_rf_guard_until_ms_ = now_ms_ + 3000u;
+  input_resync_pending_ = true;
+}
+
+bool App::wifi_rf_guard_active() const {
+  return wifi_rf_guard_until_ms_ != 0 && now_ms_ < wifi_rf_guard_until_ms_;
+}
+
+void App::maybe_start_pending_softap_radio() {
+  if (!wifi_softap_start_pending_) return;
+  // Wait out SoftAP enter full-refresh before RF — concurrent e-ink + APSTA was the
+  // enter-path Lock (brownout / PWR glitch while go_lock was already a session no-op).
+  if (display_.busy()) return;
+  wifi_softap_start_pending_ = false;
   std::string ap;
   std::string pass;
-  if (!wifi_.start_provision(cfg_.wifi_ssid, &ap, &pass)) {
-    wifi_add_session_ = false;
-    now_ms_ = clock_.now_ms();
-    last_input_ms_ = now_ms_;
+  const std::string preferred =
+      wifi_softap_pending_preferred_.empty() ? cfg_.wifi_ssid : wifi_softap_pending_preferred_;
+  wifi_softap_pending_preferred_.clear();
+  if (!wifi_.start_provision(preferred, &ap, &pass)) {
+    // Keep wifi_add_session_ — failed start still flipped radio briefly.
     error_msg_ = "Couldn't start phone setup.";
     error_until_ms_ = now_ms_ + 3000;
     mark_content_dirty();
+    arm_wifi_rf_guard();
     return;
   }
   wifi_ap_ssid_ = ap.empty() ? wifi_.provision_ap_ssid() : ap;
   wifi_ap_pass_ = pass.empty() ? wifi_.provision_ap_password() : pass;
+  last_wifi_prov_poll_ms_ = 0;
+  mark_content_dirty();
+  arm_wifi_rf_guard();
+}
+
+void App::begin_add_wifi_network() {
+  // SoftAP while optionally staying on current STA (APSTA) so user can add another network.
+  // v100 enter path: arm session → paint SoftAP (quiet RF) → start APSTA once panel idle.
+  wifi_add_session_ = true;
   wifi_sta_connecting_ = false;
   last_wifi_prov_poll_ms_ = 0;
   focus_.index = 0;
   now_ms_ = clock_.now_ms();
   last_input_ms_ = now_ms_;
-  nav_.replace(ScreenId::OnboardingWifiPassword);
-  after_nav();
-  // Async SoftAP paint — refresh activity after kick returns.
+  arm_wifi_rf_guard();
+
+  std::string ap;
+  std::string pass;
+  if (wifi_.peek_provision_identity(&ap, &pass)) {
+    wifi_ap_ssid_ = ap;
+    wifi_ap_pass_ = pass;
+  } else {
+    wifi_ap_ssid_.clear();
+    wifi_ap_pass_.clear();
+  }
+
+  if (nav_.current() != ScreenId::OnboardingWifiPassword) {
+    nav_.replace(ScreenId::OnboardingWifiPassword);
+    after_nav();
+  } else {
+    mark_content_dirty();
+  }
+
+  wifi_softap_pending_preferred_ = cfg_.wifi_ssid;
+  wifi_softap_start_pending_ = true;
+  if (!display_.busy()) {
+    // Host / already-idle panel: start radio immediately after SoftAP paint kick.
+    maybe_start_pending_softap_radio();
+  }
   now_ms_ = clock_.now_ms();
   last_input_ms_ = now_ms_;
 }
@@ -731,6 +777,8 @@ void App::notify_wifi_connected() {
 
 bool App::wifi_add_flow_active() const {
   if (wifi_add_session_) return true;
+  if (wifi_softap_start_pending_) return true;
+  if (wifi_rf_guard_active()) return true;
   if (wifi_sta_connecting_) return true;
   if (wifi_.provisioning()) return true;
   switch (nav_.current()) {
@@ -748,6 +796,7 @@ bool App::wifi_add_flow_active() const {
 
 void App::tick(uint32_t now_ms) {
   now_ms_ = now_ms;
+  maybe_start_pending_softap_radio();
   // Never idle-lock mid SoftAP / Add network — phone needs time to join Pocket Wi‑Fi.
   // Guard now_ms < last_input_ms_ (unsigned underflow): host pumps often tick(0) while
   // handle() samples the real clock, and a wrap must not force Lock.
@@ -772,6 +821,8 @@ void App::tick(uint32_t now_ms) {
         wifi_sta_connecting_ = false;
         if (ok) {
           wifi_add_session_ = false;
+          wifi_softap_start_pending_ = false;
+          wifi_rf_guard_until_ms_ = 0;
           if (cfg_.onboarding_complete) {
             focus_.index = 0;
             wifi_ui_page_ = 0;
@@ -941,6 +992,13 @@ void App::handle(InputEvent e) {
     // SoftAP RF often glitches PWR → ignore Power mid Add-network / SoftAP session.
     if (wifi_add_flow_active()) return;
     go_lock();
+    return;
+  }
+  // SoftAP RF also glitches BOOT → Back. During Add-network SoftAP, only Cancel clears
+  // the session — a spurious Back would drop wifi_add_session_ then Power→Lock.
+  if (e == InputEvent::Back && cfg_.onboarding_complete &&
+      (wifi_add_session_ || wifi_softap_start_pending_ || wifi_rf_guard_active()) &&
+      nav_.current() == ScreenId::OnboardingWifiPassword) {
     return;
   }
 

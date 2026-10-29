@@ -55,6 +55,11 @@ class InputMapper {
    * Includes any overflow ticks that could not fit in the queue.
    */
   int drain_up_down_net();
+  /**
+   * Drop Power / Home / Back / PTT from the queue after SoftAP RF (GPIO glitches).
+   * Keeps Up/Down/Select. Re-arms Power edge so a stuck-low PWR does not fire later.
+   */
+  void discard_nav_gestures();
 
  private:
   void push(InputEvent e);

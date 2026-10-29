@@ -8,6 +8,7 @@ struct EspWifi : pocket::PlatformWifi {
   bool connected() const override;
   bool start_provision(const std::string& preferred_ssid, std::string* ap_ssid_out,
                        std::string* ap_pass_out) override;
+  bool peek_provision_identity(std::string* ap_ssid_out, std::string* ap_pass_out) override;
   void stop_provision() override;
   bool take_provision_credentials(std::string* ssid, std::string* password) override;
   std::string provision_ap_ssid() const override;

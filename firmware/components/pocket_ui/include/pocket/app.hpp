@@ -37,6 +37,15 @@ struct PlatformWifi {
   /** SoftAP + HTTP portal so the phone can send Wi‑Fi credentials (no on-device typing). */
   virtual bool start_provision(const std::string& preferred_ssid, std::string* ap_ssid_out,
                                std::string* ap_pass_out) = 0;
+  /**
+   * Build SoftAP SSID/password without enabling AP radio. Lets the SoftAP screen
+   * paint before RF (APSTA) so e-ink + TX do not race Power-line glitches / brownout.
+   */
+  virtual bool peek_provision_identity(std::string* ap_ssid_out, std::string* ap_pass_out) {
+    if (ap_ssid_out) *ap_ssid_out = provision_ap_ssid();
+    if (ap_pass_out) *ap_pass_out = provision_ap_password();
+    return !(ap_ssid_out && ap_ssid_out->empty());
+  }
   virtual void stop_provision() = 0;
   virtual bool take_provision_credentials(std::string* ssid, std::string* password) = 0;
   virtual std::string provision_ap_ssid() const = 0;
@@ -336,6 +345,15 @@ class App {
   int lock_motif_index() const { return lock_motif_index_; }
   /** Home grid focus index (host/tests). */
   int home_focus_index() const { return focus_.index; }
+  /**
+   * After SoftAP radio starts, main loop must snapshot button levels and drop
+   * Power/Home/Back that RF edge-glitched into the queue. Returns true once.
+   */
+  bool consume_input_resync() {
+    if (!input_resync_pending_) return false;
+    input_resync_pending_ = false;
+    return true;
+  }
   const Canvas& canvas() const { return canvas_; }
   bool needs_redraw() const { return dirty_; }
 
@@ -354,6 +372,12 @@ class App {
   void go_lock();
   /** SoftAP / Add-network screens — idle lock must not interrupt phone join. */
   bool wifi_add_flow_active() const;
+  /** True during SoftAP RF settle window (Power/Back/Home suppressed). */
+  bool wifi_rf_guard_active() const;
+  /** Finish deferred SoftAP radio once the panel is idle (paint-before-RF). */
+  void maybe_start_pending_softap_radio();
+  /** Arm RF guard + request GPIO resync after SoftAP mode changes. */
+  void arm_wifi_rf_guard();
   void after_nav(bool full_refresh);
   /** Navigate then refresh using Spec §6 (full only for major enters / QR / PIN). */
   void after_nav();
@@ -610,6 +634,17 @@ class App {
    * Lock (idle, Power glitch, force_lock) until Cancel / success clears it.
    */
   bool wifi_add_session_ = false;
+  /**
+   * SoftAP RF settle window (ms deadline). Power/Home/Back ignored; wifi_add_flow_active.
+   * Covers mode-switch glitches even if start_provision fails and clears the portal.
+   */
+  uint32_t wifi_rf_guard_until_ms_ = 0;
+  /** Paint SoftAP first; start APSTA once display_.busy() clears (or immediately on host). */
+  bool wifi_softap_start_pending_ = false;
+  /** Preferred SSID held while SoftAP radio start is deferred after paint. */
+  std::string wifi_softap_pending_preferred_;
+  /** Request ButtonPoller resync + InputMapper nav-gesture discard (main loop). */
+  bool input_resync_pending_ = false;
   /** Last attempt to flush offline voice clips via cloud STT. */
   uint32_t last_pending_stt_ms_ = 0;
 };

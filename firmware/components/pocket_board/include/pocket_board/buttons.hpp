@@ -10,6 +10,11 @@ class ButtonPoller {
   void init();
   /** Sample GPIOs and push edges + long-press ticks into mapper. */
   void poll(pocket::InputMapper& mapper, uint32_t now_ms);
+  /**
+   * Snapshot current levels without emitting edges. Call after SoftAP RF so a
+   * mid-block PWR/BOOT glitch does not look like a fresh press on the next poll.
+   */
+  void resync();
 
  private:
   bool last_up_ = false;

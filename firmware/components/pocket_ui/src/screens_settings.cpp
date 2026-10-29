@@ -103,7 +103,7 @@ void App::render_settings() {
                       Canvas::TextRole::Body, Gray::G0);
     canvas_.draw_text_wrapped(
         kSideMargin, kListTop + kTitleToBody + 3 * kBodyLinePitch + 8, kContentW, kWrapGap,
-        "Add network SoftAP refuses Lock until Cancel; Home browsing stays snappy before a full refresh.",
+        "Add network paints SoftAP before RF and refuses Lock until Cancel; Home stays snappy.",
         Canvas::TextRole::Secondary, Gray::G1);
     canvas_.draw_text(kSideMargin, kListTop + kTitleToBody + 6 * kBodyLinePitch + 16, "Pocket Cloud",
                       Canvas::TextRole::Body, Gray::G0);

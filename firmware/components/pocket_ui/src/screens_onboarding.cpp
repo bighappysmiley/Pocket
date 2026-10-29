@@ -445,8 +445,11 @@ void App::handle_onboarding(InputEvent e) {
       case ScreenId::OnboardingWelcome:
         break;
       case ScreenId::OnboardingWifiPassword:
+        // Add-network SoftAP: Back is ignored in handle() (RF glitch). Onboarding still allows Back.
         wifi_sta_connecting_ = false;
         wifi_add_session_ = false;
+        wifi_softap_start_pending_ = false;
+        wifi_rf_guard_until_ms_ = 0;
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           // Add-network SoftAP — return to Settings Wi‑Fi, not the setup list.
@@ -638,6 +641,8 @@ void App::handle_onboarding(InputEvent e) {
       if (focus_.index == skip_i) {
         play_sound(SoundId::Click);
         wifi_add_session_ = false;
+        wifi_softap_start_pending_ = false;
+        wifi_rf_guard_until_ms_ = 0;
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           wifi_ui_page_ = 0;
@@ -656,6 +661,8 @@ void App::handle_onboarding(InputEvent e) {
         play_sound(SoundId::Click);
         wifi_sta_connecting_ = false;
         wifi_add_session_ = false;
+        wifi_softap_start_pending_ = false;
+        wifi_rf_guard_until_ms_ = 0;
         wifi_.stop_provision();
         if (cfg_.onboarding_complete) {
           wifi_ui_page_ = 0;

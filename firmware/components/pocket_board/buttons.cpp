@@ -36,6 +36,15 @@ void ButtonPoller::init() {
            kPinButtonFunction, kPinButtonDown, kPinBoot, kPinPwr);
 }
 
+void ButtonPoller::resync() {
+  if (!inited_) return;
+  last_up_ = pressed(kPinButtonUp);
+  last_down_ = pressed(kPinButtonDown);
+  last_fn_ = pressed(kPinButtonFunction);
+  last_boot_ = pressed(kPinBoot);
+  last_pwr_ = pressed(kPinPwr);
+}
+
 void ButtonPoller::poll(pocket::InputMapper& mapper, uint32_t now_ms) {
   if (!inited_) return;
 

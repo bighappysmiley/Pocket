@@ -544,6 +544,16 @@ bool EspWifi::connect(const std::string& ssid, const std::string& pass) {
 
 bool EspWifi::connected() const { return s_sta_connected; }
 
+bool EspWifi::peek_provision_identity(std::string* ap_ssid_out, std::string* ap_pass_out) {
+  // Identity only — do not flip WIFI_MODE_APSTA here (RF must wait until SoftAP UI painted).
+  if (!wifi_ensure()) return false;
+  if (!s_ap_ssid[0]) build_ap_ssid(s_ap_ssid, sizeof(s_ap_ssid));
+  if (!s_ap_pass[0]) build_ap_password(s_ap_pass, sizeof(s_ap_pass));
+  if (ap_ssid_out) *ap_ssid_out = s_ap_ssid;
+  if (ap_pass_out) *ap_pass_out = s_ap_pass;
+  return s_ap_ssid[0] != 0 && s_ap_pass[0] != 0;
+}
+
 bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap_ssid_out,
                               std::string* ap_pass_out) {
   if (!wifi_ensure()) return false;
@@ -587,7 +597,8 @@ bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap
   std::strncpy(reinterpret_cast<char*>(ap.ap.ssid), s_ap_ssid, sizeof(ap.ap.ssid) - 1);
   ap.ap.ssid_len = static_cast<uint8_t>(std::strlen(s_ap_ssid));
   std::strncpy(reinterpret_cast<char*>(ap.ap.password), s_ap_pass, sizeof(ap.ap.password) - 1);
-  ap.ap.channel = 1;
+  // Channel 6 — less coupling into nearby GPIO than ch1 on some Pocket boards (PWR=GPIO1).
+  ap.ap.channel = 6;
   ap.ap.max_connection = 4;
   ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
   ap.ap.ssid_hidden = 0;
@@ -607,7 +618,7 @@ bool EspWifi::start_provision(const std::string& preferred_ssid, std::string* ap
   s_scan_cache_ms = 0;
   if (ap_ssid_out) *ap_ssid_out = s_ap_ssid;
   if (ap_pass_out) *ap_pass_out = s_ap_pass;
-  ESP_LOGI(TAG, "SoftAP provision active: %s pass_len=%u", s_ap_ssid,
+  ESP_LOGI(TAG, "SoftAP provision active: %s pass_len=%u ch=6", s_ap_ssid,
            static_cast<unsigned>(std::strlen(s_ap_pass)));
   return true;
 }

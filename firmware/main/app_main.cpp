@@ -52,7 +52,7 @@ constexpr uint32_t kRtcWallMagic = 0x504B5257u;  // 'PKRW'
 static const char* TAG = "pocket";
 
 // Unique marker — must appear on Mac serial (cu.usbmodem) for this build.
-static const char* kBuildId = "POCKET-LIVE-v99-wifi-add-nolock";
+static const char* kBuildId = "POCKET-LIVE-v100-softap-enter";
 
 namespace {
 
@@ -605,6 +605,11 @@ extern "C" void app_main(void) {
         apply_timezone(tz);
         last_tz = tz;
       }
+    }
+    // SoftAP RF: snapshot GPIO baselines + drop Power/Home/Back before the next edge poll.
+    if (g_boot.ui_ready && app.consume_input_resync()) {
+      buttons.resync();
+      mapper.discard_nav_gestures();
     }
     buttons.poll(mapper, now);
     for (;;) {

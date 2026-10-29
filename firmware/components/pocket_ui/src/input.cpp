@@ -50,6 +50,29 @@ int InputMapper::drain_up_down_net() {
   return net;
 }
 
+void InputMapper::discard_nav_gestures() {
+  // Compact queue in place — drop Power/Home/Back/PTT; keep rotary + Select.
+  const int n = (q_tail_ - q_head_ + kQueue) % kQueue;
+  InputEvent kept[kQueue];
+  int k = 0;
+  for (int i = 0; i < n; ++i) {
+    const InputEvent e = queue_[(q_head_ + i) % kQueue];
+    if (e == InputEvent::Power || e == InputEvent::Home || e == InputEvent::Back ||
+        e == InputEvent::PttStart || e == InputEvent::PttStop) {
+      continue;
+    }
+    kept[k++] = e;
+  }
+  q_head_ = 0;
+  q_tail_ = 0;
+  for (int i = 0; i < k; ++i) push(kept[i]);
+  // SoftAP RF often leaves PWR latched low — require a clean release before next Power.
+  pwr_edge_armed_ = false;
+  boot_down_ = false;
+  ptt_armed_ = false;
+  fn_long_fired_ = fn_down_;  // don't fire Home from a hold that spanned SoftAP start
+}
+
 bool InputMapper::debounce(bool& seen, uint32_t& last_ms, uint32_t now_ms) {
   if (seen && (now_ms - last_ms) < InputThresholds::kDebounceMs) return false;
   seen = true;
