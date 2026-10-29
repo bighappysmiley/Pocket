@@ -733,12 +733,13 @@ bool App::wifi_add_flow_active() const {
 void App::tick(uint32_t now_ms) {
   now_ms_ = now_ms;
   // Never idle-lock mid SoftAP / Add network — phone needs time to join Pocket Wi‑Fi.
+  // Guard now_ms < last_input_ms_ (unsigned underflow): host pumps often tick(0) while
+  // handle() samples the real clock, and a wrap must not force Lock.
   if (cfg_.onboarding_complete && nav_.current() != ScreenId::Lock && nav_.current() != ScreenId::Pin &&
-      !wifi_add_flow_active()) {
-    if (now_ms - last_input_ms_ >= static_cast<uint32_t>(cfg_.idle_lock_s) * 1000u) {
-      go_lock();
-      return;
-    }
+      !wifi_add_flow_active() && now_ms >= last_input_ms_ &&
+      now_ms - last_input_ms_ >= static_cast<uint32_t>(cfg_.idle_lock_s) * 1000u) {
+    go_lock();
+    return;
   }
   // SoftAP Wi‑Fi provision: wait for phone to POST credentials
   if (nav_.current() == ScreenId::OnboardingWifiPassword && !wifi_sta_connecting_) {
